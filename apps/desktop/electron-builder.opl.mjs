@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 import base from './electron-builder.config.mjs'
 
 const iconPath = fileURLToPath(new URL('./opl/icon.icns', import.meta.url))
-const { artifactBuildCompleted, ...rest } = base
+const baseConfig = base
 
 /** Reverse-DNS identity of this product. */
 const APP_ID = 'com.onepersonlab.dsh'
@@ -36,20 +36,35 @@ const DSH_HOME = process.env.DSH_OPL_HOME?.trim() || join(homedir(), '.dsh-opl')
 /** Notarize only when the release path asks for it. */
 const NOTARIZE = process.env.DSH_OPL_NOTARIZE === '1'
 
+/** `notarytool` keychain profile recorded once by `notarytool store-credentials`. */
+const KEYCHAIN_PROFILE = process.env.APPLE_KEYCHAIN_PROFILE?.trim()
+
+if (NOTARIZE && (KEYCHAIN_PROFILE === undefined || KEYCHAIN_PROFILE === '')) {
+  throw new Error('packaging: DSH_OPL_NOTARIZE=1 requires APPLE_KEYCHAIN_PROFILE')
+}
+
 export default {
-  ...rest,
+  ...baseConfig,
   appId: APP_ID,
   productName: PRODUCT_NAME,
   artifactName: 'opl-dsh-${version}-${os}-${arch}.${ext}',
   mac: {
-    ...base.mac,
+    ...baseConfig.mac,
     icon: iconPath,
-    notarize: NOTARIZE,
+    // Notarization runs through the disk-image hook below rather than through
+    // electron-builder's own flag: that flag takes only a boolean and reads
+    // Apple credentials from the environment, while the hook goes through
+    // `@electron/notarize`, which accepts this machine's `notarytool` keychain
+    // profile. Submitting the disk image also notarizes the application inside
+    // it, so one submission covers the download and the bundle it carries.
+    notarize: false,
     extendInfo: {
       LSEnvironment: {
         DSH_HOME,
       },
     },
   },
+  // Staple the ticket to the disk image, so a first launch needs no network.
+  ...(NOTARIZE ? { artifactBuildCompleted: baseConfig.artifactBuildCompleted } : {}),
   publish: null,
 }
