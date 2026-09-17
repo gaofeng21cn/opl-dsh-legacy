@@ -163,6 +163,13 @@ export class DesktopHostProcess {
     const child = spawn(this.node, [
       '--expose-internals',
       ...(this.inspectPort === undefined ? [] : [`--inspect=127.0.0.1:${String(this.inspectPort)}`]),
+      // Node trusts only its bundled roots by default, while every other macOS
+      // application trusts the machine's own trust store. A deployment behind a
+      // TLS-inspecting proxy or a private gateway therefore reaches its endpoint
+      // from the browser and from curl but not from here. The Host performs every
+      // outbound request — model inference, the OPL Gateway account API, web
+      // search — so it is the one process that must agree with the system store.
+      '--use-system-ca',
       entry,
       this.runtimeDir,
       this.projectDir,
