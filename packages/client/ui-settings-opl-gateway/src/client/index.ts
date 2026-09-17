@@ -49,6 +49,7 @@ export function apply(ctx: ClientContext): void {
     status: async () => unwrap(await ctx.remote.oplGatewayAccount.status()),
     signIn: async (email, password) => unwrap(await ctx.remote.oplGatewayAccount.signIn(email, password)),
     refresh: async () => unwrap(await ctx.remote.oplGatewayAccount.refresh()),
+    signOut: async () => unwrap(await ctx.remote.oplGatewayAccount.signOut()),
   })
 
   ctx.slots.inject('settings.section', () => ctx.slots.register({

@@ -1,33 +1,41 @@
 /**
  * OPL Gateway account surface: the one Remote service the account page reads.
  *
- * OPL Framework owns this account — the session, the managed key, the binding
- * this machine's inference uses — and publishes it through
- * `opl connect gateway …`. This service is therefore a *view* of OPL plus one
- * safe action: signing in when this machine has no account yet. It never
- * disconnects, rotates, or replaces OPL's key, because those change the OPL
- * application too, and that decision belongs where the account lives.
+ * The gateway is an independent service, so this surface stands on its own: a
+ * machine with no OPL installation can sign in, receive an inference key, and
+ * see the account. Nothing here shells out to a command line.
+ *
+ * OPL is still consulted, but only as a *convenience*: if this machine already
+ * signed in through the OPL application, its recorded account and binding are
+ * read so the operator needs no second sign-in. That read is a plain file read
+ * (see `./opl-credentials.ts`) and never a requirement.
  */
 
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialProvider, CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { GatewayAccountFacts, GatewayAccountModel, GatewayAccountStatus, GatewaySignInResult } from './types.ts'
-import { OplCliError, loginGateway, readGatewayStatus, refreshGateway } from './opl-cli.ts'
-import type { OplGatewayStatus } from './opl-cli.ts'
-import { adoptOplGatewayKey } from './adoption.ts'
+import {
+  GatewayControlClient,
+  GatewayControlError,
+  type GatewayManagedKey,
+  type GatewayProfile,
+  type GatewayUsage,
+} from './gateway-control.ts'
+import { keyFingerprint, readAdoptedFingerprint, writeAdoptedFingerprint } from './adoption.ts'
 import { importOplGatewayKey, oplGatewayStateDirectory, readOplGatewayAccount } from './opl-credentials.ts'
 import type { OplGatewayAccount } from './opl-credentials.ts'
+import { clearFacts, clearSession, readFacts, readSession, writeFacts, writeSession } from './session-store.ts'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** The gateway refused the supplied credentials. */
     'opl-gateway/credentials': {}
-    /** The account needs a step this page cannot take; OPL owns it. */
+    /** The account needs a step this page cannot take. */
     'opl-gateway/attention': {}
-    /** OPL or its gateway could not be reached. */
+    /** The gateway could not be reached. */
     'opl-gateway/unavailable': {}
     /** This deployment cannot store the key the account issued. */
     'opl-gateway/store': {}
@@ -37,28 +45,55 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 /** Cordis service key and Remote namespace of this surface. */
 export const OPL_GATEWAY_ACCOUNT_SERVICE = 'oplGatewayAccount'
 
-/** Map one OPL failure reason onto the vocabulary this surface declares. */
+/** OPL account statuses that mean the recorded account is usable as it stands. */
+const CONNECTED_OPL_STATUSES = new Set(['connected', 'setup_required'])
+
+/** Map one control failure reason onto the vocabulary this surface declares. */
 function remoteCode(reason: string): keyof import('@deepseek-ai/dsh-typert-protocol').RemoteErrorDetailsMap {
   switch (reason) {
     case 'invalid_credentials': return 'opl-gateway/credentials'
-    case 'group_selection_required':
-    case 'mfa_or_challenge_required':
-    case 'account_switch_requires_disconnect':
-    case 'account_disabled': return 'opl-gateway/attention'
-    case 'opl_not_installed': return 'opl-gateway/attention'
+    case 'account_disabled':
+    case 'challenge_required':
+    case 'group_selection_required': return 'opl-gateway/attention'
     default: return 'opl-gateway/unavailable'
   }
 }
 
 /** Restate any failure in the code and message the page shows. */
 function describe(error: unknown): { code: string; message: string } {
-  if (error instanceof OplCliError) return { code: error.code, message: error.message }
+  if (error instanceof GatewayControlError) return { code: error.code, message: error.message }
   if (error instanceof Error) return { code: 'unexpected', message: error.message }
   return { code: 'unexpected', message: 'The OPL Gateway request failed' }
 }
 
+/**
+ * The name this client's key carries on the gateway.
+ *
+ * Named after the machine so an operator reading the gateway's key list can
+ * tell which client holds which key — the same convention the OPL application
+ * uses for its own managed key.
+ * @returns the canonical key name.
+ */
+export function gatewayKeyName(): string {
+  return `OPL DSH · ${hostname()}`
+}
+
+/** Whether a key group is the one a coding client should use. */
+function preferredGroup(groups: readonly { id: string; label: string }[]): string | null {
+  const coding = groups.filter(group => group.label.trim().toLowerCase().startsWith('codex'))
+  const only = coding[0] ?? (groups.length === 1 ? groups[0] : undefined)
+  return only === undefined ? null : only.id
+}
+
 /** One account whose status the page reads and whose sign-in the page starts. */
 export class OplGatewayAccountService extends TypertRemoteService {
+  private session: { accessToken: string; refreshToken: string } | undefined
+  private facts: GatewayAccountFacts | undefined
+  private source: 'session' | 'opl' | undefined
+  private failure: { code: string; message: string } | undefined
+  private key: GatewayManagedKey | undefined
+  private defaultControl: GatewayControlClient | undefined
+
   constructor(
     ctx: Context,
     private readonly options: {
@@ -68,10 +103,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
       readonly endpoint: () => string
       /** Models this route advertises. */
       readonly models: () => readonly GatewayAccountModel[]
-      /** OPL state directory used when the command line is unavailable. */
+      /** OPL state directory consulted as a convenience, never a requirement. */
       readonly stateDirectory?: () => string
-      /** Environment carrying the OPL binary override. */
-      readonly environment?: () => NodeJS.ProcessEnv
+      /** Control transport override, for tests. */
+      readonly control?: GatewayControlClient
     },
   ) {
     // The Typert analyzer reads the service key from this call site, so it must
@@ -79,8 +114,9 @@ export class OplGatewayAccountService extends TypertRemoteService {
     super(ctx, 'oplGatewayAccount')
   }
 
-  private env(): NodeJS.ProcessEnv {
-    return this.options.environment?.() ?? process.env
+  private control(): GatewayControlClient {
+    this.defaultControl ??= new GatewayControlClient()
+    return this.options.control ?? this.defaultControl
   }
 
   private credentials(): CredentialProvider | undefined {
@@ -113,13 +149,26 @@ export class OplGatewayAccountService extends TypertRemoteService {
   }
 
   /**
-   * OPL's account record read straight from its state directory.
+   * The Harness home this plugin's own files live in.
    *
-   * Used only when the command line cannot answer — a deployment without the
-   * OPL binary still gets account facts, and a test does not have to spawn a
-   * process to observe one.
+   * Deliberately never OPL's state directory: what this plugin observed and
+   * adopted belongs to this Harness, and writing it beside OPL's own state
+   * would be one product editing another's.
    */
-  private localAccount(): OplGatewayAccount | undefined {
+  private home(): string {
+    try {
+      const paths = this.ctx.get('dshHomePath')
+      if (typeof paths === 'function') return paths()
+    }
+    catch {
+      // Fall through to the documented default below.
+    }
+    const configured = process.env.DSH_HOME?.trim()
+    return configured === undefined || configured === '' ? join(homedir(), '.dsh') : configured
+  }
+
+  /** OPL's recorded account, read straight from its state directory. */
+  private oplAccount(): OplGatewayAccount | undefined {
     try {
       return readOplGatewayAccount(this.options.stateDirectory?.() ?? oplGatewayStateDirectory())
     }
@@ -128,27 +177,29 @@ export class OplGatewayAccountService extends TypertRemoteService {
     }
   }
 
-  /** Account facts for a connected account, from either source. */
-  private factsFromOpl(status: OplGatewayStatus): GatewayAccountFacts {
+  /** Facts assembled from one control-plane read. */
+  private factsFrom(
+    profile: GatewayProfile,
+    usage: GatewayUsage | undefined,
+    keyName: string | null,
+  ): GatewayAccountFacts {
     return {
-      displayName: status.displayName,
-      email: status.email,
-      status: status.accountStatus ?? (status.connected ? 'active' : status.problem ?? 'unknown'),
-      balanceAmount: status.balanceAmount,
-      balanceCurrency: status.balanceCurrency,
-      todayTokens: status.todayTokens,
-      totalTokens: status.totalTokens,
-      todayCost: status.todayCost,
-      totalCost: status.totalCost,
-      usageCurrency: status.usageCurrency,
-      keyName: status.keyName,
-      observedAt: status.observedAt,
-      stale: status.stale,
+      displayName: profile.displayName,
+      email: profile.email,
+      status: profile.status,
+      balanceAmount: profile.balanceAmount,
+      balanceCurrency: profile.balanceCurrency,
+      todayTokens: usage?.todayTokens ?? null,
+      totalTokens: usage?.totalTokens ?? null,
+      todayCost: usage?.todayCost ?? null,
+      totalCost: usage?.totalCost ?? null,
+      usageCurrency: usage?.currency ?? profile.balanceCurrency,
+      keyName,
     }
   }
 
-  /** Account facts from OPL's local record, for the no-CLI fallback. */
-  private factsFromLocal(account: OplGatewayAccount): GatewayAccountFacts {
+  /** Account facts for an account OPL recorded. */
+  private factsFromOpl(account: OplGatewayAccount): GatewayAccountFacts {
     return {
       displayName: account.displayName,
       email: account.email,
@@ -174,69 +225,66 @@ export class OplGatewayAccountService extends TypertRemoteService {
       keyReady: await this.keyReady(),
       models: this.options.models(),
     }
-    try {
-      const opl = await readGatewayStatus(this.env())
-      if (opl.connectionMode === 'none') return { ...base, phase: 'signed-out' }
-      if (!opl.connected) {
+    if (this.facts !== undefined) {
+      return { ...base, phase: 'connected', source: this.source ?? 'session', account: this.facts }
+    }
+    // Nothing in memory: show what this Harness already recorded, without
+    // touching the network, so a restart paints the account rather than an
+    // empty panel. The cache is honoured only while a session exists, because
+    // an account summary with nothing behind it to refresh is a stale claim.
+    const credentials = this.credentials()
+    if (credentials !== undefined && await readSession(credentials) !== undefined) {
+      const cached = readFacts(this.home())
+      if (cached !== undefined) {
         return {
           ...base,
-          phase: 'unavailable',
-          source: 'opl',
-          account: this.factsFromOpl(opl),
-          error: {
-            code: opl.problem ?? 'attention_needed',
-            message: this.attentionMessage(opl.problem),
-          },
+          phase: 'connected',
+          source: 'session',
+          account: { ...cached.facts, observedAt: cached.observedAt, stale: cached.stale },
         }
       }
-      return { ...base, phase: 'connected', source: 'opl', account: this.factsFromOpl(opl) }
     }
-    catch (error) {
-      const failure = describe(error)
-      const local = this.localAccount()
-      if (local === undefined || local.status === 'disconnected') {
-        // No account anywhere. A missing OPL install is worth saying out loud,
-        // because the sign-in form below cannot work without it.
-        return failure.code === 'opl_not_installed'
-          ? { ...base, phase: 'signed-out', error: failure }
-          : { ...base, phase: 'signed-out' }
-      }
+    // OPL is a convenience source: a machine that signed in through the OPL
+    // application needs no second sign-in here.
+    const opl = this.oplAccount()
+    if (opl !== undefined) {
+      const attention = !CONNECTED_OPL_STATUSES.has(opl.status)
       return {
         ...base,
-        phase: local.status === 'connected' ? 'connected' : 'unavailable',
+        phase: attention ? 'unavailable' : 'connected',
         source: 'opl',
-        account: this.factsFromLocal(local),
-        ...local.status === 'connected'
-          ? {}
-          : { error: { code: local.status, message: this.attentionMessage(local.status) } },
+        account: this.factsFromOpl(opl),
+        ...attention ? { error: { code: opl.status, message: this.attentionMessage(opl.status) } } : {},
       }
     }
+    if (this.failure !== undefined) return { ...base, phase: 'unavailable', error: this.failure }
+    return { ...base, phase: 'signed-out' }
   }
 
-  /** What the operator has to do, in terms of where they have to do it. */
+  /** What the operator has to do next, in terms they can act on. */
   private attentionMessage(problem: string | null): string {
     switch (problem) {
       case 'setup_required':
       case 'group_selection_required':
-        return 'Choose a key group for this account in the OPL application'
+        return 'Choose a key group for this account, then sign in again'
       case 'reauth_required':
-        return 'Sign in to OPL Gateway again in the OPL application'
+        return 'Sign in again to renew this account'
       case 'managed_key_missing':
       case 'managed_key_conflict':
       case 'managed_key_identity_drift':
-        return 'OPL needs to repair the managed key; open the OPL application'
+        return 'The account key needs repair; sign in again'
       case 'account_disabled':
         return 'This gateway account is disabled'
       default:
-        return 'OPL reports that this account needs attention'
+        return 'This account needs attention'
     }
   }
 
   /**
-   * Sign in through OPL, then make its key this machine's inference credential.
+   * Sign in to the gateway and make its key this machine's credential.
    * @param email - account email.
    * @param password - account password.
-   * @returns the resulting status and whether a key was adopted for the first time.
+   * @returns the resulting status and whether this attempt minted the key.
    */
   @Remote
   async signIn(email: string, password: string): Promise<GatewaySignInResult> {
@@ -244,60 +292,134 @@ export class OplGatewayAccountService extends TypertRemoteService {
       throw new RemoteError('gateway/bad-request', 'An email address and password are required', {})
     }
     const credentials = this.credentials()
+    if (credentials === undefined) {
+      throw new RemoteError('opl-gateway/store', 'This deployment has no credential store', {})
+    }
     try {
-      // OPL performs the whole sign-in: session, managed key, and the binding
-      // this machine's inference reads. Nothing here duplicates that protocol.
-      await loginGateway(email, password, this.env())
+      this.failure = undefined
+      const session = await this.control().login(email.trim(), password)
+      this.session = session
+      const accessToken = session.accessToken
+      const [profile, usage, groups] = await Promise.all([
+        this.control().profile(accessToken),
+        this.control().usage(accessToken).catch(() => undefined),
+        this.control().groups(accessToken).catch(() => [] as Array<{ id: string; label: string }>),
+      ])
+      const { key, created } = await this.ensureKey(accessToken, groups)
+      await credentials.set(this.options.credentialRef(), key.key)
+      await writeSession(credentials, session.refreshToken)
+      // Recording the adoption lets a later sign-out know this key is ours to
+      // remove, and leaves a key the operator typed on the Models page alone.
+      writeAdoptedFingerprint(this.home(), keyFingerprint(key.key))
+      this.key = key
+      this.facts = this.factsFrom(profile, usage, key.name)
+      this.source = 'session'
+      writeFacts(this.home(), this.facts, new Date().toISOString())
+      return { status: await this.status(), createdKey: created }
     }
     catch (error) {
       const failure = describe(error)
+      this.failure = failure
+      this.session = undefined
       throw new RemoteError(remoteCode(failure.code), failure.message, {})
     }
-    if (credentials !== undefined) {
-      const outcome = await adoptOplGatewayKey({
-        credentials,
-        home: this.homeDirectory(),
-        ref: this.options.credentialRef(),
-        stateDirectory: this.options.stateDirectory?.() ?? oplGatewayStateDirectory(),
-      })
-      if (outcome === 'unavailable') {
-        throw new RemoteError('opl-gateway/store', 'This deployment cannot store the gateway key', {})
-      }
-      return { status: await this.status(), createdKey: outcome === 'adopted' }
-    }
-    return { status: await this.status(), createdKey: false }
   }
 
-  /** Ask OPL to re-read the account from the gateway. */
+  /**
+   * Reuse this account's key when it already exists, and mint one otherwise.
+   *
+   * Reuse matters: a sign-in that failed partway, or a reinstall, must not
+   * leave the account accumulating keys nobody holds.
+   * @param accessToken - session token.
+   * @param groups - key groups the account may issue in.
+   * @returns the key to use and whether this call created it.
+   */
+  private async ensureKey(
+    accessToken: string,
+    groups: readonly { id: string; label: string }[],
+  ): Promise<{ key: GatewayManagedKey; created: boolean }> {
+    const name = gatewayKeyName()
+    const existing = await this.control().keys(accessToken, name)
+    const match = existing.find(entry => entry.name === name && entry.status === 'active')
+      ?? existing.find(entry => entry.name === name)
+    if (match !== undefined) return { key: match, created: false }
+    return { key: await this.control().createKey(accessToken, name, preferredGroup(groups)), created: true }
+  }
+
+  /** Re-read the account from the gateway. */
   @Remote
   async refresh(): Promise<GatewayAccountStatus> {
-    try {
-      await refreshGateway(this.env())
+    if (this.session === undefined) {
+      const credentials = this.credentials()
+      if (credentials === undefined) return this.status()
+      const stored = await readSession(credentials)
+      if (stored === undefined) return this.status()
+      try {
+        const renewed = await this.control().refreshSession(stored)
+        // A refresh rotates the token, so the new one is persisted before
+        // anything else can fail.
+        await writeSession(credentials, renewed.refreshToken)
+        this.session = renewed
+      }
+      catch (error) {
+        // A refused renewal ends the session: keeping it would leave the page
+        // showing a cached account behind a credential that no longer works.
+        await clearSession(credentials).catch(() => undefined)
+        clearFacts(this.home())
+        this.failure = describe(error)
+        this.session = undefined
+        return this.status()
+      }
     }
-    catch {
-      // The status read below is what the page shows. A failed refresh must not
-      // replace readable account facts with an error: the account may be fine
-      // and only the network down, and OPL's own freshness line says so.
+    try {
+      const accessToken = this.session.accessToken
+      const [profile, usage] = await Promise.all([
+        this.control().profile(accessToken),
+        this.control().usage(accessToken).catch(() => undefined),
+      ])
+      this.facts = this.factsFrom(profile, usage, this.facts?.keyName ?? this.key?.name ?? null)
+      this.source = 'session'
+      this.failure = undefined
+      writeFacts(this.home(), this.facts, new Date().toISOString())
+    }
+    catch (error) {
+      // The cached facts stay: the account may be fine and only the network
+      // down, and the freshness line already says how old the numbers are.
+      this.failure = describe(error)
     }
     return this.status()
   }
 
   /**
-   * The Harness home the adoption record is written to.
+   * End this machine's session and release the key it holds.
    *
-   * Deliberately never OPL's state directory: this file records what *this*
-   * Harness adopted, and writing it beside OPL's own state would be one
-   * product editing another's.
+   * The gateway-side key is disabled rather than left active: it was issued to
+   * this client, and a credential nobody holds is a loose end. A key the
+   * operator typed on the Models page is theirs and is left alone.
    */
-  private homeDirectory(): string {
-    try {
-      const paths = this.ctx.get('dshHomePath')
-      if (typeof paths === 'function') return paths()
+  @Remote
+  async signOut(): Promise<GatewayAccountStatus> {
+    const credentials = this.credentials()
+    const ref = this.options.credentialRef()
+    if (credentials !== undefined) {
+      const stored = await credentials.resolve(ref)
+      const fingerprint = stored === undefined ? undefined : keyFingerprint(stored.value)
+      if (fingerprint !== undefined && fingerprint === readAdoptedFingerprint(this.home())) {
+        await credentials.unset(ref).catch(() => undefined)
+      }
     }
-    catch {
-      // Fall through to the documented default below.
+    if (this.session !== undefined && this.key !== undefined) {
+      // Best effort: the local session ends either way, and an unreachable
+      // gateway must not trap the operator in a signed-in state.
+      await this.control().setKeyStatus(this.session.accessToken, this.key, 'disabled').catch(() => undefined)
     }
-    const configured = process.env.DSH_HOME?.trim()
-    return configured === undefined || configured === '' ? join(homedir(), '.dsh') : configured
+    if (credentials !== undefined) await clearSession(credentials).catch(() => undefined)
+    clearFacts(this.home())
+    this.session = undefined
+    this.facts = undefined
+    this.source = undefined
+    this.key = undefined
+    this.failure = undefined
+    return this.status()
   }
 }

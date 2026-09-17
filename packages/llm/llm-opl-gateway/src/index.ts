@@ -37,14 +37,22 @@ export {
 } from './account-service.ts'
 export type { GatewayAccountFacts, GatewayAccountPhase, GatewayAccountStatus, GatewaySignInResult } from './types.ts'
 export {
-  OPL_BINARY_ENV,
-  OplCliError,
-  loginGateway,
-  readGatewayStatus,
-  refreshGateway,
-  resolveOplBinary,
-} from './opl-cli.ts'
-export type { OplGatewayStatus } from './opl-cli.ts'
+  GatewayControlClient,
+  GatewayControlError,
+  OPL_GATEWAY_CONTROL_BASE_URL,
+} from './gateway-control.ts'
+export type { GatewayManagedKey, GatewayProfile, GatewaySession, GatewayUsage } from './gateway-control.ts'
+export {
+  FACTS_FILENAME,
+  FACTS_FRESH_MS,
+  SESSION_RECORD,
+  clearFacts,
+  clearSession,
+  readFacts,
+  readSession,
+  writeFacts,
+  writeSession,
+} from './session-store.ts'
 export {
   OPL_GATEWAY_INFERENCE_BASE_URL,
   OPL_GATEWAY_LEGACY_INFERENCE_BASE_URLS,
@@ -199,7 +207,6 @@ export function apply(ctx: Context, config: Config): void {
       endpoint: () => options().baseURL,
       models: () => options().models.map(model => ({ id: model.id, name: model.name ?? model.id })),
       stateDirectory: () => oplGatewayStateDirectory(),
-      environment: () => process.env,
     })
     adoptAccountKey = (): void => {
       // Let the Models page show this route as ready for an operator who

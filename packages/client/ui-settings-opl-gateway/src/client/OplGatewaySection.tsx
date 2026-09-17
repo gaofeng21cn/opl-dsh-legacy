@@ -20,6 +20,8 @@ export interface OplGatewaySectionInjected {
   signIn: (email: string, password: string) => Promise<GatewaySignInResult>
   /** Ask OPL to re-read the account from the gateway. */
   refresh: () => Promise<GatewayAccountStatus>
+  /** End this machine's session and release the key it holds. */
+  signOut: () => Promise<GatewayAccountStatus>
 }
 
 /** Full props assembled by the Settings slot renderer. */
@@ -90,11 +92,11 @@ function Fact({ label, value, wide = false }: { label: string; value: string; wi
 
 /** The OPL Gateway account page. */
 export function OplGatewaySection(props: OplGatewaySectionProps) {
-  const { t, status: readStatus, signIn, refresh } = props
+  const { t, status: readStatus, signIn, refresh, signOut } = props
   const [state, setState] = useState<GatewayAccountStatus | undefined>(undefined)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState<'idle' | 'loading' | 'signing-in'>('loading')
+  const [busy, setBusy] = useState<'idle' | 'loading' | 'signing-in' | 'signing-out'>('loading')
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -132,6 +134,19 @@ export function OplGatewaySection(props: OplGatewaySectionProps) {
     }
   }, [email, password, signIn, t])
 
+  const leave = useCallback(async (): Promise<void> => {
+    setBusy('signing-out')
+    setNotice(null)
+    setError(null)
+    try {
+      setState(await signOut())
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure))
+    } finally {
+      setBusy('idle')
+    }
+  }, [signOut])
+
   const account = state?.account
   const phase = state?.phase ?? 'signed-out'
 
@@ -166,6 +181,17 @@ export function OplGatewaySection(props: OplGatewaySectionProps) {
                     <Button variant='outline' disabled={busy !== 'idle'} onClick={() => { void load(true) }}>
                       {busy === 'loading' ? t('refreshing') : t('refresh')}
                     </Button>
+                    {/* Only a session this client holds can be ended here. An
+                        account merely read from OPL's record is signed out in
+                        the OPL application, and offering the button would be a
+                        no-op that reads as a broken control. */}
+                    {state.source !== 'session'
+                      ? null
+                      : (
+                        <Button variant='outline' disabled={busy !== 'idle'} onClick={() => { void leave() }}>
+                          {busy === 'signing-out' ? t('signingIn') : t('signOut')}
+                        </Button>
+                      )}
                   </div>
                 )
                 : null}

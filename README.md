@@ -25,9 +25,13 @@ OPL 维护的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness
 
 ## 与 OPL Gateway 的关系
 
-账号归 **OPL Framework** 所有：登录、会话轮换、托管密钥的创建与绑定都由 `opl connect gateway …` 负责。本项目的插件是这份账号状态的**只读视图**加一个安全动作（本机尚无账号时登录），不重复实现协议，也不另建密钥——否则同一个账号会出现两把密钥和两个事实来源。
+OPL Gateway 是一个**独立服务**：账号、密钥与用量都在它自己的 HTTP API 上（`https://gateway.medopl.com/api/v1`）。OPL Framework 是这个 API 的一个客户端，不是它的前置条件——所以本插件直接对接该 API，**不依赖本机安装 OPL，也不调用任何命令行**。安装本应用、登录 Gateway 账号，就能直接使用模型。
 
-账号页的数据来自 OPL 自己的记录，所以**在 OPL 应用里登录过就够了**，不需要在这里重复登录；登录、退出与密钥变更都在 OPL 应用中完成。
+登录会在该账号下签发一把名为 `OPL DSH · <主机名>` 的推理密钥；已有同名密钥时复用，不会重复累积。这把密钥与 OPL 应用自己那把相互独立，退出登录只释放本客户端持有的这一把。
+
+如果本机**恰好**也在 OPL 应用里登录过，插件会直接沿用那份账号记录与绑定密钥，于是这里连登录都不需要。这条路径只读 OPL 的本地状态文件，属于便利而非依赖：没有它，走上面的登录流程即可。
+
+密钥存放在 Harness 的凭据库（`$DSH_OPL_HOME/.credentials.yaml`），会话令牌存放在同一凭据库的授权记录中，最近一次观察到的账号数据缓存在 `$DSH_OPL_HOME/opl-gateway-account.json`（不含任何密钥）。
 
 ## 构建 macOS 桌面版
 
@@ -70,7 +74,7 @@ apps/desktop/opl/install-macos.sh          # 默认 arm64
 | --- | --- | --- |
 | `DSH_OPL_HOME` | `~/.dsh-opl` | 本产物的 Harness home（会话、设置、凭据） |
 | `DSH_OPL_NOTARIZE` | 未设置 | 设为 `1` 时启用公证；本地安装不需要（不会带隔离属性） |
-| `OPL_APP_OPL_BIN` | 自动探测 | `opl` 可执行文件位置；GUI 启动时 `PATH` 很短，插件会在 `~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin` 中查找 |
+| `OPL_GATEWAY_STATE_ROOT` | 自动探测 | OPL 应用的状态目录；仅在沿用其账号记录时读取 |
 
 ## 本仓库维护的本地改动
 

@@ -50,13 +50,15 @@ function props(overrides: Partial<OplGatewaySectionProps> & { initial?: GatewayA
   const status = vi.fn(async () => initial)
   const signIn = vi.fn(async () => ({ status: SIGNED_IN, createdKey: true }))
   const refresh = vi.fn(async () => initial)
+  const signOut = vi.fn(async () => SIGNED_OUT)
   const component = {
     t,
     status: overrides.status ?? status,
     signIn: overrides.signIn ?? signIn,
     refresh: overrides.refresh ?? refresh,
+    signOut: overrides.signOut ?? signOut,
   } as unknown as OplGatewaySectionProps
-  return { status, signIn, refresh, component }
+  return { status, signIn, refresh, signOut, component }
 }
 
 describe('signed out', () => {
@@ -144,15 +146,33 @@ describe('signed in', () => {
     expect(document.querySelector('input[type=password]')).toBeNull()
   })
 
-  it('offers no sign-out: the account belongs to OPL, which owns its lifecycle', async () => {
+  it('offers sign-out only for a session this client holds', async () => {
     const harness = props({ initial: SIGNED_IN })
     render(<OplGatewaySection {...harness.component} />)
     await waitFor(() => { expect(harness.status).toHaveBeenCalled() })
 
     expect(await screen.findByRole('button', { name: en.refresh })).toBeTruthy()
-    // Disconnecting here would disable the key the OPL application also uses,
-    // so the page does not offer it at all.
-    expect(screen.queryByRole('button', { name: /sign out|退出/i })).toBeNull()
+    expect(await screen.findByRole('button', { name: en.signOut })).toBeTruthy()
+  })
+
+  it('ends the session through the injected face', async () => {
+    const harness = props({ initial: SIGNED_IN })
+    render(<OplGatewaySection {...harness.component} />)
+    await waitFor(() => { expect(harness.status).toHaveBeenCalled() })
+
+    fireEvent.click(await screen.findByRole('button', { name: en.signOut }))
+    await waitFor(() => { expect(harness.signOut).toHaveBeenCalled() })
+    expect(await screen.findByRole('button', { name: en.signIn })).toBeTruthy()
+  })
+
+  it('hides sign-out for an account merely read from OPL', async () => {
+    const harness = props({ initial: { ...SIGNED_IN, source: 'opl' } })
+    render(<OplGatewaySection {...harness.component} />)
+    await waitFor(() => { expect(harness.status).toHaveBeenCalled() })
+
+    expect(await screen.findByRole('button', { name: en.refresh })).toBeTruthy()
+    // Signing out here would end a session this client never opened.
+    expect(screen.queryByRole('button', { name: en.signOut })).toBeNull()
   })
 
 })
