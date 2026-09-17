@@ -21,6 +21,7 @@ import { optionalStringArray } from './modules/src/client/manifest.ts'
 import { PLATFORM_MODULES, PRELOADED_CLIENT_EXTERNALS } from './web/src/platform.ts'
 import { clientBuildEnvironmentDefines } from '../../scripts/client-build-environment.ts'
 import { BundleInputIsolation, physicalBundleInput } from '../../scripts/bundle-input-isolation.ts'
+import { DOWNSTREAM_SCOPE, UPSTREAM_SCOPE, isWorkspacePackageName } from '../../scripts/package-scope.ts'
 
 /**
  * Virtual-id wrapper keeping module CSS away from tsdown's own css pipeline
@@ -71,8 +72,20 @@ export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|
  */
 const VENDORED_LIBRARY = /^@deepseek-ai\/(cosmokit|schemastery)(\/|$)/
 
+/**
+ * The workspace scopes as a regular-expression alternation.
+ *
+ * This gate matches specifiers rather than package names, so it needs the
+ * scopes without their trailing slash. Deriving them from the shared constants
+ * keeps a downstream package's generated contribution from being read as an
+ * illegal cross-plugin import.
+ */
+const WORKSPACE_SCOPE_PATTERN = [UPSTREAM_SCOPE, DOWNSTREAM_SCOPE]
+  .map(scope => scope.replace(/\/$/u, ''))
+  .join('|')
+
 /** Generated descriptor/codec contribution with no shared runtime identity. */
-const GENERATED_REMOTE = /^@deepseek-ai\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
+const GENERATED_REMOTE = new RegExp(`^(?:${WORKSPACE_SCOPE_PATTERN})\\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\\/remote$`)
 
 /**
  * Workspace mode replaces an empty config array with the root defaults. A
@@ -534,7 +547,10 @@ function clientConfig(id: string, entry: string, clientBanner?: (fileName: strin
       // Cross-plugin collaboration goes through cordis services instead.
       name: 'dsh-client-bundle-purity',
       resolveId(source: string) {
-        if (!source.startsWith('@deepseek-ai/')) return null
+        // The rule is about workspace packages, not specifically upstream ones:
+        // a downstream client package gets the same treatment, so a
+        // cross-package import cannot slip in under a scope the gate ignores.
+        if (!isWorkspacePackageName(source)) return null
         if (isRequested(source)) return null // requested module-table row: external wins
         if (VENDORED_LIBRARY.test(source)) return null // vendored library: inline, no shared identity
         if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null // wire contribution: inline is the point

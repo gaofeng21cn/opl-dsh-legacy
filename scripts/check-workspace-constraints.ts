@@ -14,6 +14,13 @@ import {
   PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
 } from './experimental-package-policy.ts'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
+import {
+  DOWNSTREAM_REPOSITORY_URL,
+  UPSTREAM_SCOPE,
+  isDshCompanionPackageName,
+  isDownstreamPackageName,
+  isWorkspacePackageName,
+} from './package-scope.ts'
 import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
 import { OPTIONAL_BUNDLES, bundlePatchFiles } from '../packages/boot/app-boot/src/profile.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
@@ -368,7 +375,7 @@ function isReleaseMemberDirectory(dir: string): boolean {
  */
 export function checkDshFamilyVersion(manifest: PackageManifest, expected: string | undefined): string | undefined {
   const name = manifest.name
-  if (name !== '@deepseek-ai/dsh' && name?.startsWith('@deepseek-ai/dsh-') !== true) return undefined
+  if (name !== `${UPSTREAM_SCOPE}dsh` && !isDshCompanionPackageName(name)) return undefined
   if (manifest.version !== expected) {
     return `${name}: package.json version must match root version ${expected ?? '(missing)'}`
   }
@@ -419,10 +426,11 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: release member must set publishConfig.access to "public"`)
     }
+    const expectedRepositoryUrl = publishedRepositoryUrlFor(manifest.name)
     if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== publishedRepositoryUrl
+      || manifest.repository.url !== expectedRepositoryUrl
       || manifest.repository.directory !== dir) {
-      errors.push(`${label}: release member repository must use ${publishedRepositoryUrl} with directory ${dir}`)
+      errors.push(`${label}: release member repository must use ${expectedRepositoryUrl} with directory ${dir}`)
     }
   } else if (!experimentalPackageDirectory.test(dir) && manifest.private !== true) {
     errors.push(`${label}: package.json must set "private": true`)
@@ -432,7 +440,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     return errors
   }
 
-  if (manifest.name?.startsWith('@deepseek-ai/')) {
+  if (isWorkspacePackageName(manifest.name)) {
     const allowedSources = publicationSourceAllowlist[manifest.name] ?? []
     for (const file of manifest.files ?? []) {
       if (isForbiddenPublicationFile(file) && !allowedSources.includes(file)) {
@@ -459,7 +467,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     }
   }
 
-  if (dir.startsWith('packages/') && manifest.name?.startsWith('@deepseek-ai/dsh-')) {
+  if (dir.startsWith('packages/') && isDshCompanionPackageName(manifest.name)) {
     const peer = manifest.peerDependencies?.['@deepseek-ai/cordis']
     const dev = manifest.devDependencies?.['@deepseek-ai/cordis']
 
@@ -622,3 +630,16 @@ export function main(): void {
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main()
+
+/**
+ * The source home a package must name for the scope that owns it.
+ *
+ * A consumer reading `repository` should land on the source they can actually
+ * report against: an upstream package points at upstream, and a package this
+ * repository adds points here, where its own issues and releases live.
+ * @param name - package name from the manifest.
+ * @returns the repository URL the manifest must carry.
+ */
+function publishedRepositoryUrlFor(name: string | undefined): string {
+  return isDownstreamPackageName(name) ? DOWNSTREAM_REPOSITORY_URL : publishedRepositoryUrl
+}

@@ -8,6 +8,7 @@ import settingsControllerRemote from '@deepseek-ai/dsh-api-settings-controller/r
 import officeToPdfRemote from '@deepseek-ai/dsh-office-to-pdf/remote'
 import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import llmRemote from '@deepseek-ai/dsh-llm/remote'
+import oplGatewayAccountRemote from '@one-person-lab/dsh-llm-opl-gateway/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import pluginManagerRemote from '@deepseek-ai/dsh-plugin-manager/remote'
 import pluginRegistryProbeRemote from '@deepseek-ai/dsh-client-ui-plugin-manager/remote'
@@ -135,6 +136,8 @@ export type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
 export type {
   SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView, SettingsSecretView,
 } from '@deepseek-ai/dsh-settings/types'
+// OPL Gateway account vocabulary for the oplGatewayAccount namespace.
+export type { GatewayAccountFacts, GatewayAccountPhase, GatewayAccountStatus, GatewaySignInResult } from '@one-person-lab/dsh-llm-opl-gateway/types'
 // Provider registry and discovery vocabulary for the llm namespace.
 export type {
   LlmConfigurableProvider, LlmDiscoveredModel,
@@ -174,7 +177,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   try {
     for (const contribution of [
       agentPresetsRemote, commandsRemote, settingsControllerRemote, accountRemote, goalsRemote, llmRemote, dynamicRemote,
-      pluginInventoryRemote, pluginManagerRemote, pluginRegistryProbeRemote, messageFeedbackRemote, sessionFeedbackRemote,
+      pluginInventoryRemote, pluginManagerRemote, pluginRegistryProbeRemote, oplGatewayAccountRemote,
+      messageFeedbackRemote, sessionFeedbackRemote,
       fileUploadsRemote, sessionReferencesRemote,
       permissionPresetsRemote, subagentsRemote, sessionRemote, jobRemote, workspaceRemote, workspaceFilesRemote, terminalRemote,
       officeToPdfRemote,

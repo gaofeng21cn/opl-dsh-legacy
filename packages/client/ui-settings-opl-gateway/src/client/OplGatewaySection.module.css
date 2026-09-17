@@ -1,0 +1,114 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.intro {
+  margin: 0;
+  color: var(--dsh-text-secondary, #666);
+  line-height: 1.6;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--dsh-border, #e5e5e5);
+  border-radius: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--dsh-text-secondary, #666);
+  font-size: 13px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.factLabel {
+  display: block;
+  color: var(--dsh-text-secondary, #666);
+  font-size: 12px;
+}
+
+.factValue {
+  display: block;
+  font-size: 14px;
+  /* Long values are identifiers and URLs: break them at real boundaries first
+     and only split a token when there is no other way to fit. `break-all` split
+     the endpoint mid-host, which reads as a typo. */
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* Values whose exact characters matter: an endpoint is copied, not read, so it
+   gets its own full-width row instead of sharing a narrow column. */
+.wide {
+  grid-column: 1 / -1;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 13px;
+}
+
+.input {
+  padding: 8px 10px;
+  border: 1px solid var(--dsh-border, #d5d5d5);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.notice {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dsh-surface-subtle, rgba(0, 0, 0, 0.04));
+  font-size: 13px;
+}
+
+.error {
+  color: var(--dsh-danger, #c0392b);
+}

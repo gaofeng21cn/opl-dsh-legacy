@@ -51,6 +51,7 @@
   ],
   "dependencies": {
     "@deepseek-ai/dsh-deque": "workspace:*",
+    "@one-person-lab/dsh-llm-opl-gateway": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*"
   },
@@ -76,6 +77,7 @@
     "@deepseek-ai/dsh-goal": "workspace:*",
     "@deepseek-ai/dsh-host-plugin-inventory": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
+    "@one-person-lab/dsh-llm-opl-gateway": "workspace:*",
     "@deepseek-ai/dsh-message-feedback": "workspace:*",
     "@deepseek-ai/dsh-scope": "workspace:*",
     "@deepseek-ai/dsh-permission-presets": "workspace:*",

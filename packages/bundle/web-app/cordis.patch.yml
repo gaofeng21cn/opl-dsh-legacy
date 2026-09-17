@@ -280,6 +280,15 @@
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
+    # OPL Gateway account page: the sign-in surface whose account key the
+    # llm-opl-gateway adapter resolves.
+    - id: ui-settings-opl-gateway
+      name: '@one-person-lab/dsh-client-ui-settings-opl-gateway'
+
+    # The OPL Gateway route talks to the account the page signs in to.
+    - id: llm-opl-gateway
+      name: '@one-person-lab/dsh-llm-opl-gateway'
+
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 
