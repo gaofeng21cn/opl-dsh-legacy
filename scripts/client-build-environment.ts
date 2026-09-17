@@ -19,7 +19,9 @@ export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
 /** Public client environment required by official DSH artifacts. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
+  // This repository IS the product, so the artifact carries its own name. The
+  // title reaches the browser tab and, in the desktop shell, the window title.
+  DSH_CLIENT_TITLE: 'OPL DSH',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
