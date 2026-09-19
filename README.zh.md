@@ -70,7 +70,7 @@ pnpm exec electron-builder --config electron-builder.opl.mjs --mac --arm64 --pub
 
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
-| `DSH_OPL_HOME` | `~/.dsh-opl` | 会话、设置与凭据所在的 Harness home |
+| `DSH_OPL_HOME` | `~/.dsh-opl` | 会话、设置与凭据所在的 Harness home；必须使用可移植路径（例如 `~/.dsh-opl`） |
 | `DSH_OPL_NOTARIZE` | 未设置 | 设为 `1` 时在打包过程中公证磁盘映像 |
 | `OPL_GATEWAY_STATE_ROOT` | 自动探测 | OPL App 状态目录，仅在沿用既有登录时读取 |
 

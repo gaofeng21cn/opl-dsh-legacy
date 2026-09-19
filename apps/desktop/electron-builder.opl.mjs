@@ -12,14 +12,20 @@
  * - Notarization is opt-in (`DSH_OPL_NOTARIZE=1` with an
  *   `APPLE_KEYCHAIN_PROFILE`): a local build is installed directly and is never
  *   quarantined, while a distributed build must be notarized.
- * - `LSEnvironment` pins `DSH_HOME` so an OPL build keeps its state separate
- *   from the default `~/.dsh` that other tools on this machine use.
+ * - `LSEnvironment` pins `DSH_HOME` to the portable `~/.dsh-opl`: the harness
+ *   expands `~` for the signed-in user at startup, so the bundle keeps its
+ *   state separate from the default `~/.dsh` without carrying the build
+ *   machine's home directory. `DSH_OPL_HOME` overrides the default, but only
+ *   with a portable path.
+ * - `afterPack` rejects a bundle that kept an absolute home or dropped the OPL
+ *   Gateway plugin halves, so a packaging regression fails the build instead
+ *   of reaching a download page.
  */
 
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import base from './electron-builder.config.mjs'
+import { verifyOplAppBundle, verifyOplDiskImage } from './opl/verify-opl-package.mjs'
 
 const iconPath = fileURLToPath(new URL('./opl/icon.icns', import.meta.url))
 const baseConfig = base
@@ -30,8 +36,13 @@ const APP_ID = 'com.onepersonlab.dsh'
 /** Product name shown in the Dock, the menu bar, and the installer. */
 const PRODUCT_NAME = 'OPL DSH'
 
-/** Harness home this product owns, unless the launcher already set one. */
-const DSH_HOME = process.env.DSH_OPL_HOME?.trim() || join(homedir(), '.dsh-opl')
+/** Harness home this product owns, as a path the installed app expands for its user. */
+const CONFIGURED_HOME = process.env.DSH_OPL_HOME?.trim()
+const DSH_HOME = CONFIGURED_HOME === undefined || CONFIGURED_HOME === '' ? '~/.dsh-opl' : CONFIGURED_HOME
+
+if (isAbsolute(DSH_HOME)) {
+  throw new Error(`packaging: DSH_OPL_HOME must stay portable (received ${DSH_HOME}; use a path such as ~/.dsh-opl)`)
+}
 
 /** Notarize only when the release path asks for it. */
 const NOTARIZE = process.env.DSH_OPL_NOTARIZE === '1'
@@ -64,7 +75,19 @@ export default {
       },
     },
   },
-  // Staple the ticket to the disk image, so a first launch needs no network.
-  ...(NOTARIZE ? { artifactBuildCompleted: baseConfig.artifactBuildCompleted } : {}),
+  afterPack: context => {
+    if (context.electronPlatformName !== 'darwin') return
+    const appPath = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+    const verified = verifyOplAppBundle(appPath, { expectedDshHome: DSH_HOME })
+    process.stdout.write(`OPL packaging: verified ${appPath} (DSH_HOME=${verified.dshHome}, ${verified.packages.length} gateway packages)\n`)
+  },
+  // Staple the ticket to the disk image when the release path asks for it, then
+  // verify the exact bytes a user downloads either way.
+  artifactBuildCompleted: async artifact => {
+    if (NOTARIZE) await baseConfig.artifactBuildCompleted(artifact)
+    if (!artifact.file.endsWith('.dmg')) return
+    const verified = verifyOplDiskImage(artifact.file, { expectedDshHome: DSH_HOME })
+    process.stdout.write(`OPL packaging: verified ${artifact.file} (DSH_HOME=${verified.dshHome}, ${verified.packages.length} gateway packages)\n`)
+  },
   publish: null,
 }

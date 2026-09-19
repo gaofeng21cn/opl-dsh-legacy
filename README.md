@@ -70,7 +70,7 @@ Install a local build with `apps/desktop/opl/install-macos.sh`. It requires an e
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `DSH_OPL_HOME` | `~/.dsh-opl` | Harness home for sessions, settings, and credentials |
+| `DSH_OPL_HOME` | `~/.dsh-opl` | Harness home for sessions, settings, and credentials; must be a portable path such as `~/.dsh-opl` |
 | `DSH_OPL_NOTARIZE` | unset | Set to `1` to notarize the disk image during packaging |
 | `OPL_GATEWAY_STATE_ROOT` | auto-detected | OPL app state directory, read only to reuse an existing sign-in |
 
