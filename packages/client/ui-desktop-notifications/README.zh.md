@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 在桌面应用内，本包把客户端本就收到的主机事实转换为 Windows 系统通知：任务运行停止、Agent 实时失败，以及等待用户审批或回答的交互暂停。通知本身——文案、去重、用户的开关、应用是否在前台，以及点击后重新打开会话——都属于 Electron shell，本包只负责上报。在普通浏览器会话中没有 shell 桥接，因此插件不会安装任何内容。
 
@@ -94,7 +94,7 @@ Electron preload 只在应用文档中暴露 `dshDesktop.notifications`。`deskt
 - **通知依赖渲染器** — 上报来自应用窗口，因此从未加载的窗口，或没有该窗口的 shell，不会为任何事件发出通知。主机自身没有通知界面。
 
 <a id="dev-note"></a>
-### 开发者说明
+### 开发备注
 
 <details>
 <summary>维护者工作上下文——点击展开</summary>

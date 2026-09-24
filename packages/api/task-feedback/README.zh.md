@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-api-task-feedback` 以调用方自铸的 id 记录一个已派发任务，在无任何模型参与的前提下监听绑定的 DSH 会话，并为每次"应通知"的状态变化向派活方会话排入一条有界通知。默认只通知 `completed`、`failed`、`waiting_approval`、`waiting_input`，因此纯进度的 `running` 迁移绝不会唤醒审查方的付费模型。投递是自动的：已结算的任务、或因审批/提问而暂停的任务，都由服务自身的调度器交给唤醒传输，因此从不轮询的派活方也能得知结果。领取带有持久的所有者、代次与租约，因此重复通知不会开启第二次审查，崩溃接收方的领取会被后来的接收方回收。被记录为精确 reasoning_text 协议错误的失败，最多获得配置数量的有界自动续做，每次都是在原会话中提交的一条持久用户指令。循环记为 `completed` 的轮次，若其最终可见正文仍带有工具调用标记，则报告为 completed，并把 `leakedToolSyntax` 记为发现的标记族、摘要说明结果未经验证，因此派活方不会把未执行的工具语法读成业务成功；该结果不具备自动续做资格。暂停通知是结构化的，而非一个裸状态：它携带经有界处理的问题正文与所给选项，或审批及其工具，并带上答案所属的会话，因此派活方会把问题转达给操作者，而不是自己猜一个答案或恢复该会话。需要闭合派活回路时选它：调用方登记 `{taskId, sessionId, turn, target, acceptance}`，服务报告 `queued`、`accepted`、`running`、`waiting_approval`、`waiting_input`、`completed`、`failed`、`cancelled`、`disconnected`，由 outbox 投递结果，再由接收方自己的持久台账让已重复入队的消息成为空操作。
 
@@ -193,6 +193,6 @@ opl-dsh-control.cmd resume-failed <taskId> <deliveryId> --consumer codex-thread-
 - 不发布 invariant 伴生包，因为本包不拥有任何可被独立观测撕裂的关系：其表只由一个服务写入，其状态迁移派生自拥有它们的会话日志。
 
 <a id="dev-note"></a>
-## 开发说明
+## 开发备注
 
 `tests/task-feedback.host.spec.ts` 驱动真实的会话日志、投影注册表、存储域与一个模拟接收会话，全程无模型、无 key、无网络；它覆盖通知策略、恢复（含服务恢复之后才附着的会话、登记之前就已结束的轮次、以及 outbox 写入未落盘的通知）、消费台账（重复消息、确认丢失、跨重启的中断领取、并发领取、租约到期后的接管、过期所有者被拒）与有界自动续做（精确 reasoning_text 条件及其近似反例、被更新的轮次/消息/取消取代、通知在同一 consumer 身份下的"先领取后恢复"协议、手动轮次后拒绝过时的已准入续做、两次续做写入边界与重启下同一次准入只计一次、重试血缘、崩溃后的提交重放、以及续做轮次的反馈）。`tests/task-feedback.controller.host.spec.ts` 让同一续做流程跑在生产 `SessionCommandController` 的 prompt 路径上，搭配真实 Agent 注册表、会话日志与 Inbox，仅替换外部模型选择与传输，覆盖提交重放、手动轮次后收手、以及"指令已入队但 receipt 标记写入丢失"的恢复。`tests/task-feedback.recovery-diagnostics.host.spec.ts` 钉住结果边界：最终正文带 DSML/工具标记的已完成轮次（实时与从恢复历史读出）报告为未经验证，而普通完成、较早步骤的引用、思考块与更早轮次都不被标记；未以 `[DONE]` 结束的 SSE 流保留自己的失败原因且被 `resumeFailed` 拒绝；reasoning_text 预算报告 `budget-exhausted`；手动继续报告 `superseded` 或 `running` 且不追加任何内容；手动停止撤回已排队的自动续做并把该尝试报告为 `cancelled`；非所有者消费者无法消费当前代次的领取。`tests/task-feedback.resume-tracking.host.spec.ts` 保留延迟登记回归：后续任务写入丢失，等到重放登记该任务时续做轮次已完成、已再次失败、已暂停等待审批或仍在运行，或其后已有一个人工轮次结束；每个用例都断言绑定本身，最后结束的轮次无法冒充续做结果。它还保留基于持久 JSON 根目录的冷恢复回归：登记时未绑定轮次的尝试任务，在服务先于保存的会话恢复时、以及在服务恢复时会话已附着时，都会从恢复的历史中补绑定；覆盖其后的人工轮次、仍在运行的续做轮次，以及第二次恢复不得重复通知。`tests/task-feedback.loop.host.spec.ts` 让同一流程跑在真实 Agent loop 上：生产 `SessionCommandController` 把指令排入真实 Inbox，真实轮次认领并记录它，循环把它跑到结束，延迟登记仍绑定该轮次；只替换模型传输。`tests/independent-review.host.spec.ts` 保留并发与确认竞态回归。`tests/wake.host.spec.ts` 用真实 Node 可执行文件运行有界进程执行器与参数数组。`tests/task-feedback.loader.spec.ts` 通过 Loader 与 Include、基于真实存储、会话与投影提供者启动真实插件，并覆盖"保存的会话在服务恢复之后才附着"的重启顺序。

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-09-22-transport-failure-diagnostics.md
-2026-09-22-transport-failure-diagnostics.md: 0870bf56173c05d3ae5272dec02987efa42c3481
-2026-09-22-transport-failure-diagnostics.zh.md: b32feb8ec642aefd4655b8de112205219dcf6bd8
+2026-09-22-transport-failure-diagnostics.md: 9b472fb8d59e2cf9ae5d5bdf86aac3b6e0f72074
+2026-09-22-transport-failure-diagnostics.zh.md: dcac47296bae5164fcece8f9c3e4cd1ee3182aeb

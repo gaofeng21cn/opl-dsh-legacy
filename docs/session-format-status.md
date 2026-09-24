@@ -29,7 +29,7 @@ The [format references](persistence-changes/historical-formats/README.md) docume
 ## Finalization record
 
 ```yaml session-format-finalization
-latestFinalizedVersion: 4
+latestFinalizedVersion: 5
 ```
 
 V4 has an accepted compatibility baseline in the [checkpoint](persistence-changes/finalized/v4.json). Backward-compatible schema changes may remain V4 through new acknowledgement records. Breaking changes require a higher writer version and their own header transition; they cannot reuse the accepted 3→4 transition. Accepted machine records and after schemas remain immutable. [Checkpoint rules](persistence-changes/README.md#compatibility-rules) define the comparison.

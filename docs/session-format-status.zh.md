@@ -29,7 +29,7 @@
 ## 定稿记录
 
 ```yaml session-format-finalization
-latestFinalizedVersion: 4
+latestFinalizedVersion: 5
 ```
 
 V4 的已接受兼容性基线保存在[检查点](persistence-changes/finalized/v4.json)中。向后兼容的 schema 变更可以通过新的确认记录保留 V4。破坏性变更要求更高的写入器版本及自身的头版本转换，不能复用已接受的 3→4 转换。已接受的机器记录与变更后 schema 保持不可变。[检查点规则](persistence-changes/README.zh.md#compatibility-rules)规定比较方法。

@@ -7,11 +7,11 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## Summary
+## 概述
 
 本包记录每次工具执行在会话工作区内写入了什么，使对话回退不仅能回退对话记录，还能把那些文件放回去。当某个部署装配了 [`session.rewind`](../../api/session-controller/README.zh.md) 且用户期望「回退这一轮」后工作区回到原样时使用它。
 
-## Table of Contents
+## 目录
 
 - [使用本包](#use-this-package)
 - [理解实现](#understand-the-implementation)

@@ -9,7 +9,7 @@ kind: persistence-change
 
 ## 概述
 
-为 LlmFailure 增加可选的 TRANSPORT 失败诊断：传输失败结束时所处的请求阶段，以及底层平台错误的 name 与 errno 风格 code。
+记录传输失败诊断，并记录 rewind 消息来源词汇所需的 Session V4→V5 迁移。
 
 ## 目录
 
@@ -26,33 +26,53 @@ schemaVersion: 1
 id: 2026-09-22-transport-failure-diagnostics
 baseline: false
 changes:
+  - root: "SessionHeader"
+    previous: "2026-09-16-session-format-v4"
+    after: "22c6899a78214dd841c266348ae997027ef391174ddb21127f1b71dc1b362824"
+    decision: version-bump
+  - root: "event:agent/inbox/spliced"
+    previous: "2026-09-16-session-format-v4"
+    after: "078724574ff38328faa94bd2de248cdb9d187a5a2703d23713089ada1777554f"
+    decision: version-bump
   - root: "event:assistant/attempt"
-    previous: "2026-09-14-image-offload"
-    after: "225c315938676248b4d1bd67a4315d603810e6fa1c70e1cb037a1ad58fc5424e"
-    decision: same-version
+    previous: "2026-09-16-session-format-v4"
+    after: "09dfd7cd766f59c2ad12eaac80093c08e2cf861416ce8634c9b23512131e424f"
+    decision: version-bump
   - root: "event:assistant/message"
-    previous: "2026-09-14-image-offload"
-    after: "402ab9a04e9030a97b395eccf68a2bc300a169967a9698ffc5f97cc3a19da187"
-    decision: same-version
+    previous: "2026-09-16-session-format-v4"
+    after: "cc6a727927122fcd312e287a9e7e0decf97a48ec4cbba2cd44a375f46a006574"
+    decision: version-bump
+  - root: "event:developer/message"
+    previous: "2026-09-16-session-format-v4"
+    after: "14be994ce236eddc21cc192e52f21029c849cf6b4b1598c43b5b95ca89de43e4"
+    decision: version-bump
   - root: "event:llm/retry"
     previous: "2026-09-14-image-offload"
     after: "97fa5f2b1ab22845443a77bbd7c24e7e3e28433b279e047c2d01439fea88f5f7"
-    decision: same-version
+    decision: version-bump
+  - root: "event:session/title-llm-request"
+    previous: "2026-09-16-session-format-v4"
+    after: "6f3f1ca08d4737746cfbf0d54937d027037b226d2f3034ed6513e076a01babb7"
+    decision: version-bump
   - root: "event:turn/end"
-    previous: "2026-09-14-image-offload"
-    after: "57c0d7860360333a5526f9ce65067ed59e1973c78294388e4e3de370e39216be"
-    decision: same-version
+    previous: "2026-09-16-session-format-v4"
+    after: "ac530322e0f8623ab429341776425be25c1ea05cc3058d35545eeb245b89b005"
+    decision: version-bump
+  - root: "event:user/message"
+    previous: "2026-09-16-session-format-v4"
+    after: "a304370bd2df86a19b4a9279ffc48c14e8d68f0e106d07d4c31d4877722c34e8"
+    decision: version-bump
 ```
 
 <a id="compatibility"></a>
 ## 兼容性
 
-已有记录仍然有效，因为这三个属性均为可选，且没有任何现有属性的类型或必需性发生变化。不认识它们的读取方会忽略它们；此变更之前写入的记录只是省略这些字段，重试策略仍然只依据 LlmFailure.code 路由，因此回放与重试决策不变。这些值取自固定词表（阶段名、错误类名、errno 风格 code），绝不携带凭据、请求正文、请求头或提供方思考文本，因此持久化日志不会新增敏感数据。
+可选的传输诊断仍可由 V4 兼容读取器读取；rewind 来源类型属于 Session 结构变化，因此需要 V5。相邻的 V4→V5 迁移保留所有既有事件和 header 字段，只推进代际标记，并让已安装的 Session 识别 rewind 生产者来源。历史文件保持不变；V5 会在源文件旁边作为完成校验的后继文件发布。V4 读取器会拒绝 V5 header，不会静默丢失回退语义。
 
 <a id="verification"></a>
 ## 验证
 
-pnpm exec vitest run packages/llm/llm packages/llm/llm-deepseek packages/llm/llm-retry：1331 个测试通过。transport-recovery 套件经真实 HTTP/SSE 适配器覆盖了连接被拒、流中途失败、停滞的响应体、传输重试预算耗尽与凭据脱敏。
+pnpm run gen-session-format-catalog --check；pnpm run gen-persistence-catalog --check；pnpm exec tsc -b packages/session/session-format-v4-to-v5 packages/session/session-format-catalog packages/core/session；pnpm exec tsx scripts/migrate-sessions-to-v5.ts --help。V4→V5 编解码器、恒等迁移和当前 Session 恢复已通过类型检查，并已接入构建时固定的格式目录。
 
 <a id="dev-note"></a>
 ## 开发备注

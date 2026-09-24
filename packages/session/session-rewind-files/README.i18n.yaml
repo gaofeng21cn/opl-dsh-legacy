@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/session/session-rewind-files/README.md
 README.md: c9ee9227f13d7c4af74e6a623ba47edc46408cdb
-README.zh.md: adaa181ce51a18f5fc2e72fd0595debeeef32718
+README.zh.md: dcddabcf0618fccf50492f4f1ffac71b9d55f856
