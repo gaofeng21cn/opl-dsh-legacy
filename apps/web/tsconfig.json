@@ -22,6 +22,7 @@
   // this client-registered project must not also hold them (one program
   // cannot see both sides of the cordis Context merges).
   "exclude": [
+    "tests/plain-chat.e2e.ts",
     "tests/default-product-isolation.e2e.ts",
     "tests/diff-context.e2e.ts",
     "tests/scaffold.ts",
@@ -62,6 +63,7 @@
     "tests/workspace-management.e2e.ts",
     "tests/workspace-recency.e2e.ts",
     "tests/session-unarchive.e2e.ts",
+    "tests/session-archive-current.e2e.ts",
     "tests/replay-round-trip.e2e.ts",
     "tests/hmr-live.e2e.ts",
     "tests/preview-boot.e2e.ts",

@@ -86,6 +86,7 @@ const ABSENT_FILE_UPLOADS = {
 }
 
 interface WorkspaceNavigation {
+  openChat(): Promise<void>
   openSession(sessionId: SessionId): void
   openWorkspace(
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
@@ -255,6 +256,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
+      },
+      openChat: () => workspaceNavigation.openChat(),
+      openWorkingDirectory: async (path) => {
+        const result = await ctx.remote.session.openWorkspacePath({ path })
+        if (!result.ok) throw new Error(result.error.message)
       },
       selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
         if (sessionId !== undefined && nextId !== sessionId) {

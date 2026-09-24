@@ -212,10 +212,12 @@ export interface Config {
 export interface Config {
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Parent directory for independent task workspaces. */
+  readonly standaloneRoot?: string
 }
 ```
 
-来源：[`packages/api/session-controller/src/index.ts:71`](../packages/api/session-controller/src/index.ts)
+来源：[`packages/api/session-controller/src/index.ts:74`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -459,9 +461,22 @@ export interface BasicCompactionConfig extends CompactionPolicyConfig {
 
 /** Policy fields shared by the default policy and exact model overrides. */
 export interface CompactionPolicyConfig {
-  /** Compact at this fraction of the model's context window. Defaults to `0.8`. */
+  /** Compact at this fraction of the effective input budget. Defaults to `0.8`. */
   thresholdRatio?: number
-  /** Recent context retained as a fraction of the model's window. Defaults to `0.16`. */
+  /**
+   * Absolute token count that starts automatic pressure compaction; mutually
+   * exclusive with `thresholdRatio`. A route whose effective input budget is
+   * smaller compacts at that budget instead.
+   */
+  thresholdTokens?: number
+  /**
+   * Effective input context budget in tokens for a routed target: the largest
+   * prompt a step may send and the basis for both ratios. Defaults to the
+   * routed model's own capacity, and a model whose capacity is smaller keeps
+   * that smaller capacity.
+   */
+  inputBudget?: number
+  /** Recent context retained as a fraction of the effective input budget. Defaults to `0.16`. */
   retainRatio?: number
   /** Absolute recent-context budget; mutually exclusive with `retainRatio`. */
   retainTokens?: number
@@ -486,7 +501,7 @@ export interface ModelCompactPolicyConfig extends CompactionPolicyConfig {
 }
 ```
 
-来源：[`packages/compaction/compaction-basic/src/types.ts:38`](../packages/compaction/compaction-basic/src/types.ts)
+来源：[`packages/compaction/compaction-basic/src/types.ts:50`](../packages/compaction/compaction-basic/src/types.ts)
 
 <a id="deepseek-aidsh-compaction-tool-result-pruner"></a>
 
@@ -3585,6 +3600,74 @@ export interface Config {
 
 来源： [`packages/workflow/workflow-ptc/src/index.ts:32`](../packages/workflow/workflow-ptc/src/index.ts)
 
+<a id="one-person-labdsh-llm-opl-gateway"></a>
+
+## `@one-person-lab/dsh-llm-opl-gateway`
+
+需要： `llm`
+
+```ts config-catalog
+/**
+ * Plugin config, validated by the same-named schema and doubling as the
+ * `llm-opl-gateway` settings-section shape. Every field has a working default:
+ * a deployment that mounts this plugin reaches the gateway's DeepSeek model
+ * without editing any model, endpoint, or protocol field.
+ */
+export interface Config {
+  /** Credential reference resolved per request through the harness credentials seam. */
+  apiKeyEnv?: string
+  /**
+   * Inference root. Omission uses the endpoint the OPL account binding
+   * records for its own client, which is the endpoint that key was issued
+   * against; the canonical gateway root is only the fallback for a deployment
+   * with no binding to read.
+   */
+  baseURL?: string
+  /** Advisory catalog shown by discovery consumers; defaults to DeepSeek-V4.1-Flash. */
+  models?: DeepSeekCatalogModel[]
+  /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
+  thinking?: 'enabled' | 'disabled'
+  /** Default thinking effort; omitted uses the provider default. */
+  reasoningEffort?: 'off' | 'low' | 'high' | 'max'
+  /** Default per-request output cap; a model's own cap and explicit request values win. */
+  maxTokens?: number
+  /** Positive context capacity used when the selected model has no exact value. */
+  defaultContextWindow?: number
+  /** Maximum provider idle time while one stream read is outstanding. */
+  streamIdleTimeoutMs?: number
+  /** Provider-owned model-request retry policy; omission uses normal mode with five retries. */
+  retryPolicy?: RetryPolicyConfig
+  /** Auxiliary web search; omitted mounts the route's own search provider with these defaults. */
+  search?: SearchConfig
+}
+
+/**
+ * Auxiliary web search served from this gateway's Responses route.
+ *
+ * Search runs on a model that serves the gateway's `web_search` tool, which the
+ * account's DeepSeek routes are not; the conversation model stays a separate
+ * choice. Every field falls back to this route's own endpoint and credential.
+ */
+export interface SearchConfig {
+  /** Model that runs the auxiliary search turn. */
+  model?: string
+  /** Credential reference; defaults to this route's `apiKeyEnv`. */
+  apiKeyEnv?: string
+  /** Inference root; `/responses` is appended. Defaults to this route's endpoint. */
+  baseURL?: string
+  /** Upper bound on generated tokens for the search turn. */
+  maxOutputTokens?: number
+  /** Budget for one search, covering connection, search, and answer. */
+  timeoutMs?: number
+  /** Upper bound on server-side searches one request may run. */
+  maxSearches?: number
+}
+```
+
+依赖： [`DeepSeekCatalogModel`](../packages/llm/llm-deepseek/src/index.ts) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts)
+
+来源： [`packages/llm/llm-opl-gateway/src/config.ts:72`](../packages/llm/llm-opl-gateway/src/config.ts)
+
 ## 无配置的可加载插件
 
 这些插件通过 `cordis.yml` 中不含 `config:` 块的条目加载；它们未声明任何配置接口。
@@ -3682,6 +3765,7 @@ export interface Config {
 - `@deepseek-ai/dsh-user-questions`（[`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts)）
 - `@deepseek-ai/dsh-webhook` — 需要 `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry`（[`packages/webhook/webhook/src/index.ts`](../packages/webhook/webhook/src/index.ts)）
 - `@deepseek-ai/dsh-workspace` — 需要 `storageDomain` · `sessionPersistence`（[`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts)）
+- `@one-person-lab/dsh-client-ui-settings-opl-gateway` ([`packages/client/ui-settings-opl-gateway/src/index.ts`](../packages/client/ui-settings-opl-gateway/src/index.ts))
 
 ## Seam 包（不可直接加载）
 

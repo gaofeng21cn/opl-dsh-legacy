@@ -12,7 +12,7 @@ Full access lets useful project work proceed without repeated approvals, but it 
 
 [`dsh-experimental-auto-review`](../../../../packages/experimental/auto-review/README.md) is an explicitly installed experimental Web layer, published under the [experimental package publication decision](../process/2026-09-12-publish-all-experimental-packages.md). Default Web retains Read Only, Workspace Write, and Full access. The layer contributes current-session `auto`, whose only durable identity is `permission/preset:auto`; it shares Full access's unchanged `danger-full-access + never` knobs and tool definitions. Headless, General settings, and new-session defaults exclude the integration.
 
-Every native call and started PTC `tools.*` inner call receives one review before its body. The outer `run_code` transport and direct Node effects in a PTC program remain outside this guarantee. There are no tool-name exemptions, cached grants, retries, configurable policy, second authorization check, or manual fallback. A repeated call receives a fresh review.
+Every native call and started PTC `tools.*` inner call receives one decision before its body, from the first of three stages that decides it: the deterministic rules, then the reviewer, then the deployment's approval answerers. The outer `run_code` transport and direct Node effects in a PTC program remain outside this guarantee. There is no retry layer, persistent grant, or second authorization check after an allow. [The routing decision](2026-09-23-auto-review-rules-routing.md) owns the three stages, the reviewer route, the review memory that joins concurrent duplicates and replays a denial inside the open step, and the fail-closed escalation path.
 
 ### Effects and authority
 
@@ -30,7 +30,7 @@ The reviewer derives authority from existing Session facts. A shipped Web human 
 
 ### One complete reviewer request
 
-The integration uses only the latest `request/header.config` provider/model and the shipped adapter's default reasoning. It neither compares redundant route metadata nor copies the main agent's request. The request has five fixed partitions:
+The integration uses the configured fast reviewer route when the deployment sets one, else the latest `request/header.config` provider/model, with the shipped adapter's default reasoning. It neither compares redundant route metadata nor copies the main agent's request. The request has five fixed partitions:
 
 | Partition | Retained input |
 | --- | --- |
@@ -46,7 +46,7 @@ The main agent's V3 `system/message` nodes, assistant text/reasoning, and tool r
 
 ### Result and cancellation
 
-The reviewer may emit reasoning blocks followed by exactly one JSON text block and terminal `stop`. The closed object admits only `low + allow`, `medium + allow/deny`, and `high + deny`; only deny may carry a string `reason`. Extra fields, duplicate members, invalid combinations, other blocks or termination, and provider failures share the ordinary Auto denial outcome. Risk and reviewer traces are not durable state.
+The reviewer may emit reasoning blocks followed by exactly one JSON text block and terminal `stop`. The closed object admits only `low + allow`, `medium + allow/deny`, and `high + deny`; only deny may carry a string `reason`. Extra fields, duplicate members, invalid combinations, other blocks, provider failures, and a request that outlives the configured reviewer timeout produce no verdict, and the call then takes the [escalation path](2026-09-23-auto-review-rules-routing.md) instead of executing. Risk and reviewer traces are not durable state.
 
 Native results and PTC settle events carry the same structured `AutoReviewDeniedError` / `AUTO_REVIEW_DENIED` and optional raw reason. The main agent receives only `Auto review rejected tool "<name>"; its body was not executed` through ordinary failure rendering. PTC retains the existing program exception/catch behavior; catching a denial does not elevate it to an outer failure. The generic Web tool card supplies the denial identity for the collapsed row and one not-executed output line for the expanded row, with no input body. Only that display trims and collapses line separators or supplies the localized empty-reason fallback; persistence and both SDKs preserve the complete raw reason, without a new length or redaction rule.
 
@@ -72,7 +72,7 @@ The [delegation-time policy capture](2026-07-25-subagent-policy-inheritance.md) 
 
 **Session events for catalog changes** would assign process availability to a Session and require same-sequence republishing. A complete Remote read plus invalidation keeps each fact with its owner.
 
-**Configurable policies, exemptions, grants, or another approval stage** would weaken the fixed safety ceiling or introduce a second decision lifetime. One review per supported call gives a single result and cancellation owner.
+**Configurable policies, exemptions, grants, or another approval stage** would weaken the fixed safety ceiling or introduce a second decision lifetime. One review per supported call gives a single result and cancellation owner. [The routing decision](2026-09-23-auto-review-rules-routing.md) takes only the parts that keep that ceiling: a deterministic rule set that decides the two ends the fixed policy would decide identically, and one approval stage for a call the reviewer did not decide.
 
 ## Consequences
 

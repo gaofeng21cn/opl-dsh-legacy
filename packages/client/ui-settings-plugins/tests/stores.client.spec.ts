@@ -35,6 +35,9 @@ function acceptWrites<T>(host: StubSettingsScope<T>): void {
       if (op.op === 'set') {
         value[field] = op.value
         user[field] = op.value
+      } else if (op.op === 'unset') {
+        Reflect.deleteProperty(user, field)
+        value[field] = (host.scope.getSnapshot().base as Record<string, unknown> | undefined)?.[field]
       }
     }
     host.publish({ value: value as T, user })
@@ -354,9 +357,12 @@ describe('BashCardController', () => {
     expect(face.hooks.bashCard.getSnapshot().dirty).toBe(true)
 
     face.save()
-    await vi.waitFor(() => { expect(host.set).toHaveBeenCalledTimes(2) })
+    await vi.waitFor(() => { expect(host.mutate).toHaveBeenCalledTimes(1) })
 
-    expect(host.set.mock.calls).toEqual([['timeoutMs', 9_000], ['maxOutputBytes', 1_024]])
+    expect(host.mutate.mock.calls[0]?.[0]).toEqual([
+      { op: 'set', path: ['timeoutMs'], value: 9_000 },
+      { op: 'set', path: ['maxOutputBytes'], value: 1_024 },
+    ])
     expect(face.hooks.bashCard.getSnapshot().dirty).toBe(false)
   })
 
@@ -377,12 +383,33 @@ describe('BashCardController', () => {
     expect(face.hooks.bashCard.getSnapshot().timeoutMs.text).toBe('60000')
 
     face.save()
-    await vi.waitFor(() => { expect(host.unset).toHaveBeenCalledWith('timeoutMs') })
+    await vi.waitFor(() => { expect(host.mutate).toHaveBeenCalledWith([{ op: 'unset', path: ['timeoutMs'] }]) })
 
     expect(face.hooks.bashCard.getSnapshot()).toMatchObject({
       dirty: false,
       timeoutMs: { text: '60000', overridden: false },
     })
+  })
+
+  it('commits shell and custom path atomically and retains rejected drafts', async () => {
+    const host = stubSettingsScope<BashSettings>()
+    acceptWrites(host)
+    host.publish({ status: 'ready', writable: true, value: { agentShell: 'powershell' }, user: {} })
+    const face = new BashCardController(host.scope).inject()
+    face.edit('agentShell', 'git-bash')
+    face.edit('gitBashPath', 'D:/工具/Git/bin/bash.exe')
+    host.mutate.mockImplementationOnce(() => { throw new Error('unavailable executable') })
+    face.save()
+    await vi.waitFor(() => { expect(face.hooks.bashCard.getSnapshot().failed).toBe(true) })
+    expect(host.scope.getSnapshot().value?.agentShell).toBe('powershell')
+    expect(face.hooks.bashCard.getSnapshot().gitBashPath.text).toBe('D:/工具/Git/bin/bash.exe')
+    face.save()
+    await vi.waitFor(() => { expect(face.hooks.bashCard.getSnapshot().dirty).toBe(false) })
+    expect(host.mutate.mock.calls[1]?.[0]).toEqual([
+      { op: 'set', path: ['agentShell'], value: 'git-bash' },
+      { op: 'set', path: ['gitBashPath'], value: 'D:/工具/Git/bin/bash.exe' },
+    ])
+    expect(host.set).not.toHaveBeenCalled()
   })
 
   it('discards staged edits without writing', () => {

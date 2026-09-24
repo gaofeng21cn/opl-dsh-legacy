@@ -244,6 +244,17 @@
   display: inline-flex;
 }
 
+/* A pinned row keeps its quick actions on screen: the pin toggle is the state,
+   so hiding it behind hover would hide the fact that the row is pinned. Its
+   trailing timestamp yields the room, exactly as it does on hover. */
+.sessionRow .rowActionsPinned {
+  display: inline-flex;
+}
+
+.sessionRow.pinnedRow .time {
+  display: none;
+}
+
 .sessionRow:hover .time,
 .sessionRow.menuOpen .time {
   display: none;

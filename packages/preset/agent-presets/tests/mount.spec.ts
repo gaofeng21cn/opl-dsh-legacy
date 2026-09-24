@@ -8,6 +8,10 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
 import { PluginPackages } from '@deepseek-ai/dsh-app-boot'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import * as Persona from '@deepseek-ai/dsh-persona'
+import BasicCompaction from '@deepseek-ai/dsh-compaction-basic'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -16,7 +20,7 @@ import AgentRegistry, { assembleContextFor, type Agent } from '@deepseek-ai/dsh-
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AgentPresets, {
-  COMPOSITION_FILE, inactiveRows, leakedServices, livePresetMounts, mountPreset, serviceForAgent,
+  COMPOSITION_FILE, SHIPPED_PRESET_ROOT, inactiveRows, leakedServices, livePresetMounts, mountPreset, serviceForAgent,
 } from '@deepseek-ai/dsh-agent-presets'
 import type { Config } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
@@ -51,10 +55,13 @@ async function harness(roster: Config = { default: 'standard', roots: ROOTS, inc
   // name, so the app registers it as a builtin; the fixtures compose the same
   // way real presets do, which needs it here too.
   ctx.loader.builtins.group = Group
+  ctx.loader.builtins['chat-persona'] = Persona
+  ctx.loader.builtins['chat-compaction'] = BasicCompaction
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt, { personaPrefix: '' })
+  await ctx.plugin(TokenMeter)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -873,4 +880,32 @@ describe('editing a composition file', () => {
 
     expect(livePresetMounts().filter(mount => mount.presetId === 'stale')).toHaveLength(1)
   })
+})
+
+
+it('mounts shipped plain chat with no tools beside a project and refuses escalation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-chat-preset-'))
+  roots.push(root)
+  await mkdir(join(root, 'chat'))
+  await writeFile(join(root, 'chat', COMPOSITION_FILE), (await readFile(join(SHIPPED_PRESET_ROOT, 'chat', COMPOSITION_FILE), 'utf8'))
+    .replace('@deepseek-ai/dsh-persona', 'cordis:chat-persona')
+    .replace('@deepseek-ai/dsh-compaction-basic', 'cordis:chat-compaction'))
+  // Resolve shipped plugin packages from the repository, while the preset files remain test-owned.
+
+  const chatCtx = await harness({ default: 'standard', roots: [...ROOTS, { path: root, trust: 'system' }], includeShippedRoot: false, includeUserRoot: false })
+  try {
+    const project = await agentOn(chatCtx, 'chat-test-project', 'standard')
+    const chat = await agentOn(chatCtx, 'chat-test', 'chat')
+    expect(toolNames(chatCtx, project)).toEqual(['alpha'])
+    expect(toolNames(chatCtx, chat)).toEqual([])
+    const denied = await chatCtx.tools.execute({ agent: chat, signal: new AbortController().signal, callId: ToolCallId('chat-denied'), name: 'alpha', arguments: {} })
+    expect(denied.isError).toBe(true)
+    await expect(chatCtx.agentPresets.select(chat, 'standard')).rejects.toMatchObject({ code: 'agent-preset/invalid' })
+    expect(toolNames(chatCtx, chat)).toEqual([])
+    const assembled = await chatCtx.systemPrompt.assemble(assembleContextFor(chat))
+    expect(assembled.tools).toEqual([])
+    expect(assembled.sections).toMatchSnapshot()
+  } finally {
+    await chatCtx.fiber.dispose()
+  }
 })

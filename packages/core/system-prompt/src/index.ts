@@ -9,6 +9,15 @@ import z from '@deepseek-ai/schemastery'
 import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { ScopeKey, ScopeLayer, Scoped } from '@deepseek-ai/dsh-scope'
 import type { ContextSnapshotSection, ToolSchema } from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-settings'
+import {
+  DEFAULT_OUTPUT_LANGUAGE,
+  OUTPUT_LANGUAGE_SECTION,
+  OUTPUT_LANGUAGE_SETTINGS_NAMESPACE,
+  OutputLanguageSettingsSchema,
+  outputLanguageDirective,
+} from './output-language.ts'
+import type { OutputLanguageSettings } from './output-language.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -125,6 +134,7 @@ export interface PromptAssembly {
 const SECTION_ORDERS = {
   HARNESS_IDENTITY: -1000,
   DEPLOYMENT_PERSONA_PREFIX: 0,
+  OUTPUT_LANGUAGE: 100,
   PLAN_POLICY: 500,
   TEAM_POLICY: 600,
   PTC_ONLY: 800,
@@ -181,6 +191,15 @@ export const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'
 
 /** Deployment persona suffix section name shared by global and scoped contributions. */
 export const PERSONA_SUFFIX_SECTION = 'deployment:persona-suffix'
+
+export {
+  DEFAULT_OUTPUT_LANGUAGE,
+  OUTPUT_LANGUAGE_SECTION,
+  OUTPUT_LANGUAGE_SETTINGS_NAMESPACE,
+  OUTPUT_LANGUAGES,
+  OutputLanguageSettingsSchema,
+} from './output-language.ts'
+export type { OutputLanguage, OutputLanguageSettings } from './output-language.ts'
 
 /** Valid variable names: how they are written between the braces. */
 const VARIABLE_NAME = /^[a-z][a-z0-9_]*$/
@@ -418,6 +437,8 @@ export class SystemPrompt extends Service {
     () => { this.ctx.emit('system-prompt/change') },
   )
   private readonly toolOrder: string[] | undefined
+  /** Latest resolved output-language section; the deployment default while no settings provider is attached. */
+  private outputLanguageSettings: () => OutputLanguageSettings = () => ({ language: DEFAULT_OUTPUT_LANGUAGE })
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'systemPrompt')
@@ -440,6 +461,26 @@ export class SystemPrompt extends Service {
       name: PERSONA_SUFFIX_SECTION,
       order: this.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX'),
       text: config.personaSuffix ?? '',
+    })
+    // The provider re-reads the setting at every assembly, so a committed
+    // change lands on the next request without re-registering the section.
+    this.section({
+      name: OUTPUT_LANGUAGE_SECTION,
+      order: this.getSectionOrder('OUTPUT_LANGUAGE'),
+      text: () => outputLanguageDirective(this.outputLanguageSettings().language),
+    })
+    ctx.inject(['settings'], (settingsCtx) => {
+      settingsCtx.settings.installSection(
+        ctx,
+        OUTPUT_LANGUAGE_SETTINGS_NAMESPACE,
+        OutputLanguageSettingsSchema,
+        { language: DEFAULT_OUTPUT_LANGUAGE },
+        {
+          setSource: (current) => { this.outputLanguageSettings = current },
+          // Nothing is derived from the section: the provider above reads it live.
+          onChange: () => {},
+        },
+      )
     })
     if (!(config.includeRuntimeContext ?? true)) this.suppressRuntimeContext()
   }

@@ -112,3 +112,6 @@
 .error {
   color: var(--dsh-danger, #c0392b);
 }
+.statistics {
+  overflow-x: auto;
+}

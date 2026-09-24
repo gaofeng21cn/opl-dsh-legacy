@@ -74,6 +74,8 @@
       "@deepseek-ai/dsh-api-session-controller/remote-events": ["./packages/api/session-controller/src/remote-events.ts"],
       "@deepseek-ai/dsh-api-settings-controller": ["./packages/api/settings-controller/src/index.ts"],
       "@deepseek-ai/dsh-api-settings-controller/types": ["./packages/api/settings-controller/src/types.ts"],
+      "@deepseek-ai/dsh-api-task-feedback": ["./packages/api/task-feedback/src/index.ts"],
+      "@deepseek-ai/dsh-api-task-feedback/types": ["./packages/api/task-feedback/src/types.ts"],
       "@deepseek-ai/dsh-api-workspace-controller": ["./packages/api/workspace-controller/src/index.ts"],
       "@deepseek-ai/dsh-api-workspace-controller/client": ["./packages/api/workspace-controller/src/client/index.ts"],
       "@deepseek-ai/dsh-api-workspace-controller/types": ["./packages/api/workspace-controller/src/types.ts"],
@@ -98,6 +100,7 @@
       "@deepseek-ai/dsh-util-workspace-path": ["./packages/util/workspace-path/src/index.ts"],
       "@deepseek-ai/dsh-session-stats/types": ["./packages/session/session-stats/src/types.ts"],
       "@deepseek-ai/dsh-session-stats/client": ["./packages/session/session-stats/src/client.ts"],
+      "@deepseek-ai/dsh-session-rewind-files/types": ["./packages/session/session-rewind-files/src/types.ts"],
       "@deepseek-ai/dsh-session-turn-outline/types": ["./packages/session/session-turn-outline/src/types.ts"],
       "@deepseek-ai/dsh-session-turn-outline/client": ["./packages/session/session-turn-outline/src/client.ts"],
       "@deepseek-ai/dsh-token-meter/client": ["./packages/llm/token-meter/src/client.ts"],
@@ -237,6 +240,8 @@
       "@deepseek-ai/dsh-client-ui-schedule/client": ["./packages/client/ui-schedule/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-plan": ["./packages/client/ui-plan/src"],
       "@deepseek-ai/dsh-client-ui-user-questions": ["./packages/client/ui-user-questions/src"],
+      "@deepseek-ai/dsh-client-ui-desktop-notifications": ["./packages/client/ui-desktop-notifications/src"],
+      "@deepseek-ai/dsh-client-ui-desktop-notifications/client": ["./packages/client/ui-desktop-notifications/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-trajectory": ["./packages/client/ui-trajectory/src"],
       "@deepseek-ai/dsh-client-ui-workspace": ["./packages/client/ui-workspace/src"],
       "@deepseek-ai/dsh-client-ui-theme": ["./packages/client/ui-theme/src"],
@@ -277,6 +282,13 @@
       "@deepseek-ai/dsh-session-log-export/client": ["./packages/session-query/session-log-export/src/client"],
       "@deepseek-ai/dsh-compaction-image-offload/projection": ["./packages/compaction/compaction-image-offload/src/projection.ts"],
       "@deepseek-ai/dsh-session-format-catalog/message-projections": ["./packages/session/session-format-catalog/src/message-projections.ts"],
+      // OPL packages use a different scope, so they are intentionally kept
+      // outside the generated @deepseek-ai alias region. The latter maps the
+      // bare plugin name that profile patches compose, so a source launch
+      // resolves the workspace source instead of built lib/.
+      "@one-person-lab/dsh-client-ui-settings-opl-gateway": ["./packages/client/ui-settings-opl-gateway/src"],
+      "@one-person-lab/dsh-client-ui-settings-opl-gateway/client": ["./packages/client/ui-settings-opl-gateway/src/client/index.ts"],
+      "@one-person-lab/dsh-llm-opl-gateway": ["./packages/llm/llm-opl-gateway/src"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
@@ -342,7 +354,6 @@
       "@deepseek-ai/dsh-llm": ["./packages/llm/llm/src"],
       "@deepseek-ai/dsh-llm/invariant": ["./packages/llm/llm/src/invariant.ts"],
       "@deepseek-ai/dsh-llm-deepseek": ["./packages/llm/llm-deepseek/src"],
-      "@one-person-lab/dsh-llm-opl-gateway": ["./packages/llm/llm-opl-gateway/src"],
       "@deepseek-ai/dsh-llm-mock-server": ["./packages/test-support/llm-mock-server/src"],
       "@deepseek-ai/dsh-llm-pi-ai": ["./packages/llm/llm-pi-ai/src"],
       "@deepseek-ai/dsh-llm-replay": ["./packages/test-support/llm-replay/src"],
@@ -396,6 +407,7 @@
       "@deepseek-ai/dsh-session-query": ["./packages/session-query/session-query/src"],
       "@deepseek-ai/dsh-session-query-sqlite": ["./packages/session-query/session-query-sqlite/src"],
       "@deepseek-ai/dsh-session-reference": ["./packages/context/session-reference/src"],
+      "@deepseek-ai/dsh-session-rewind-files": ["./packages/session/session-rewind-files/src"],
       "@deepseek-ai/dsh-session-snapshot": ["./packages/test-support/session-snapshot/src"],
       "@deepseek-ai/dsh-session-stats": ["./packages/session/session-stats/src"],
       "@deepseek-ai/dsh-session-telemetry": ["./packages/session/session-telemetry/src"],

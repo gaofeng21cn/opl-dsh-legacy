@@ -53,6 +53,8 @@ export const workspaceDomainState = z.object({
   initialized: z.boolean(),
   workspaceIds: z.array(workspaceId),
   archivedSessionIds: z.array(z.string().transform(value => brandString<SessionId>(value))).default([]),
+  /** Explicit project placement; null keeps a Session outside projects. */
+  sessionPlacements: z.record(z.string(), workspaceId.nullable()).optional(),
   pendingMutation: workspacePendingMutation.optional(),
 })
 

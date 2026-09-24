@@ -27,6 +27,10 @@ English | [中文](README.zh.md)
 
 Mount this executor when a composition needs Bash command execution on POSIX without confinement. It registers as `ctx.shell`, and the model-facing `bash` tool works over it immediately: an agent calls the tool, and the command runs as a fresh `bash -c` process with the budgets below.
 
+### Windows Native Git Bash
+
+On Windows Native, this executor uses the validated Git for Windows executable described in the [shell settings](../shell/README.md). Its path is captured when settings attach, or at first use without a settings provider; saving another path does not change the running executor. Windows subprocesses retain managed cancellation and hidden-console spawning. Git Bash uses MSYS path conversion for Windows programs; it is not a Linux execution environment. This executor does not confine commands on any platform, so a Windows profile that needs file confinement composes `dsh-bash-sandbox`, whose Git Bash broker decides each confined launch.
+
 ### Minimal configuration
 
 Load the executor with the budgets you want; every field has a default, so the smallest composition is the plugin entry alone. The settings provider (when composed) layers a user section over this entry, so budgets can change at runtime without a reload (see [Adjusting budgets at runtime](#adjusting-budgets-at-runtime)).

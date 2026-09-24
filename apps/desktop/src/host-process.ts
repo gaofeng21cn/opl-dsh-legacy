@@ -128,6 +128,12 @@ export class DesktopHostProcess {
         ELECTRON_RUN_AS_NODE: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'ipc'],
+      // The Host is a background child owned by the Electron shell. Left alone
+      // it opens its own console window on Windows, which then hosts every
+      // confined tool process the Host spawns (the windows-acl runner and its
+      // restricted-token children deliberately share their owner's console),
+      // so one visible Host console makes tool calls appear to steal focus.
+      windowsHide: true,
     })
     const requestPipe = child.stdio[DESKTOP_REQUEST_PIPE_FD]
     const responsePipe = child.stdio[DESKTOP_RESPONSE_PIPE_FD]

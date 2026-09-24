@@ -1,7 +1,7 @@
 /**
  * Derives the workspace browser tree from caller-projected Workspace and
- * Session order. Unassigned Sessions trail under Ungrouped; only the selected
- * blank Session remains visible.
+ * Session order. Unassigned Sessions trail outside the project groups; only
+ * the selected blank Session remains visible.
  */
 import {
   type SessionListState, type SessionSearchResultItem, type SessionSummary,
@@ -54,6 +54,8 @@ export interface SessionNode {
   completed: boolean
   /** The current list projection contains at least one active Schedule record. */
   hasActiveSchedule: boolean
+  /** Browser-local pin: the row leads its own group (see {@link pinnedFirst}). */
+  pinned: boolean
   updatedAt: number
 }
 
@@ -195,6 +197,21 @@ export function pinCurrentBlank(
 }
 
 /**
+ * Lead an account order with its pinned members. The caller applies this to
+ * the display order itself: rows, drag anchors, and the saved manual order all
+ * read one sequence, so a pin and a later drag cannot disagree.
+ * @param order - one account's current order (members only).
+ * @param pinned - browser-local pinned Session ids.
+ * @returns a copy with pinned members first in their existing relative order.
+ */
+export function pinnedFirst(order: readonly SessionId[], pinned: ReadonlySet<string>): SessionId[] {
+  if (pinned.size === 0) return [...order]
+  const leading = order.filter(id => pinned.has(id))
+  if (leading.length === 0) return [...order]
+  return [...leading, ...order.filter(id => !pinned.has(id))]
+}
+
+/**
  * Ordinary sessions are visible; among blank sessions, only the current one
  * is visible. Subagent children use their parent header catalog; archived
  * sessions are visible nowhere, while their accounting slots remain so
@@ -281,16 +298,8 @@ function groupByWorkspace(
     .map(id => list.byId[id])
     .filter((s): s is SessionSummary =>
       s !== undefined && !accounted.has(s.id) && sessionVisible(s, list.current, archived))
-  if (stray.length > 0) {
-    groups.push(buildGroup(
-      UNGROUPED_KEY,
-      undefined,
-      undefined,
-      undefined,
-      '',
-      orderedUngrouped(stray, ungroupedOrder, list.byId),
-    ))
-  }
+  if (stray.length > 0) groups.push(buildGroup(UNGROUPED_KEY, undefined, undefined,
+    undefined, '', orderedUngrouped(stray, ungroupedOrder, list.byId)))
   return groups
 }
 
@@ -310,6 +319,7 @@ function sessionNode(
   s: SessionSummary,
   descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
   pendingInteractions: SessionPendingInteractions,
+  pinned: ReadonlySet<string>,
 ): SessionNode {
   const pendingInteraction = visiblePendingKind(pendingInteractions.get(s.id)?.kind)
   return {
@@ -320,6 +330,7 @@ function sessionNode(
     runningSubagentCount: descendants.get(s.id)?.runningCount ?? 0,
     completed: s.completed === true,
     hasActiveSchedule: hasActiveSchedule(s),
+    pinned: pinned.has(s.id),
     updatedAt: s.updatedAt,
     ...(pendingInteraction === undefined ? {} : { pendingInteraction }),
   }
@@ -338,6 +349,8 @@ function sessionNode(
  * @param archivedSessionIds - registry-global archive set.
  * @param pendingInteractions - pending UI interactions by Session.
  * @param view - local expansion arrays.
+ * @param pinned - browser-local pinned ids, which mark rows only: the caller
+ *   orders each account through {@link pinnedFirst} before projecting it.
  * @returns group sections in render order.
  */
 export function deriveGroups(
@@ -346,16 +359,14 @@ export function deriveGroups(
   archivedSessionIds: readonly SessionId[],
   pendingInteractions: SessionPendingInteractions,
   view: TreeView,
+  pinned: ReadonlySet<string>,
 ): GroupNode[] {
   const archived = new Set(archivedSessionIds)
   const expandedGroups = new Set(view.expandedGroups)
   const descendants = indexSubagentDescendants(list.byId)
-  const currentGroup = list.current === undefined
-    ? undefined
-    : owningGroupKey(workspaces, list.current)
   const groups: GroupNode[] = []
   for (const g of groupByWorkspace(list, workspaces, archived, view.ungroupedOrder)) {
-    const expanded = expandedGroups.has(g.key)
+    const expanded = g.workspaceId === undefined || expandedGroups.has(g.key)
     groups.push({
       key: g.key,
       workspaceId: g.workspaceId,
@@ -364,9 +375,9 @@ export function deriveGroups(
       label: g.label,
       sessionCount: g.sessions.length,
       expanded,
-      containsCurrent: g.key === currentGroup,
+      containsCurrent: g.sessions.some(s => s.id === list.current),
       sessions: expanded
-        ? g.sessions.map(session => sessionNode(session, descendants, pendingInteractions))
+        ? g.sessions.map(session => sessionNode(session, descendants, pendingInteractions, pinned))
         : [],
     })
   }
@@ -395,16 +406,19 @@ export function visibleSessionIds(
  * @param list - sessions list snapshot used to select the ids.
  * @param sessionIds - known visible members in render order, including any pinned blank.
  * @param pendingInteractions - pending UI interactions by Session.
+ * @param pinned - browser-local pinned ids, which mark rows only: the caller
+ *   orders the flat account through {@link pinnedFirst} before projecting it.
  * @returns flat rows in the supplied order with current status indicators.
  */
 export function deriveFlat(
   list: SessionListState,
   sessionIds: readonly SessionId[],
   pendingInteractions: SessionPendingInteractions,
+  pinned: ReadonlySet<string>,
 ): SessionNode[] {
   const descendants = indexSubagentDescendants(list.byId)
   return sessionIds
-    .map(id => sessionNode(list.byId[id] as SessionSummary, descendants, pendingInteractions))
+    .map(id => sessionNode(list.byId[id] as SessionSummary, descendants, pendingInteractions, pinned))
 }
 
 /**

@@ -41,14 +41,17 @@
 # exists, so there is no agent to key by. Behind a preset realm those variables
 # never reached the model's shell at all. Both shell tools consume the host
 # registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
-# host-plane too.
+# host-plane too, gated by the same Agent shell selection, so the tool the model
+# sees always matches the executor that runs it: `bash` on POSIX and on Windows
+# Native with Git Bash selected, `pwsh` on Windows Native with PowerShell
+# selected.
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
-  disabled: !!js process.platform === 'win32'
+  disabled: !!js process.platform === 'win32' && dshAgentShell() !== 'git-bash'
 
 - id: tool-pwsh
   name: '@deepseek-ai/dsh-tool-pwsh'
-  disabled: !!js process.platform !== 'win32'
+  disabled: !!js process.platform !== 'win32' || dshAgentShell() !== 'powershell'
 
 # ── filesystem ──────────────────────────────────────────────────────────────
 
@@ -144,6 +147,20 @@
   config:
     - id: compaction-basic
       name: '@deepseek-ai/dsh-compaction-basic'
+      config:
+        # The OPL gateway route is the one target with a deployment budget; every
+        # other provider this preset serves keeps the plugin defaults scaled from
+        # its own capacity. On that route the model keeps its nominal 1M
+        # capability: compaction starts at 244800 estimated tokens and a request
+        # is admitted at no more than 258400, the 95% input share of the
+        # 272000-token runtime window the OPL Codex configuration uses. Both are
+        # absolute so neither is derived from the nominal window, and a model
+        # whose own window is smaller keeps that smaller window.
+        modelPolicies:
+          - provider: opl-gateway
+            model: deepseek-flash
+            inputBudget: 258400
+            thresholdTokens: 244800
 
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'

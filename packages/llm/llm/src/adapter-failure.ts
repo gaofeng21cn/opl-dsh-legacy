@@ -5,7 +5,10 @@
  */
 
 import { HarnessError } from './error.ts'
-import type { LlmFailure } from './types.ts'
+import type { LlmFailure, LlmTransportStage } from './types.ts'
+
+/** Transport phases a `TRANSPORT` failure can be attributed to. */
+const TRANSPORT_STAGES: ReadonlySet<string> = new Set<LlmTransportStage>(['request', 'response-body'])
 
 /**
  * Detach serializable provider facts from a value thrown by an adapter.
@@ -70,13 +73,19 @@ function failureSnapshot(value: unknown): LlmFailure | undefined {
     const providerRetryAfterMs = candidate.providerRetryAfterMs
     const requestId = candidate.requestId
     const offloadImages = candidate.offloadImages
+    const transportStage = candidate.transportStage
+    const causeName = candidate.causeName
+    const causeCode = candidate.causeCode
     if (typeof message !== 'string' || message.length === 0
       || typeof code !== 'string' || code.length === 0
       || (status !== undefined && (!Number.isInteger(status) || status < 100 || status > 599))
       || (providerRetryAfterMs !== undefined
         && (!Number.isFinite(providerRetryAfterMs) || providerRetryAfterMs <= 0))
       || (requestId !== undefined && (typeof requestId !== 'string' || requestId.length === 0))
-      || (offloadImages !== undefined && (!Number.isSafeInteger(offloadImages) || offloadImages <= 0))) return undefined
+      || (offloadImages !== undefined && (!Number.isSafeInteger(offloadImages) || offloadImages <= 0))
+      || (transportStage !== undefined && !TRANSPORT_STAGES.has(transportStage))
+      || (causeName !== undefined && (typeof causeName !== 'string' || causeName.length === 0))
+      || (causeCode !== undefined && (typeof causeCode !== 'string' || causeCode.length === 0))) return undefined
     return Object.freeze({
       message,
       code,
@@ -84,6 +93,9 @@ function failureSnapshot(value: unknown): LlmFailure | undefined {
       ...providerRetryAfterMs === undefined ? {} : { providerRetryAfterMs },
       ...requestId === undefined ? {} : { requestId },
       ...offloadImages === undefined ? {} : { offloadImages },
+      ...transportStage === undefined ? {} : { transportStage },
+      ...causeName === undefined ? {} : { causeName },
+      ...causeCode === undefined ? {} : { causeCode },
     })
   } catch (_sdkFailureGetter) {
     return undefined

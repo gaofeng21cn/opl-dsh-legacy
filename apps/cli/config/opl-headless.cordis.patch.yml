@@ -1,0 +1,26 @@
+# OPL development-agent route over the shipped headless profile.
+- id: agent-default-model
+  config:
+    provider: opl-gateway
+    model: deepseek-flash
+
+- id: web
+  config:
+    searchProvider: opl-gateway
+    fetchProvider: http
+
+# The same context budget the OPL desktop app uses. This profile mounts no
+# agent preset, so the base bundle's own row carries it: the routed model keeps
+# its nominal 1M capability, compaction starts at 244800 estimated tokens, and
+# a request is admitted at no more than 258400. The ceiling binds every route
+# this OPL-owned profile resolves; the shipped standard preset scopes the same
+# values to its `opl-gateway/deepseek-flash` policy, so other deployments and
+# providers keep the plugin defaults.
+- id: compaction-basic
+  config:
+    inputBudget: 258400
+    thresholdTokens: 244800
+
+- insert:
+    - id: llm-opl-gateway
+      name: '@one-person-lab/dsh-llm-opl-gateway'

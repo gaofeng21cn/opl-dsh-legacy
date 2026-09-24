@@ -479,6 +479,7 @@ export abstract class SettingsProvider extends Service {
     const scope = this.register<Namespace, T>(ns, schema, {
       base: entry,
       ...hooks.validate === undefined ? {} : { validate: hooks.validate },
+      ...hooks.applies === undefined ? {} : { applies: hooks.applies },
     })
     hooks.setSource(() => scope.get())
     this.ctx.effect(() => () => {
@@ -888,6 +889,11 @@ export interface SettingsSectionHooks<T> {
    * @param value - the resolved section, schema-valid by construction.
    */
   validate?: (value: T) => void
+  /**
+   * When this consumer's changes take effect, surfaced to configuration UIs.
+   * See {@link SettingsRegisterOptions.applies}; defaults to `live`.
+   */
+  applies?: SettingsApplies
 }
 
 export default SettingsProvider

@@ -111,6 +111,16 @@ For either protocol, when `ctx.deepseekLlmApiExtensions` is present, the adapter
 
 Non-2xx responses fail with stable codes: `AUTH` (401/403), `QUOTA`, `RATE_LIMIT`, `CONTEXT_WINDOW_EXCEEDED`, `INVALID_REQUEST`, `SERVER`, and `HTTP_<status>` otherwise; pre-response transport failures throw `TRANSPORT`, caller aborts throw `ABORTED`, and stream-idle expiry throws `TIMEOUT`. Request-extension preparation, field collision, or post-2xx acceptance fails with `REQUEST_EXTENSION`. A normalized-image rejection names every plausible attachment and its durable position when the provider does not identify a file id. Stale-file rejection invalidates the named mappings (or every mapping used by the attempt) and permits one replacement model request. Protocol violations throw `STREAM_CLOSED` or `MALFORMED_RESPONSE`, and a terminal `stop` with no content blocks becomes `EMPTY_RESPONSE`, which the default retry policy retries. A request with no key anywhere fails with `MISSING_CREDENTIAL`, and a malformed credential fails with `INVALID_CREDENTIAL` naming the reference to fix — never any part of the key.
 
+A `TRANSPORT` failure carries `transportStage` (`request` when `fetch` itself rejected, `response-body` when the response body failed mid-stream) plus the underlying platform error's `causeName` and errno-style `causeCode`. Without them every network fault, DNS failure, TLS refusal, and stalled read persists as one identical line; none of the three is a rendered message, so no endpoint, header, credential, or request body reaches the durable event.
+
+### Model-output control markers
+
+A chat-completions endpoint can stream a turn whose control syntax never became a structured field: the CoT arrives inside `delta.content` wrapped in `<thinking>` delimiters, or a whole tool invocation arrives there as `<｜DSML｜invoke>`-style markup with no `delta.tool_calls` at all. The adapter reads the CoT under both wire names it may use — the official `reasoning_content` and the alias `reasoning` — resolving a delta that carries both to one contribution rather than concatenating them. Markup in visible text is never executed as a tool call and never stripped from the answer.
+
+The adapter observes each attempt twice: once on the raw payloads as they arrive, before translation, and once on the blocks the translation produced. `onProtocolAnomaly` reports one warning per anomalous attempt, rendering both sides — the raw delta fields with their fragment and character counts, the raw finish reasons, and whether the payload source reached its terminal sentinel, beside the block-side text, reasoning, marker families, structured tool calls, and mapped finish reason. Marker text, prompts, and reasoning are never retained, and no raw SSE is stored, so the record is safe to quote in an incident.
+
+The two sides answer different questions, and neither alone is conclusive. Raw `content` carrying a marker family while the text block carries the same family shows the syntax entered as visible content before this adapter, so the local mapping is faithful on that axis — it does not show whether the model or an upstream gateway produced it. A family the raw reasoning channel carried that appears in produced text but not in produced reasoning is the shape a text/reasoning mapping defect has. Raw `tool_calls` fragments or a `tool-calls` finish with no assembled block means calls were lost locally. A marker inside reasoning alone is recorded as context and never reported as a defect, because a model may legitimately write that syntax in its own CoT. When the stream fails mid-body every raw count is a partial tally, marked by `wire-incomplete` and `complete=false`.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -196,6 +206,8 @@ Generated tokens follow the request's logged reasoning effort and `maxTokens`; o
 Loop-retained response blocks append to the next request and preserve its earlier reusable prefix; dropped blocks have no later cache effect. Changing the provider or model selects a different cache domain.
 
 ## Known Limitations and Deferred Work
+
+For Chat Completions passback diagnosis, an absolute `DSH_REASONING_TRACE_DIR` enables per-attempt JSON files containing SHA-256 fingerprints (UTF-16LE), character counts, field presence, hashed tool-call IDs, and HTTP status. Raw reasoning fields, assembled blocks, projected history and serialized requests can be compared without logging message text or credentials. History details retain the last 128 assistant messages plus a full-history digest. Files accumulate until manually removed; unset the variable after diagnosis. A hard process exit can lose the current report. These files observe generation without repairing missing reasoning; projected input is not independent proof of disk persistence.
 
 - Responses is not implemented; configuration rejects `responses`.
 

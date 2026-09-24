@@ -83,6 +83,7 @@
     "@deepseek-ai/dsh-subagent": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
     "@deepseek-ai/dsh-web-app": "workspace:^",
+    "@one-person-lab/dsh-client-ui-settings-opl-gateway": "workspace:^",
     "@types/js-yaml": "^4.0.9",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",

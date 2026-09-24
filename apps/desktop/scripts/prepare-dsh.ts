@@ -91,6 +91,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
         XDG_STATE_HOME: join(PNPM_BUILD_STATE, 'state'),
       },
       stdio: 'inherit',
+      windowsHide: true,
     })
     child.once('error', reject)
     child.once('close', (code, signal) => {
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
     const descriptor = await verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target)
     await new Promise<void>((accept, reject) => {
       execFile(NODE, [join(APP_ROOT, 'tests/fixtures/runtime-payload-smoke.mjs'), DSH_OUTPUT_ROOT],
-        { timeout: 120_000, env: { ...process.env, NODE_OPTIONS: '' } }, (error, stdout, stderr) => {
+        { timeout: 120_000, env: { ...process.env, NODE_OPTIONS: '' }, windowsHide: true }, (error, stdout, stderr) => {
           if (error !== null) reject(new Error(`desktop native payload smoke failed: ${stderr}`, { cause: error }))
           else { process.stdout.write(stdout); accept() }
         })

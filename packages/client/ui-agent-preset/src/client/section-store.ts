@@ -266,7 +266,7 @@ export class AgentPresetSectionController {
       authorable,
       hasDocument,
       showPicker,
-      rows: presets.map(preset => ({ ...preset })),
+      rows: presets.filter(preset => preset.id !== 'chat').map(preset => ({ ...preset })),
       revealedPaths: kept,
     })
   }

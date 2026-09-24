@@ -48,6 +48,44 @@ label {
   font-weight: 600;
 }
 
+/* The environment facts read as a compact key/value list, so the in-use and
+   next-launch environments line up and can be compared at a glance. */
+.environment-state {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.environment-state > div {
+  display: flex;
+  gap: 10px;
+}
+
+.environment-state dt {
+  color: GrayText;
+  min-width: 14em;
+}
+
+.environment-state dd {
+  margin: 0;
+}
+
+#environment-distribution {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid ButtonBorder;
+  border-radius: 7px;
+  background: Field;
+  color: FieldText;
+}
+
+#environment-restart,
+#environment-unavailable {
+  border-left: 3px solid currentColor;
+  padding-left: 10px;
+}
+
 input {
   flex: 1;
   min-width: 0;

@@ -13,6 +13,12 @@
 
 # ── surface-specific values the base deliberately omits ─────────────────────
 
+# This surface includes OPL account login and its search provider.
+- id: web
+  config:
+    searchProvider: opl-gateway
+    fetchProvider: http
+
 - id: system-prompt
   config:
     personaSuffix: Your working directory is {{cwd}}.
@@ -101,6 +107,13 @@
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
+
+    # Dispatched-task feedback: a durable caller-keyed registry, a model-free
+    # watcher over the bound Sessions, and the notification outbox. The wake
+    # adapter is a host seam; the shipped default refuses delivery and reports
+    # the missing capability rather than claiming a woken Session.
+    - id: task-feedback
+      name: '@deepseek-ai/dsh-api-task-feedback'
 
     # Workspace file service: bounded read, directory listing, and the
     # agent-write change feed inside the session workspace root.
@@ -259,6 +272,10 @@
     # adapter and its account surface belong to the same layer as the page.
     - id: llm-opl-gateway
       name: '@one-person-lab/dsh-llm-opl-gateway'
+      config:
+        search:
+          model: gpt-5.6-sol
+          timeoutMs: 120000
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
@@ -358,6 +375,12 @@
 
     - id: ui-user-questions
       name: '@deepseek-ai/dsh-client-ui-user-questions'
+
+    # Task notifications for the Electron desktop shell: the browser half
+    # reports run completion, live failures, and pending approvals or questions
+    # over the shell bridge, and installs nothing in a browser session.
+    - id: ui-desktop-notifications
+      name: '@deepseek-ai/dsh-client-ui-desktop-notifications'
 
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'

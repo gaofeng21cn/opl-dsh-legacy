@@ -1,6 +1,7 @@
 /** Validated configuration for the local PTY backend. */
 
 import z from '@deepseek-ai/schemastery'
+import { resolveGitBash } from '@deepseek-ai/dsh-shell'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 
 /** One supported interactive shell dialect. */
@@ -50,12 +51,24 @@ export type ResolvedConfig = Omit<Required<Config>, 'shellDialect' | 'shellPath'
   shellArgs: string[]
 }
 
-/** Bash dialect default executable. */
+/** Bash dialect default executable on a POSIX host. */
 export const DEFAULT_BASH_SHELL = '/bin/bash'
 /** Bash dialect default arguments (interactive, profile-free). */
 export const DEFAULT_BASH_ARGS = ['--noprofile', '--norc', '-i']
 /** Pwsh dialect default arguments (interactive host, profile-free). */
 export const DEFAULT_PWSH_ARGS = ['-NoLogo', '-NoProfile']
+
+/**
+ * The bash dialect's default executable on this host: `/bin/bash` on POSIX,
+ * Git for Windows' `bash.exe` on a Windows Native host, which has no POSIX
+ * bash. The Agent shell selection decides whether this dialect is mounted at
+ * all; the executable is resolved here so a Windows host needs no separate
+ * `shellPath` setting.
+ * @returns the dialect's default executable path.
+ */
+function defaultBashShellPath(): string {
+  return process.platform === 'win32' ? resolveGitBash({}).path : DEFAULT_BASH_SHELL
+}
 
 /**
  * Resolve the effective per-dialect shell specification. Defaulting is this
@@ -73,7 +86,7 @@ export function resolveConfig(config: Config): ResolvedConfig {
     shellDialect,
     shellPath: config.shellPath !== undefined && config.shellPath.length > 0
       ? config.shellPath
-      : (shellDialect === 'pwsh' ? resolvePwshPath() : DEFAULT_BASH_SHELL),
+      : (shellDialect === 'pwsh' ? resolvePwshPath() : defaultBashShellPath()),
     shellArgs: config.shellArgs !== undefined && config.shellArgs.length > 0
       ? config.shellArgs
       : (shellDialect === 'pwsh' ? DEFAULT_PWSH_ARGS : DEFAULT_BASH_ARGS),

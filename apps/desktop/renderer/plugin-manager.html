@@ -22,6 +22,33 @@
         <button id="retry" type="button"></button>
         <button id="disable-all" type="button"></button>
       </section>
+      <section id="environment" aria-labelledby="environment-heading">
+        <h2 id="environment-heading"></h2>
+        <p id="environment-intro"></p>
+        <dl class="environment-state">
+          <div><dt id="environment-current-label"></dt><dd id="environment-current"></dd></div>
+          <div><dt id="environment-selected-label"></dt><dd id="environment-selected"></dd></div>
+        </dl>
+        <p id="environment-restart" role="status" hidden></p>
+        <p id="environment-unavailable" role="alert" hidden></p>
+        <label id="environment-distribution-label" for="environment-distribution"></label>
+        <div class="install-row">
+          <select id="environment-distribution"></select>
+          <button id="environment-reload" class="quiet" type="button"></button>
+        </div>
+        <p id="environment-distribution-hint"></p>
+        <button id="environment-apply" type="button"></button>
+      </section>
+      <section id="window-settings" aria-labelledby="window-settings-heading">
+        <h2 id="window-settings-heading"></h2>
+        <p id="window-settings-intro"></p>
+        <label id="close-behavior-label" for="close-behavior"></label>
+        <select id="close-behavior"></select>
+        <p id="window-settings-status" role="status" aria-live="polite"></p>
+        <label id="notifications-label" for="notifications-enabled"></label>
+        <input id="notifications-enabled" type="checkbox">
+        <p id="notifications-description"></p>
+      </section>
       <form id="install-form">
         <label id="package-label" for="package-spec"></label>
         <div class="install-row">

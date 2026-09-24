@@ -46,6 +46,7 @@ export type {
   PendingSubmissionRetirement,
   ProjectionsFace,
   SessionFace,
+  SessionRewindReceipt,
   SubmissionHandle,
 } from './contract/session.ts'
 export type { ISessions } from './contract/sessions.ts'

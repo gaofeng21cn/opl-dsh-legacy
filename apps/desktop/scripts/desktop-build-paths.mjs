@@ -31,7 +31,7 @@ export function resolveDesktopBuildTarget(
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
- * @returns {{ root: string, artifacts: string, runtime: string, packageSet: string, dsh: string, dshPnpm: string, nodeExtract: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
+ * @returns {{ root: string, artifacts: string, runtime: string, wsl: string, packageSet: string, dsh: string, dshPnpm: string, nodeExtract: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
  */
 export function desktopTargetBuildPaths(target) {
   if (!SUPPORTED_TARGETS.has(target)) {
@@ -43,6 +43,9 @@ export function desktopTargetBuildPaths(target) {
     root,
     artifacts: join(root, 'artifacts'),
     runtime: join(root, 'runtime'),
+    // The Linux payload a Windows package carries for its WSL2 execution
+    // environment: a Linux Node.js runtime plus a Linux-installed dsh tree.
+    wsl: join(root, 'wsl'),
     packageSet: join(root, 'package-set'),
     dsh: join(root, 'dsh'),
     dshPnpm: join(root, 'dsh-pnpm'),

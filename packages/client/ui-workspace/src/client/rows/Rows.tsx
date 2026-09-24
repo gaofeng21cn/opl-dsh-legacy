@@ -1,19 +1,20 @@
 /**
  * Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
  * all data and callbacks arrive via props. Hover swaps (folder->chevron,
- * time->ellipsis, action buttons) are CSS-only. Row ... menus are visual-only
- * except workspace Rename/Delete and session Rename/Fork/Archive; the session
- * and workspace hover cards are suppressed while a menu is open.
+ * time->quick actions) are CSS-only. Row menus are visual-only except
+ * workspace Rename/Delete and session Rename/Move/Fork/Pin/Archive; the
+ * session and workspace hover cards are suppressed while a menu is open.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
-  IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
-  IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, relativeTime,
-  StateDot,
+  IconChevronUpOutline14, IconEditOutline16, IconEllipsisOutline16, IconFolderClose16,
+  IconFolderOpen16, IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu,
+  relativeTime, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry, StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
@@ -361,8 +362,34 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
 }
 
 /**
+ * Project targets and verbs behind a session row's **Move to project** menu:
+ * every registered project, the outside-projects bucket, and the directory
+ * flow that registers a new one.
+ */
+export interface SessionMoveTargets {
+  /** Registered projects in Host order (labels are the durable Workspace titles). */
+  projects: readonly { workspaceId: WorkspaceId; title: string }[]
+  /**
+   * Move one Session to a project, or outside every project when the target is omitted.
+   * @param id - Session to move.
+   * @param workspaceId - destination project; absent means outside projects.
+   */
+  moveTo: (id: SessionNode['id'], workspaceId?: WorkspaceId) => void
+  /** Adopt a picked directory as a project and move the Session into it. */
+  moveToNewProject: (id: SessionNode['id']) => void
+}
+
+/** Menu row ids the session menu emits; move targets carry their project after the prefix. */
+const MOVE_TARGET_PREFIX = 'move:'
+const MOVE_OUTSIDE_TARGET = 'outside'
+const MOVE_NEW_PROJECT_TARGET = 'new'
+const MOVE_OUTSIDE_ID = `${MOVE_TARGET_PREFIX}${MOVE_OUTSIDE_TARGET}`
+const MOVE_NEW_PROJECT_ID = `${MOVE_TARGET_PREFIX}${MOVE_NEW_PROJECT_TARGET}`
+
+/**
  * One top-level 34px session row: status dot (pending user interaction outranks
- * own or descendant activity), title, relative time, and the row actions menu.
+ * own or descendant activity), title, relative time, and the row quick actions
+ * plus menu. Right-clicking the row opens that same menu at the pointer.
  * @param props.node - derived session node.
  * @param props.currentId - selected session id (row highlight).
  * @param props.now - epoch ms for relative-time formatting.
@@ -370,6 +397,8 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.onRename - open the session rename dialog (id + current title).
  * @param props.onFork - fork a session at its last completed turn.
  * @param props.onArchive - archive a session by id.
+ * @param props.onTogglePin - pin or unpin a session inside its own group.
+ * @param props.move - project membership targets for the row's move submenu.
  * @param props.onReveal - scroll this row into view after search navigation, then acknowledge it.
  * @param props.drag - optional row-drag target wiring; blank rows cannot start a drag.
  * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
@@ -377,7 +406,8 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onTogglePin, move,
+  onReveal, drag, flat = false, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -387,8 +417,12 @@ export function SessionNodeItem({
   onRename: (id: SessionNode['id'], currentTitle: string) => void
   /** Fork a session at its last completed turn (row menu action). */
   onFork: (id: SessionNode['id']) => void
-  /** Archive this session (row menu action; commits without a dialog). */
+  /** Archive this session (row quick action and menu; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Pin or unpin this session inside its group (row quick action and menu). */
+  onTogglePin: (id: SessionNode['id']) => void
+  /** Project membership targets for the row's move submenu. */
+  move: SessionMoveTargets
   /** Scroll this row into view after search navigation, then acknowledge it. */
   onReveal?: (() => void) | undefined
   /** Present on reorderable-list rows so every row can remain a drop target. */
@@ -405,33 +439,75 @@ export function SessionNodeItem({
   const showStatus = primaryStatus.state !== 'done' || row.completed
   const draggable = drag !== undefined && !row.blank
   const [menuOpen, setMenuOpen] = useState(false)
+  /** Pointer position of the right-click that opened the menu; null for the ellipsis trigger. */
+  const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (onReveal === undefined) return
     rowRef.current?.scrollIntoView({ block: 'nearest' })
     onReveal()
   }, [onReveal])
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false)
+    setMenuPoint(null)
+  }, [])
   // Archive hides the row through the registry-global archive set and never
   // touches the session log, so it is not styled as destructive and needs no
-  // confirmation dialog.
-  const sessionMenuItems = [
+  // confirmation dialog. Move only changes group membership: the Session keeps
+  // its working directory, files, and history.
+  const sessionMenuItems: MenuEntry[] = [
     { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
+    {
+      id: 'move',
+      label: t('menu.moveSession'),
+      icon: <IconBranchOutline16 />,
+      submenu: [
+        ...move.projects.map(project => ({ id: `${MOVE_TARGET_PREFIX}${project.workspaceId}`, label: project.title })),
+        { id: MOVE_OUTSIDE_ID, label: t('move.outside') },
+        { id: MOVE_NEW_PROJECT_ID, label: t('move.newProject') },
+      ],
+    },
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
+    {
+      id: 'pin',
+      label: node.pinned ? t('menu.unpinSession') : t('menu.pinSession'),
+      icon: <IconChevronUpOutline14 />,
+    },
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
   ]
+  const onMenuSelect = (id: string): void => {
+    closeMenu()
+    if (id === 'rename') onRename(node.id, row.title)
+    if (id === 'fork') onFork(node.id)
+    if (id === 'pin') onTogglePin(node.id)
+    if (id === 'archive') onArchive(node.id)
+    if (id === MOVE_NEW_PROJECT_ID) move.moveToNewProject(node.id)
+    else if (id.startsWith(MOVE_TARGET_PREFIX)) {
+      const target = id.slice(MOVE_TARGET_PREFIX.length)
+      move.moveTo(node.id, target === MOVE_OUTSIDE_TARGET ? undefined : target as WorkspaceId)
+    }
+  }
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
     <div
       ref={rowRef}
       className={clsx(
         css.sessionRow, selected && css.selected, menuOpen && css.menuOpen,
+        row.pinned && css.pinnedRow,
         flat && !showStatus && css.flatSessionRowWithoutStatus,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
       aria-selected={selected}
       onClick={() => { onOpen(node.id) }}
+      onContextMenu={row.blank
+        ? undefined
+        : (e) => {
+          e.preventDefault()
+          setMenuPoint({ x: e.clientX, y: e.clientY })
+          setMenuOpen(true)
+        }}
       draggable={draggable}
       onDragStart={drag === undefined || row.blank
         ? undefined
@@ -469,29 +545,49 @@ export function SessionNodeItem({
       {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
       {/* A blank New Session row is a provisional placeholder: nothing has
           happened in it yet, so a "now" timestamp and the row verbs
-          (rename/fork/archive) would all act on content that does not
-          exist — both trailing cells stay off until the first prompt. */}
+          (rename/move/fork/pin/archive) would all act on content that does not
+          exist — both trailing cells stay off until the first prompt. A pinned
+          row keeps its pin toggle on screen so the state is visible without
+          hovering. */}
       {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
       {!row.blank && (
-        <span className={css.rowActions}>
+        <span className={clsx(css.rowActions, row.pinned && css.rowActionsPinned)}>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={node.pinned ? t('actions.unpin.aria', { name: title }) : t('actions.pin.aria', { name: title })}
+            aria-pressed={node.pinned}
+            onClick={(e) => { e.stopPropagation(); onTogglePin(node.id) }}
+          >
+            <IconChevronUpOutline14 />
+          </button>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={t('actions.archive.aria', { name: title })}
+            onClick={(e) => { e.stopPropagation(); onArchive(node.id) }}
+          >
+            <IconArchiveOutline20 size={16} />
+          </button>
           <Menu
             open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
+            onClose={closeMenu}
             items={sessionMenuItems}
-            onSelect={(id) => {
-              setMenuOpen(false)
-              if (id === 'rename') onRename(node.id, row.title)
-              if (id === 'fork') onFork(node.id)
-              if (id === 'archive') onArchive(node.id)
-            }}
+            onSelect={onMenuSelect}
             portal
             closeOnPointerLeave
+            // A right-click anchors the list at the pointer rect instead of the
+            // wrapper span the ellipsis trigger occupies; the key is absent
+            // without one, so the Menu measures its own wrapper (ellipsis path).
+            {...(menuPoint === null
+              ? {}
+              : { getAnchorRect: () => new DOMRect(menuPoint.x, menuPoint.y, 0, 0) })}
             anchor={(
               <button
                 type="button"
                 className={css.iconButton}
                 aria-label={t('actions.session.aria', { name: title })}
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
+                onClick={(e) => { e.stopPropagation(); setMenuPoint(null); setMenuOpen(v => !v) }}
               >
                 <IconEllipsisOutline16 />
               </button>

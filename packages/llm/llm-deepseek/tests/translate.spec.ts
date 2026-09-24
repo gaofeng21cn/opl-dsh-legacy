@@ -96,6 +96,64 @@ describe('translate: reasoning', () => {
       { type: 'block-start', index: 0, blockType: 'text' },
     ])
   })
+
+  it('reads the gateway alias `reasoning` as the same channel', async () => {
+    // The OPL Gateway streams CoT as `reasoning` and never as
+    // `reasoning_content`; reading only the official name lost the whole CoT,
+    // which the endpoint then rejected as "reasoning_text ... must be passed
+    // back".
+    const chunks = await collect(translate(feed(
+      { choices: [{ delta: { role: 'assistant', content: null, reasoning: '' } }] },
+      { choices: [{ delta: { content: null, reasoning: 'gate' } }] },
+      { choices: [{ delta: { content: null, reasoning: 'way' } }] },
+      { choices: [{ delta: { content: 'answer' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    )))
+    expect(chunks).toEqual([
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: 'gate' },
+      { type: 'reasoning-delta', index: 0, text: 'way' },
+      { type: 'block-start', index: 1, blockType: 'text' },
+      { type: 'text-delta', index: 1, text: 'answer' },
+      { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'gateway' } },
+      { type: 'block-end', index: 1, block: { type: 'text', text: 'answer' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ])
+  })
+
+  it('resolves both reasoning names on one delta to a single contribution', async () => {
+    // The names are alternative spellings of one channel, so a delta carrying
+    // both must not double-count: the official name wins and `reasoning` is
+    // ignored for that delta.
+    const chunks = await collect(translate(feed(
+      { choices: [{ delta: { content: null, reasoning_content: 'official', reasoning: 'alias' } }] },
+      { choices: [{ delta: { content: null, reasoning: 'tail' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    )))
+    const reasoning = chunks.filter(chunk => chunk.type === 'reasoning-delta')
+    expect(reasoning).toEqual([
+      { type: 'reasoning-delta', index: 0, text: 'official' },
+      { type: 'reasoning-delta', index: 0, text: 'tail' },
+    ])
+    expect(chunks).toContainEqual({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'reasoning', text: 'officialtail' },
+    })
+  })
+
+  it('falls back to the alias when the official field is present but empty', async () => {
+    // A gateway that fills the official name with '' and the alias with the
+    // real text must still produce the CoT.
+    const chunks = await collect(translate(feed(
+      { choices: [{ delta: { content: null, reasoning_content: '', reasoning: 'from-alias' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    )))
+    expect(chunks).toContainEqual({ type: 'reasoning-delta', index: 0, text: 'from-alias' })
+  })
 })
 
 describe('translate: tool calls', () => {

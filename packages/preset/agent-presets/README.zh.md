@@ -7,9 +7,13 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
+内置 chat 预设提供完整对话角色提示和上下文压缩，不包含面向模型的工具或工作区指令。界面通过独立聊天入口使用它。重新配置拒绝把聊天切换到其他预设，包括空白聊天；持久化会话及其分支通过现有日志保留预设。
+
 ## 概述
 
 使用 `dsh-agent-presets` 为每个会话提供某个 preset 的 `agent.cordis.yml` 所指定的工具、提示词段落与 skill（技能）。一个进程可以运行使用不同 preset 的会话，同时保持它们的状态相互隔离。preset 名单合并随附定义、已配置根目录与用户根目录，会报告 preset 无法启动的原因，也能通过复制现有 preset 创建本地 preset。部署与用户都可选择默认值；只有空会话可以切换 preset。请将每个自行编写的 preset 视为受信任配置，因为它会授予其所选插件的能力。
+
+在 Windows Native 下，standard、ptc 和 cordis 仅提供宿主启动时选定的 shell 工具；minimal 选择对应的持久终端后端。minimal 的 Git Bash 路径也在启动时固定。Linux、macOS 和 WSL 始终使用 Bash，不受 Native 选项影响。重启行为和 Git Bash 受限执行的限制见 [shell 设置](../../shell/shell/README.zh.md)。
 
 ## 目录
 

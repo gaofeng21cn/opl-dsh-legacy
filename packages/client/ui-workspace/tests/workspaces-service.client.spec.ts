@@ -143,6 +143,7 @@ class FakeWorkspaces implements IWorkspaces {
     }))
   }
 
+  declare readonly moveSession: IWorkspaces['moveSession']
   declare readonly create: IWorkspaces['create']
   declare readonly rename: IWorkspaces['rename']
   declare readonly delete: IWorkspaces['delete']
@@ -228,6 +229,12 @@ function bench(options: BenchOptions = {}) {
 async function flush(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
+}
+
+/** Let every pending continuation settle, including chains behind `await`s. */
+async function settle(): Promise<void> {
+  await new Promise<void>(resolve => { setTimeout(resolve, 0) })
+  await flush()
 }
 
 describe('UiWorkspaceService', () => {
@@ -412,18 +419,18 @@ describe('UiWorkspaceService', () => {
     b.sessions.open(current.id)
     b.uiWorkspace.startSession()
     await vi.waitFor(() => {
-      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('opened-current-home'))
+      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('opened-undefined'))
     })
 
     b.sessions.clear()
     b.uiWorkspace.startSession()
     await vi.waitFor(() => {
-      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('opened-recent-home'))
+      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('opened-undefined'))
     })
 
     const empty = bench()
     empty.uiWorkspace.startSession()
-    expect(empty.sessions.clear).toHaveBeenCalledOnce()
+    expect(empty.sessions.create).toHaveBeenCalledWith({ standalone: true })
 
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     b.sessions.create.mockRejectedValueOnce(new Error('create failed'))
@@ -446,7 +453,7 @@ describe('UiWorkspaceService', () => {
     await vi.waitFor(() => {
       expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
     })
-    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('recent') })
+    expect(b.sessions.create).toHaveBeenCalledWith({ standalone: true })
     expect(b.workspaces.list.getSnapshot().items.map(item => item.workspaceId)).toEqual([
       wid('stable-first'), wid('recent'),
     ])
@@ -466,7 +473,7 @@ describe('UiWorkspaceService', () => {
     await vi.waitFor(() => {
       expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
     })
-    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('newest') })
+    expect(b.sessions.create).toHaveBeenCalledWith({ standalone: true })
   })
 
   it('retries failed initial selection and never overwrites a later selection', async () => {
@@ -479,9 +486,9 @@ describe('UiWorkspaceService', () => {
     b.workspaces.list.set(workspaceState([workspace('recent')]))
     b.sessions.list.set(sessionState())
     await vi.waitFor(() => {
-      expect(warning).toHaveBeenCalledWith('initial workspace selection failed:', expect.any(Error))
+      expect(warning).toHaveBeenCalledWith('initial session failed:', expect.any(Error))
     })
-    b.workspaces.list.update(state => ({ ...state, items: [...state.items] }))
+    b.uiWorkspace.startSession()
     await vi.waitFor(() => {
       expect(b.sessions.open).toHaveBeenCalledWith(sid('retry'))
     })
@@ -552,6 +559,242 @@ describe('UiWorkspaceService', () => {
       workspaces: workspaceState([workspace('one', [current.id])], [current.id]),
     })
     expect(archived.sessions.clear).toHaveBeenCalledOnce()
+    expect(archived.sessions.create).toHaveBeenCalledWith({ standalone: true })
+  })
+
+  it('replaces an archived current Session with an independent Session', async () => {
+    const current = sid('current')
+    const b = bench({
+      sessions: sessionState([summary('current')], current),
+      workspaces: workspaceState([workspace('one', [current])]),
+    })
+
+    await b.uiWorkspace.archiveSession(current)
+    await settle()
+    expect(b.sessions.create).toHaveBeenCalledWith({ standalone: true })
+    expect(b.sessions.open).toHaveBeenCalledWith(sid('created-none'))
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('created-none'))
+    // The automatic landing selects the Session without activating the
+    // Conversation surface, so a global panel the user has open survives it.
+    expect(b.selectPanel).not.toHaveBeenCalled()
+    await b.ctx.fiber.dispose()
+  })
+
+  it('keeps a global panel open while an archived current Session is replaced', async () => {
+    const current = sid('current')
+    const b = bench({
+      sessions: sessionState([summary('current')], current),
+      workspaces: workspaceState([workspace('one', [current])]),
+    })
+    // The user is already looking at a global panel when the echo arrives.
+    b.layout.selectPanel('panel-a' as MainPanelId)
+    b.selectPanel.mockClear()
+
+    await b.uiWorkspace.archiveSession(current)
+    await settle()
+
+    expect(b.selectPanel).not.toHaveBeenCalled()
+    expect(b.sessions.open).toHaveBeenCalledWith(sid('created-none'))
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('created-none'))
+    await b.ctx.fiber.dispose()
+  })
+
+  it('respects a Workspace navigation that started before the archive echo', async () => {
+    const current = sid('current')
+    const b = bench({
+      sessions: sessionState([summary('current')], current),
+      workspaces: workspaceState([workspace('one', [current]), workspace('beta')]),
+    })
+    // The archive request is still in flight, so the archive set does not name
+    // the current Session yet.
+    const archived = Promise.withResolvers<void>()
+    b.workspaces.onArchive = () => archived.promise
+    const archiving = b.uiWorkspace.archiveSession(current)
+
+    // The user starts a Workspace navigation whose Session creation is also
+    // still pending: the old Session stays current for this whole window.
+    const workshop = Promise.withResolvers<SessionId>()
+    const standalone = Promise.withResolvers<SessionId>()
+    b.sessions.create.mockImplementation(options => options?.standalone === true
+      ? standalone.promise
+      : workshop.promise)
+    const opening = b.uiWorkspace.openWorkspace(wid('beta'))
+
+    // The archive echo lands while the Workspace navigation is still pending.
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [current] }))
+    await settle()
+
+    // The navigation the user already started owns the landing: no replacement
+    // Session is created and nothing is opened ahead of it.
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('beta') })
+    expect(b.sessions.open).not.toHaveBeenCalled()
+
+    archived.resolve()
+    workshop.resolve(sid('beta-session'))
+    await Promise.all([opening, archiving])
+    standalone.resolve(sid('replacement'))
+    await settle()
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('beta-session'))
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('beta-session'))
+    await b.ctx.fiber.dispose()
+  })
+
+  it('lands the replacement while a superseded navigation is still pending', async () => {
+    const current = sid('current')
+    const b = bench({
+      sessions: sessionState([summary('current')], current),
+      workspaces: workspaceState([workspace('one', [current]), workspace('beta'), workspace('gamma')]),
+    })
+    // The first Workspace navigation is superseded by the second, and only the
+    // second settles: the superseded one keeps its pending creation.
+    const beta = Promise.withResolvers<SessionId>()
+    const gamma = Promise.withResolvers<SessionId>()
+    b.sessions.create.mockImplementation(options => options?.standalone === true
+      ? Promise.resolve(sid('replacement'))
+      : options?.workspaceId === wid('beta') ? beta.promise : gamma.promise)
+    const superseded = b.uiWorkspace.openWorkspace(wid('beta'))
+    const latest = b.uiWorkspace.openWorkspace(wid('gamma'))
+
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [current] }))
+    gamma.reject(new Error('gamma failed'))
+    await expect(latest).rejects.toThrow('gamma failed')
+    await settle()
+
+    // Nothing the user still owns is in flight, so the landing the archive
+    // owes happens despite the superseded navigation's unresolved creation.
+    try {
+      expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('replacement'))
+      expect(b.sessions.list.getSnapshot().current).toBe(sid('replacement'))
+    } finally {
+      beta.resolve(sid('beta-late'))
+      await superseded
+      await settle()
+      await b.ctx.fiber.dispose()
+    }
+  })
+
+  it('lands the replacement once the navigation that replaced it fails', async () => {
+    const current = sid('current')
+    const b = bench({
+      sessions: sessionState([summary('current')], current),
+      workspaces: workspaceState([workspace('one', [current]), workspace('beta')]),
+    })
+    const workshop = Promise.withResolvers<SessionId>()
+    b.sessions.create.mockImplementation(options => options?.standalone === true
+      ? Promise.resolve(sid('replacement'))
+      : workshop.promise)
+    const opening = b.uiWorkspace.openWorkspace(wid('beta'))
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [current] }))
+    await settle()
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('beta') })
+
+    // The user's navigation owns the landing while it runs, and leaving the
+    // selection empty is not an outcome it may hand back.
+    workshop.reject(new Error('beta exploded'))
+    await expect(opening).rejects.toThrow('beta exploded')
+    await settle()
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('replacement'))
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('replacement'))
+    await b.ctx.fiber.dispose()
+  })
+
+  it('does not supersede a user navigation that precedes the first landing', async () => {
+    const b = bench({ workspaces: workspaceState([workspace('beta')], [], 'pending') })
+    const workshop = Promise.withResolvers<SessionId>()
+    b.sessions.create.mockImplementation(() => workshop.promise)
+    const opening = b.uiWorkspace.openWorkspace(wid('beta'))
+
+    // Both baselines arrive while that navigation is still creating: nothing is
+    // selected yet, so the first landing is due — but not ahead of the user.
+    b.workspaces.list.set(workspaceState([workspace('beta')]))
+    b.sessions.list.set(sessionState())
+    await settle()
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('beta') })
+    expect(b.sessions.open).not.toHaveBeenCalled()
+
+    workshop.resolve(sid('beta-session'))
+    await opening
+    await settle()
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('beta-session'))
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('beta-session'))
+    await b.ctx.fiber.dispose()
+  })
+
+  it('keeps an archive that leaves the selection alone out of navigation', async () => {
+    const current = sid('current')
+    const idle = sid('idle')
+    const b = bench({
+      sessions: sessionState([summary('current'), summary('idle')], current),
+      workspaces: workspaceState([workspace('one', [current, idle])]),
+    })
+
+    await b.uiWorkspace.archiveSession(idle)
+    await settle()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    expect(b.sessions.list.getSnapshot().current).toBe(current)
+    await b.ctx.fiber.dispose()
+  })
+
+  it('creates one replacement across the repeated archive echo', async () => {
+    const current = sid('current')
+    const idle = sid('idle')
+    const b = bench({
+      sessions: sessionState([summary('current'), summary('idle')], current),
+      workspaces: workspaceState([workspace('one', [current, idle])]),
+    })
+
+    await b.uiWorkspace.archiveSession(current)
+    await settle()
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('created-none'))
+
+    // The archive set re-arrives unchanged (a refresh echo).
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [...state.archivedSessionIds] }))
+    await settle()
+    expect(b.sessions.create).toHaveBeenCalledOnce()
+    expect(b.sessions.open).toHaveBeenCalledOnce()
+    await b.ctx.fiber.dispose()
+  })
+
+  it('leaves a later selection in place while the replacement Session is created', async () => {
+    const current = sid('current')
+    const other = sid('other')
+    const b = bench({
+      sessions: sessionState([summary('current'), summary('other')], current),
+      workspaces: workspaceState([workspace('one', [current, other])]),
+    })
+    const created = Promise.withResolvers<SessionId>()
+    b.sessions.create.mockReturnValue(created.promise)
+
+    await b.uiWorkspace.archiveSession(current)
+    await vi.waitFor(() => { expect(b.sessions.create).toHaveBeenCalledOnce() })
+    b.uiWorkspace.openSession(other)
+    created.resolve(sid('late-replacement'))
+    await settle()
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(other)
+    expect(b.sessions.list.getSnapshot().current).toBe(other)
+    await b.ctx.fiber.dispose()
+  })
+
+  it('reports a failed replacement and retries on the next New Session action', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const current = sid('current')
+    const b = bench({
+      sessions: sessionState([summary('current')], current),
+      workspaces: workspaceState([workspace('one', [current])]),
+    })
+    b.sessions.create.mockRejectedValueOnce(new Error('attach exploded'))
+
+    await b.uiWorkspace.archiveSession(current)
+    await settle()
+    expect(warning).toHaveBeenCalledWith('replacement session failed:', expect.any(Error))
+    expect(b.sessions.open).not.toHaveBeenCalled()
+    expect(b.sessions.list.getSnapshot().current).toBeUndefined()
+
+    b.uiWorkspace.startSession()
+    await settle()
+    expect(b.sessions.create).toHaveBeenCalledTimes(2)
+    expect(b.sessions.open).toHaveBeenCalledWith(sid('created-none'))
+    await b.ctx.fiber.dispose()
   })
 
   it('forwards archive commands and preserves failures', async () => {
@@ -608,4 +851,43 @@ describe('UiWorkspaceService', () => {
       rpcError: { code: 'directory-picker/exists' },
     })
   })
+})
+
+
+it('opens an independent session without a workspace', async () => {
+  const b = bench()
+  await b.uiWorkspace.openChat()
+  expect(b.sessions.create).toHaveBeenCalledWith({ standalone: true })
+  expect(b.sessions.open).toHaveBeenCalledWith(sid('created-none'))
+  await b.ctx.fiber.dispose()
+})
+
+it('does not steal navigation after a pending chat creation', async () => {
+  const b = bench()
+  let resolve!: (id: SessionId) => void
+  b.sessions.create.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+  const pending = b.uiWorkspace.openChat()
+  b.layout.beginNavigation()
+  resolve(sid('late-chat'))
+  await pending
+  expect(b.sessions.open).not.toHaveBeenCalled()
+  await b.ctx.fiber.dispose()
+})
+
+
+it('coalesces concurrent creation but gives the next session its own directory', async () => {
+  const b = bench()
+  let resolve!: (id: SessionId) => void
+  b.sessions.create.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+  const a = b.uiWorkspace.openChat()
+  const c = b.uiWorkspace.openChat()
+  expect(b.sessions.create).toHaveBeenCalledOnce()
+  resolve(sid('chat'))
+  await Promise.all([a, c])
+  expect(b.sessions.open).toHaveBeenCalledTimes(1)
+  const chat = { id: sid('chat'), displayTitle: '', blank: true, running: false, updatedAt: 1, projectionValues: { agentPreset: 'default' } }
+  b.sessions.list.set(sessionState([chat], chat.id, 'ready'))
+  await b.uiWorkspace.openChat()
+  expect(b.sessions.create).toHaveBeenCalledTimes(2)
+  await b.ctx.fiber.dispose()
 })

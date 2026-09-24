@@ -23,6 +23,12 @@ type WorkspaceViewState = {
   groupExpansion: Record<string, boolean>
   /** Saved manual order per Workspace group plus the browser-local flat-list account. */
   sessionOrderByAccount: Record<string, string[]>
+  /**
+   * Browser-local pinned Session ids. Optional because a state persisted before
+   * this field existed rehydrates without it (the engine replaces the whole
+   * value), so every read defaults to no pins.
+   */
+  pinnedSessionIds?: string[]
 }
 
 /**
@@ -48,6 +54,7 @@ type WorkspaceViewActions = {
     order: readonly string[],
     initialOrders: Readonly<Record<string, readonly string[]>>,
   ) => void
+  toggleSessionPin: (draft: WorkspaceViewState, sessionId: string) => void
 }
 
 /** Copy read-only projections into the persisted mutable store representation. */
@@ -96,6 +103,12 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
         if (d.orderBy === 'updated') d.sessionOrderByAccount = copySessionOrders(initialOrders)
         d.orderBy = 'manual'
         d.sessionOrderByAccount[accountKey] = [...order]
+      },
+      toggleSessionPin: (d, sessionId) => {
+        const pinned = d.pinnedSessionIds ?? []
+        d.pinnedSessionIds = pinned.includes(sessionId)
+          ? pinned.filter(id => id !== sessionId)
+          : [...pinned, sessionId]
       },
     },
   })

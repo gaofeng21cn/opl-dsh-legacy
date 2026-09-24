@@ -1,0 +1,380 @@
+{
+  "formatVersion": 1,
+  "roots": [
+    {
+      "key": "event:file/change",
+      "kind": "event",
+      "event": "file/change",
+      "surface": false,
+      "digest": "d565bcf464911b1d7c146a3bff99f4ae6dba2f8a1366ab002885de44404367f0",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 24,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 15,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 15,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 25,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "changes",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "outsideWorkspace",
+                "type": 23,
+                "optional": false
+              },
+              {
+                "name": "step",
+                "type": 15,
+                "optional": false
+              },
+              {
+                "name": "turn",
+                "type": 15,
+                "optional": false
+              },
+              {
+                "name": "unrecorded",
+                "type": 23,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "array",
+            "element": 3
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "after",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "before",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "kind",
+                "type": 17,
+                "optional": false
+              },
+              {
+                "name": "path",
+                "type": 8,
+                "optional": false
+              },
+              {
+                "name": "rename",
+                "type": 22,
+                "optional": true
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "union",
+            "types": [
+              5,
+              7
+            ]
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "kind",
+                "type": 6,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "literal",
+            "value": "absent"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "blob",
+                "type": 8,
+                "optional": true
+              },
+              {
+                "name": "entry",
+                "type": 9,
+                "optional": false
+              },
+              {
+                "name": "kind",
+                "type": 14,
+                "optional": false
+              },
+              {
+                "name": "mode",
+                "type": 15,
+                "optional": true
+              },
+              {
+                "name": "mtimeMs",
+                "type": 15,
+                "optional": true
+              },
+              {
+                "name": "size",
+                "type": 15,
+                "optional": true
+              },
+              {
+                "name": "verifiable",
+                "type": 16,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "union",
+            "types": [
+              10,
+              11,
+              12,
+              13
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "directory"
+          },
+          {
+            "kind": "literal",
+            "value": "file"
+          },
+          {
+            "kind": "literal",
+            "value": "other"
+          },
+          {
+            "kind": "literal",
+            "value": "symlink"
+          },
+          {
+            "kind": "literal",
+            "value": "recorded"
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "primitive",
+            "type": "boolean"
+          },
+          {
+            "kind": "union",
+            "types": [
+              18,
+              19,
+              20,
+              21
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "create"
+          },
+          {
+            "kind": "literal",
+            "value": "delete"
+          },
+          {
+            "kind": "literal",
+            "value": "modify"
+          },
+          {
+            "kind": "literal",
+            "value": "rename"
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "from",
+                "type": 8,
+                "optional": false
+              },
+              {
+                "name": "to",
+                "type": 8,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "array",
+            "element": 8
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "file/change"
+          }
+        ]
+      }
+    },
+    {
+      "key": "event:file/checkpoint",
+      "kind": "event",
+      "event": "file/checkpoint",
+      "surface": false,
+      "digest": "408d0cd6d64b7f79e9a3bae259e040ae5f0f3abd509a2273dd7bf54d59a0468e",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 6,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 7,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "coveredBytes",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "coveredPaths",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "promptSeq",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "truncated",
+                "type": 3,
+                "optional": false
+              },
+              {
+                "name": "turn",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "unrecorded",
+                "type": 4,
+                "optional": false
+              },
+              {
+                "name": "workspaceRoot",
+                "type": 5,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "primitive",
+            "type": "boolean"
+          },
+          {
+            "kind": "array",
+            "element": 5
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "literal",
+            "value": "file/checkpoint"
+          }
+        ]
+      }
+    }
+  ],
+  "types": []
+}

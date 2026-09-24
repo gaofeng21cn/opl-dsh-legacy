@@ -48,33 +48,42 @@ kind: "package-reference"
 ```yaml
 - name: '@deepseek-ai/dsh-compaction-basic'
   config:
-    thresholdRatio: 0.8
-    retainRatio: 0.16
+    inputBudget: 258400
+    thresholdTokens: 244800
     modelPolicies:
       - provider: local
         model: small-context
+        inputBudget: 32768
         thresholdRatio: 0.7
         retainTokens: 2048
 ```
 
 ### 调整压缩开始的时机
 
-所有设置都可选。默认在已路由模型上下文窗口的 80% 处开始压缩，并逐字保留最新的 16%；下表是完整的策略面，生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-compaction-basic)是穷尽式真源。
+所有设置都可选。默认在有效输入预算（未配置时即已路由模型自身的上下文窗口）的 80% 处开始压缩，并逐字保留该预算最新的 16%；下表是完整的策略面，生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-compaction-basic)是穷尽式真源。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `thresholdRatio` | `0.8` | 在 `floor(routedContextWindow × ratio)` 处开始压缩。 |
-| `retainRatio` | `0.16` | 以已路由上下文窗口的一部分表示逐字保留的近期对话；与 `retainTokens` 互斥。 |
-| `retainTokens` | — | 逐字保留的近期对话绝对预算；与 `retainRatio` 互斥，并且必须低于已解析阈值。 |
+| `inputBudget` | 已路由容量 | 有效输入上下文预算（token）：单步定价请求可达的上限，也是两个比例的基数。自身窗口更小的模型保留其更小的窗口。 |
+| `thresholdRatio` | `0.8` | 在 `floor(有效输入预算 × ratio)` 处开始压缩。 |
+| `thresholdTokens` | — | 绝对触发值；与 `thresholdRatio` 互斥，并在有效预算更小的路由上收敛到该预算。 |
+| `retainRatio` | `0.16` | 以有效输入预算的一部分表示逐字保留的近期对话；与 `retainTokens` 互斥。 |
+| `retainTokens` | — | 逐字保留的近期对话绝对预算；与 `retainRatio` 互斥，并且必须低于已解析触发值。 |
 | `summarizationProvider` | `''` | 与 `summarizationModel` 一起设置；空对使用最新已路由请求目标，再回退到 `AgentOptions` 对。 |
 | `summarizationModel` | `''` | 与 `summarizationProvider` 一起设置；空对使用最新已路由请求目标，再回退到 `AgentOptions` 对。 |
 | `maxTokens` | `8192` | 摘要请求的输出上限；可包含推理 token。 |
 | `compactionRetries` | `1` | 压力仍高于阈值时，在首次压缩后进行的额外尝试次数。 |
 | `maxOverflowRetries` | `1` | 已确认上下文窗口溢出后的最大重试次数；`0` 只禁用恢复。 |
 | `modelPolicies` | `[]` | 针对个别模型路由的精确 `{ provider, model, ...partialPolicy }` 覆盖。 |
-| `auto` | `true` | 启用自动压缩与溢出恢复；设为 `false` 则仅手动执行。 |
+| `auto` | `true` | 启用自动压缩、步级接纳与溢出恢复；设为 `false` 则仅手动执行，不安装接纳上限。 |
 
-配置错误会快速失败：未知设置、重复的按模型覆盖、两种保留形式同时出现，或比例保留量不低于阈值，都会在加载时拒绝插件。任何绝对 `retainTokens` 预算——顶层或按模型——不低于其阈值时，都会在该模型首次使用时失败，因为该比较需要模型的上下文大小。
+配置错误会快速失败：未知设置、重复的按模型覆盖、两种阈值形式同时出现、两种保留形式同时出现、比例保留量不低于比例阈值，或绝对保留量不低于绝对阈值，都会在加载时拒绝插件。已配置的 `inputBudget` 会按其自身取值确定触发值，因此保留预算放不进该触发值之下时，也会在加载时拒绝插件。未配置预算时，同一比较需要已路由模型的上下文大小，会在该模型首次使用时失败。
+
+### 有效输入预算
+
+模型标称容量属于适配器，输入预算属于部署。配置 `inputBudget` 绝不会改写适配器元数据：1M 模型仍保留 1M 能力，而本部署按自己更小的上限进行规划、定价与接纳。比例从有效预算换算，绝对触发值与保留量按配置取值——触发值会收敛到有效预算，因此更小的模型仍会在自身窗口处压缩。
+
+预步压缩在派生某一步的请求之前运行。当定价请求达到触发值时，后端在保留已定价近期尾部的同时压缩最旧的平衡范围。如果此后请求仍超过有效输入预算——或压缩失败且仍超过——该步会以 `StepInputBudgetError` 被拒绝，且不会发送任何请求。压缩失败但请求仍在预算内的情形会被记录日志，该步继续。适配器未发布某路由容量时保持“警告一次并继续”的既有行为，除非部署配置了 `inputBudget`——那是显式上限，不需要适配器容量也会被强制执行。步级接纳属于自动压缩，因此 `auto: false` 不会安装其中任何一项，此时已配置的预算只影响程序化的 `compactIfNeeded` 调用。
 
 ### 压缩运行时会发生什么
 
@@ -111,7 +120,7 @@ kind: "package-reference"
 
 当 `auto: true` 时，串行 `agent/pre-step` listener 会在请求派生前检查压力：它通过 `ctx.tokenMeter` 为最新持久路由请求 envelope 定价，当压力越过路由模型的阈值时，先剪枝，再在保留已定价近期尾部的同时摘要最旧的平衡范围。每个选定范围都从第一个不是 `system/message` 的 surface 节点开始，因此位于 surface 节点 0 的系统提示词永不会被遮蔽；由历史内提示词更新追加的后续 `system/message` 是普通历史，范围可以遮蔽它，agent loop（智能体循环）的投影随后会在二者文本不同时用当前提示词替换节点 0（[决策规则](../../core/agent-loop/README.zh.md#understand-the-implementation)）。`agent/request-error` listener 响应提供方确认的 `CONTEXT_WINDOW_EXCEEDED`：它绕过常规阈值与保留策略，尝试一次最大平衡头部缩减，并且只在表层替换 generation 前进后才授权重试。取消全程保持最终决定权。
 
-压力策略从拥有持久路由的适配器解析容量。适配器无法为有效动态路由返回容量时，手动压力路径会抛出目标特定配置错误；自动 listener 会对该精确目标警告一次，并携带完整历史继续。
+压力策略从拥有持久路由的适配器解析容量。适配器无法为有效动态路由返回容量时，手动压力路径会抛出目标特定配置错误；自动 listener 会对该精确目标警告一次，并携带完整历史继续。解析出的有效输入预算是自动 listener 的接纳上限：预步压缩后定价请求仍超过该上限的步会以 `StepInputBudgetError` 被拒绝，而不是被发送；压缩失败但请求仍在预算内时记录日志并继续该步。
 
 ### 摘要机制
 
@@ -125,7 +134,7 @@ kind: "package-reference"
 
 ### 配置解析
 
-`resolveConfig` 验证并分离默认值，`resolveTargetPolicy` 将精确的提供方／模型覆盖合并到默认值之上，`resolveCompactSpec` 使用适配器拥有的上下文容量将合并后的策略缩放为具体 token 预算。策略解析绝不咨询模型发现（`listModels()`）；只有持久路由的容量才重要。
+`resolveConfig` 验证并分离默认值，`resolveTargetPolicy` 将精确的提供方／模型覆盖合并到默认值之上，`resolveCompactSpec` 将配置的有效输入预算收敛到适配器拥有的上下文容量，并把合并后的策略换算为具体的接纳、触发与保留预算。策略解析绝不咨询模型发现（`listModels()`）；只有持久路由的容量才重要。
 
 ### 源码地图
 

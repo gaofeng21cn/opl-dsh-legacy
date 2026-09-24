@@ -13,6 +13,7 @@
  * override equal to the composition default is still an override.
  */
 
+import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 
@@ -105,6 +106,7 @@ interface PlannedWrite {
    * afterwards; undefined when the draft is not a value the field accepts.
    */
   run: (() => Promise<boolean>) | undefined
+  op?: SettingsPathOpView
 }
 
 /**
@@ -146,6 +148,26 @@ export function textField(field: string): CardFieldSpec {
 }
 
 /**
+ * A fixed-choice field. An empty draft clears the field; any other draft that
+ * is not one of the offered values blocks the save, so a control can never
+ * write a value the Host's schema would reject.
+ * @param field - field name inside the namespace section.
+ * @param values - the values the field accepts, in display order.
+ * @returns the field's conversion spec.
+ */
+export function choiceField(field: string, values: readonly string[]): CardFieldSpec {
+  return {
+    field,
+    format: value => typeof value === 'string' ? value : '',
+    parse: (text) => {
+      const trimmed = text.trim()
+      if (trimmed === '') return { kind: 'clear' }
+      return values.includes(trimmed) ? { kind: 'set', value: trimmed } : undefined
+    },
+  }
+}
+
+/**
  * Stages one card's edits over one settings namespace and writes them on save.
  *
  * The form publishes through a snapshot store because slot components read
@@ -163,12 +185,14 @@ export class CardForm<T> {
   /**
    * @param scope - the bound settings scope for this card's namespace.
    * @param specs - the section fields this card edits.
+   * @param atomic - save section fields in one validated mutation (no secrets).
    * @param secrets - the card's write-only controls, written outside the section.
    */
   constructor(
     private readonly scope: SettingsScope<T>,
     specs: CardFieldSpec[],
     secrets: CardSecretSpec[] = [],
+    private readonly atomic = false,
   ) {
     this.specs = new Map(specs.map(spec => [spec.field, spec]))
     this.secretSpecs = new Map(secrets.map(spec => [spec.field, spec]))
@@ -262,8 +286,22 @@ export class CardForm<T> {
     this.failed = false
     this.publish()
     let landed = true
-    for (const write of writes) {
-      landed = await write() && landed
+    try {
+      if (this.atomic) {
+        const ops = plan.map((item) => {
+          if (item.op === undefined) throw new Error('Atomic cards support only section fields')
+          return item.op
+        })
+        await this.scope.mutate(ops)
+        landed = ops.every(op => op.op === 'set'
+          ? this.userLayer()?.[String(op.path[0])] === op.value
+          : !this.stored(String(op.path[0])))
+      } else {
+        for (const write of writes) landed = await write() && landed
+      }
+    } catch {
+      // A failed settings transport keeps the draft available for retry.
+      landed = false
     }
     if (landed) this.staged.clear()
     this.saving = false
@@ -288,14 +326,14 @@ export class CardForm<T> {
       }
       const spec = this.spec(field)
       if (staged.clear) {
-        if (this.stored(field)) plan.push({ field, run: () => this.clear(field) })
+        if (this.stored(field)) plan.push({ field, op: { op: 'unset', path: [field] }, run: () => this.clear(field) })
         continue
       }
       if (staged.text === spec.format(this.sectionValue(field))) continue
       const write = spec.parse(staged.text)
       if (write === undefined) plan.push({ field, run: undefined })
-      else if (write.kind === 'clear') plan.push({ field, run: () => this.clear(field) })
-      else plan.push({ field, run: () => this.store(field, write.value) })
+      else if (write.kind === 'clear') plan.push({ field, op: { op: 'unset', path: [field] }, run: () => this.clear(field) })
+      else plan.push({ field, op: { op: 'set', path: [field], value: write.value as Extract<SettingsPathOpView, { op: 'set' }>['value'] }, run: () => this.store(field, write.value) })
     }
     return plan
   }

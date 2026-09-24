@@ -25,7 +25,7 @@ import {
   type GatewayUsage,
 } from './gateway-control.ts'
 import { keyFingerprint, readAdoptedFingerprint, writeAdoptedFingerprint } from './adoption.ts'
-import { importOplGatewayKey, oplGatewayStateDirectory, readOplGatewayAccount } from './opl-credentials.ts'
+import { importOplGatewayKey, oplGatewayStateDirectories, readOplGatewayAccount } from './opl-credentials.ts'
 import type { OplGatewayAccount } from './opl-credentials.ts'
 import { clearFacts, clearSession, readFacts, readSession, writeFacts, writeSession } from './session-store.ts'
 
@@ -104,7 +104,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
       /** Models this route advertises. */
       readonly models: () => readonly GatewayAccountModel[]
       /** OPL state directory consulted as a convenience, never a requirement. */
-      readonly stateDirectory?: () => string
+      readonly stateDirectory?: () => string | readonly string[]
       /** Control transport override, for tests. */
       readonly control?: GatewayControlClient
     },
@@ -170,7 +170,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
   /** OPL's recorded account, read straight from its state directory. */
   private oplAccount(): OplGatewayAccount | undefined {
     try {
-      return readOplGatewayAccount(this.options.stateDirectory?.() ?? oplGatewayStateDirectory())
+      return readOplGatewayAccount(this.options.stateDirectory?.() ?? oplGatewayStateDirectories())
     }
     catch {
       return undefined
@@ -217,7 +217,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
     }
   }
 
-  /** Current account status: what the account page renders. */
+  /**
+   * Current account status: what the account page renders.
+   * @returns the phase, endpoint, credential state, served models, and account facts the page presents.
+   */
   @Remote
   async status(): Promise<GatewayAccountStatus> {
     const base = {
@@ -346,7 +349,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
     return { key: await this.control().createKey(accessToken, name, preferredGroup(groups)), created: true }
   }
 
-  /** Re-read the account from the gateway. */
+  /**
+   * Re-read the account from the gateway.
+   * @returns the refreshed status, or the current status when this machine holds no session.
+   */
   @Remote
   async refresh(): Promise<GatewayAccountStatus> {
     if (this.session === undefined) {
@@ -396,6 +402,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
    * The gateway-side key is disabled rather than left active: it was issued to
    * this client, and a credential nobody holds is a loose end. A key the
    * operator typed on the Models page is theirs and is left alone.
+   * @returns the signed-out status after this machine's session and key are released.
    */
   @Remote
   async signOut(): Promise<GatewayAccountStatus> {

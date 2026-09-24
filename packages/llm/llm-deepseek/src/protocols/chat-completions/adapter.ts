@@ -15,6 +15,7 @@ import type {
   ImageAttachmentAccess,
   LlmModelInfo,
   LlmProviderInfo,
+  LlmTransportStage,
   PreparedAdapterCall,
   LlmResolvedModelInfo,
   ResolvedRetryPolicy,
@@ -34,12 +35,15 @@ import type {
 import { serializeRequest, serializeRequestWithImages } from './serialize.ts'
 import { deepSeekImageRequestPricing, resolveRequestImageTarget } from '../../common/request-pricing.ts'
 import { catalogModelInfo, modelInfo } from '../../common/model-info.ts'
+import { attemptAnomaly, controlMarkerFamilies, describeAttemptAnomaly, WireObserver } from '../../common/protocol-anomaly.ts'
+import type { AttemptFacts } from '../../common/protocol-anomaly.ts'
 import type { DeepSeekAdapterOptions, DeepSeekCatalogModel, DeepSeekConnectionOptions } from '../../common/types.ts'
 import type { DeepSeekFileStore } from '../../common/file-store.ts'
 import { FileResolutionFailure, RequestFiles } from '../../common/request-files.ts'
 import { prepareRequestExtensions } from '../../common/request-extensions.ts'
-import { parseSse } from './sse.ts'
+import { parseSse, DONE } from './sse.ts'
 import { translate } from './translate.ts'
+import { ReasoningTrace } from './reasoning-trace.ts'
 import type { WireError, WireRequest } from './types.ts'
 
 const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
@@ -72,6 +76,41 @@ async function prepareRequestImages(
 }
 
 
+
+/**
+ * Describe a transport failure without carrying anything sensitive.
+ *
+ * `fetch` rejects with a wrapper (`TypeError: fetch failed`) whose `cause` holds
+ * the platform error; without unwrapping it every network fault, DNS failure,
+ * and TLS refusal reads as one identical `TRANSPORT` line. Only the error
+ * `name` and the errno-style `code` are copied, because those are a fixed
+ * vocabulary: the message can embed the endpoint, a header, or a credential.
+ * @param error - the value `fetch` rejected with.
+ * @param stage - which request phase the caller observed the failure in.
+ * @returns the diagnostic fields to attach to the `TRANSPORT` failure.
+ */
+export function transportDiagnostics(
+  error: unknown,
+  stage: LlmTransportStage,
+): { transportStage: LlmTransportStage; causeName?: string; causeCode?: string } {
+  // Undici nests the platform error one level down; a native abort or a direct
+  // throw has no cause at all.
+  const cause = error instanceof Error && error.cause !== undefined && error.cause !== null
+    ? error.cause
+    : error
+  const causeName = cause instanceof Error && cause.name.length > 0 ? cause.name : undefined
+  const rawCode = typeof cause === 'object' && cause !== null
+    ? (cause as { code?: unknown }).code
+    : undefined
+  const causeCode = typeof rawCode === 'string' && rawCode.length > 0
+    ? rawCode
+    : typeof rawCode === 'number' && Number.isFinite(rawCode) ? String(rawCode) : undefined
+  return {
+    transportStage: stage,
+    ...causeName === undefined ? {} : { causeName },
+    ...causeCode === undefined ? {} : { causeCode },
+  }
+}
 
 function providerRetryAfterMs(value: string | null): number | undefined {
   if (value === null) return undefined
@@ -232,7 +271,11 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         throw new LlmError('DeepSeek request aborted by caller', 'ABORTED', { cause: error })
       }
       if (error instanceof LlmError) throw error
-      throw new LlmError(`DeepSeek API stream from ${connection.baseURL} failed`, 'TRANSPORT', { cause: error })
+      throw new LlmError(
+        `DeepSeek API stream from ${connection.baseURL} failed`,
+        'TRANSPORT',
+        { cause: error, ...transportDiagnostics(error, 'response-body') },
+      )
     } finally {
       consumer.abort('DeepSeek stream consumer stopped')
       if (!exhausted && iterator.return !== undefined) {
@@ -254,6 +297,31 @@ export class ChatCompletionsAdapter extends LlmAdapter {
     attachments: AttachmentStore | undefined,
     onActivity: () => void,
   ): AsyncIterable<StreamChunk> {
+    const trace = ReasoningTrace.open()
+    try {
+      for await (const chunk of this.requestObserved(options, signal, connection, apiKey, userId, attachments, onActivity, trace)) {
+        trace?.safely(() => { trace.chunk(chunk) })
+        yield chunk
+      }
+    } finally {
+      trace?.safely(() => { trace.close() })
+    }
+  }
+
+  private async * requestObserved(
+    options: GenerateOptions,
+    signal: AbortSignal,
+    connection: DeepSeekConnectionOptions,
+    apiKey: string,
+    userId: AnonymousUserId,
+    attachments: AttachmentStore | undefined,
+    onActivity: () => void,
+    trace: ReasoningTrace | undefined,
+  ): AsyncIterable<StreamChunk> {
+    // One observer per attempt, and none at all when no sink is configured:
+    // with no consumer, tapping the raw payloads would cost a second parse of
+    // every chunk to build a report nobody reads.
+    const wire = this.config.onProtocolAnomaly === undefined ? undefined : new WireObserver()
     const headers = {
       'authorization': `Bearer ${apiKey}`,
       'content-type': 'application/json',
@@ -322,6 +390,7 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         ...options.purpose === undefined ? {} : { purpose: options.purpose },
       }, this.config.prepareExtensions)
+      trace?.safely(() => { trace.request(requestOptions, JSON.parse(extensions.payload) as WireRequest) })
 
       // TODO(http): adopt the Cordis HTTP service when shared transport configuration
       // outweighs its additional runtime dependencies.
@@ -338,10 +407,11 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         throw new LlmError(
           `DeepSeek API request to ${connection.baseURL} failed`,
           'TRANSPORT',
-          { cause: error },
+          { cause: error, ...transportDiagnostics(error, 'request') },
         )
       }
 
+      trace?.safely(() => { trace.response(response.status, requestId(response.headers)) })
       if (!response.ok) {
         let message = `DeepSeek API error (HTTP ${response.status})`
         let providerError: WireError['error']
@@ -372,8 +442,135 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         throw new LlmError('DeepSeek API returned no response body', 'EMPTY_RESPONSE')
       }
 
-      yield* translate(parseSse(response.body, onActivity))
+      yield* this.observeAttempt(
+        translate(this.observeWire(parseSse(response.body, onActivity), wire, trace)),
+        options,
+        requestId(response.headers),
+        wire,
+      )
       return
+    }
+  }
+
+  /**
+   * Tap raw SSE payloads into the wire observer without altering the stream.
+   *
+   * This runs before `translate`, so the observer sees the endpoint's own
+   * fields rather than the blocks they become. Removing the tap would leave the
+   * diagnostic able only to describe the translation, which cannot show whether
+   * a control marker arrived in `delta.content`, in a reasoning field, or not
+   * at all.
+   * @param payloads - raw SSE data payloads.
+   * @param wire - the observer to feed.
+   * @returns the same payloads, unchanged and un-delayed.
+   */
+  private async * observeWire(
+    payloads: AsyncIterable<string>,
+    wire: WireObserver | undefined,
+    trace: ReasoningTrace | undefined,
+  ): AsyncIterable<string> {
+    if (wire === undefined && trace === undefined) {
+      yield* payloads
+      return
+    }
+    for await (const payload of payloads) {
+      trace?.safely(() => { trace.payload(payload) })
+      if (payload === DONE) wire?.markComplete()
+      else wire?.observe(payload)
+      yield payload
+    }
+  }
+
+  /**
+   * Forward one attempt's chunks while collecting the produced-block facts.
+   *
+   * Evidence comes from each settled `block-end`, whose block is the exact text
+   * or reasoning the attempt committed, so a marker split across deltas is still
+   * recognized. Reporting happens once, after the translation settles, and only
+   * for an attempt the two-sided comparison finds anomalous. Matched text is
+   * never retained.
+   * @param chunks - the translated chunk stream for one attempt.
+   * @param options - the request, for the route identity the report names.
+   * @param id - provider request id from the response headers, when present.
+   * @param wire - the raw-wire observer for this attempt, absent when no sink is configured.
+   * @returns the same chunks, unchanged and un-delayed.
+   */
+  private async * observeAttempt(
+    chunks: AsyncIterable<StreamChunk>,
+    options: GenerateOptions,
+    id: ReturnType<typeof ProviderRequestId> | undefined,
+    wire: WireObserver | undefined,
+  ): AsyncIterable<StreamChunk> {
+    if (wire === undefined) {
+      yield* chunks
+      return
+    }
+    let textChars = 0
+    let reasoningChars = 0
+    let structuredToolCalls = 0
+    let finishReason = 'none'
+    const textMarkers = new Set<string>()
+    const reasoningMarkers = new Set<string>()
+    try {
+      for await (const chunk of chunks) {
+        if (chunk.type === 'block-end') {
+          if (chunk.block.type === 'tool-call') structuredToolCalls += 1
+          else if (chunk.block.type === 'text') {
+            textChars += chunk.block.text.length
+            for (const family of controlMarkerFamilies(chunk.block.text)) textMarkers.add(family)
+          } else if (chunk.block.type === 'reasoning') {
+            reasoningChars += chunk.block.text.length
+            for (const family of controlMarkerFamilies(chunk.block.text)) reasoningMarkers.add(family)
+          }
+        } else if (chunk.type === 'finish') {
+          finishReason = chunk.reason.kind
+        }
+        yield chunk
+      }
+    } finally {
+      this.reportProtocolAnomaly(options, id, {
+        wire: wire.facts(),
+        blocks: {
+          textChars,
+          reasoningChars,
+          textMarkers: [...textMarkers],
+          reasoningMarkers: [...reasoningMarkers],
+          structuredToolCalls,
+          finishReason,
+        },
+      })
+    }
+  }
+
+  /**
+   * Hand one attempt's comparison to the configured sink.
+   *
+   * A diagnostic must never change the attempt's outcome: a failing sink cannot
+   * fail a model request that already succeeded, and it cannot mask the error
+   * that failed one, which is why every sink or classification fault is
+   * swallowed here rather than propagating out of the caller's `finally`.
+   * @param options - the request, for the route identity the report names.
+   * @param id - provider request id from the response headers, when present.
+   * @param facts - the raw and produced facts for this attempt.
+   */
+  private reportProtocolAnomaly(
+    options: GenerateOptions,
+    id: ReturnType<typeof ProviderRequestId> | undefined,
+    facts: AttemptFacts,
+  ): void {
+    const report = this.config.onProtocolAnomaly
+    if (report === undefined) return
+    try {
+      const anomaly = attemptAnomaly({ ...facts, ...id === undefined ? {} : { requestId: String(id) } })
+      if (anomaly === undefined) return
+      report({
+        provider: options.provider,
+        model: options.model,
+        report: describeAttemptAnomaly('chat-completions', anomaly),
+      })
+    } catch (_sinkOrClassificationFailure) {
+      // A diagnostic is observational: it neither fails nor rescues an attempt,
+      // so its own fault stops here instead of reaching the caller.
     }
   }
 }

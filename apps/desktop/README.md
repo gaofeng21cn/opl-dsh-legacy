@@ -2,7 +2,51 @@
 
 English | [中文](README.zh.md)
 
-The desktop application is an Electron shell around the dsh Web UI. It opens no listening port: a bundled upstream Node.js child boots the installed dsh project, versioned framed byte pipes carry Fetch requests and streaming responses without an outer Base64 envelope, Node IPC carries lifecycle control, and `dsh-app://` serves the matching client assets.
+The desktop application is an Electron shell around the dsh Web UI. Its renderer uses private pipes: a bundled upstream Node.js child boots the installed dsh project, versioned framed byte pipes carry Fetch requests and streaming responses without an outer Base64 envelope, Node IPC carries lifecycle control, and `dsh-app://` serves the matching client assets.
+
+## Desktop control
+
+<a id="desktop-control"></a>
+
+The running OPL desktop publishes an authenticated endpoint on 127.0.0.1 and a private binding at $DSH_HOME/profiles/desktop/control.json. Set DSH_DESKTOP_CONTROL=0 before launch to disable it. The binding token authorizes session access; browser-origin requests and methods outside the allowlist are rejected. Windows inherits current-user directory permissions.
+
+Windows includes opl-dsh-control.cmd with bundled Node.js. Commands are list, create [absolute-directory], send SESSION --file PROMPT.txt [--mode queue|steer], steer-queued SESSION ITEM, read SESSION, stop SESSION, wait SESSION [--turn N] [--timeout SECONDS], projects, and move-session SESSION (--project WORKSPACE_ID | --out). Send returns admission and a request ID, not completion; reuse the ID with --request-id when retrying. The default `--mode queue` appends the prompt for a later turn; `--mode steer` hands it to the backend's existing steering path, which applies the same safety rules as the GUI and decides placement from the Session's own state, so the command never promises to interrupt a running shell command. The receipt echoes the requested mode as `requestMode` beside the server's `accepted`; `accepted` is admission, not model execution or reading. `steer-queued SESSION ITEM` converts one still-pending queue occurrence into steering by item ID through `session/updateQueue`, so it succeeds only while that item is pending and the current turn accepts steering; a refusal exits 1 with `session/steer-unavailable` or `session/queue-item-not-found` and leaves the item queued rather than resending it as a prompt. Read observes durable records and the live assistant stream. `wait` blocks on the Host's event stream until the Session completes, fails, is cancelled, or needs input, and prints the observed outcome with its turn; it never polls, and a `--timeout` expiry exits 3 with a still-running result rather than reporting a false completion. `projects` prints the registered projects with their Session membership, and `move-session` places one Session in a project or outside every project without changing its working directory or history. Commands address the GUI's same sessions and retain normal permission approvals. The rpc --file REQUEST.json command accepts allowed named Remote calls, including oplSearch settings and tests.
+
+## Window, tray, and notifications
+
+<a id="window-tray-and-notifications"></a>
+
+Closing the main window is a decision the shell makes, not the renderer. On Windows and Linux the first close asks whether to keep the application running in the tray or to exit, with a checkbox that remembers the answer; the tray answer is the default and the escape answer because hiding a window is recoverable and stopping the application is not. The remembered answer is stored at `$DSH_HOME/desktop/desktop-preferences.json`, applies to the next close without a restart, and can be changed back to "Ask every time" in the Desktop Plugins window under **Window and Notifications**. macOS keeps its platform behavior: closing the window closes it, and the Dock reopens it.
+
+While the application stays in the tray, the Host and its tasks keep running and the renderer stays connected, so task events still reach the shell. The tray icon restores and focuses the primary window and carries an explicit Exit entry; both go through the same process-lifetime single-instance owner, so a second launch focuses the existing window instead of creating another. Exit always takes the normal quit path — the Host stops, its children are awaited, and the tray icon is removed before the process leaves. A build without a usable tray icon does not intercept the close at all, which keeps the historical close-means-quit behavior; neither does a desktop that refuses to create one.
+
+The application reports four task events as Windows system notifications: a run stopped, a run failed, an approval is pending, and an answer is pending. Notifications appear only while the application is not in the foreground, and **Window and Notifications** turns them off. Clicking one focuses the window and opens the Session it names. The application renderer reports events over `dshDesktop.notifications`; the shell owns the policy, so a report carries no message text, prompts, tool arguments, error messages, or credentials. The one Session-derived value it carries is the Session's display title, bounded to 120 code points and collapsed to a single line. Report identities are remembered, so a repeated delivery of one event inside one renderer — a reconnected event stream, a re-delivered pending request — is dropped rather than shown twice; a run outcome also carries an identity minted per renderer, so a renderer that reloads cannot make a new run look like one already reported. A disconnection is never reported as a finished task, because the Host publishes no status event for it, and a subagent's outcome is the parent turn's business rather than the user's own task.
+
+Windows attributes a toast to an application through an AppUserModelID. The NSIS installer registers electron-builder's `appId` on the shortcuts it creates, and packaging writes the same value into the packaged manifest as `dshAppId` (`extraMetadata`), which the shell publishes with `app.setAppUserModelId` before any window opens. An unpackaged run has no installer-written shortcut, so it publishes no identity unless `DSH_DESKTOP_APP_ID` names one. Verification on a real installation — toast identity, Focus Assist behavior, and the installed shortcut's AppUserModelID — requires an installed build and is not covered by the unit tests.
+
+## Execution environments
+
+The shell runs its Host in one of two environments, chosen in the Desktop Plugins window and stored at `$DSH_HOME/desktop/execution-environment.json`. **Windows Native** (the default, and the behavior of every existing installation) runs the bundled Windows Node.js over framed byte pipes. **WSL2** runs the complete dsh Host inside one installed distribution using that distribution's Linux Node, paths, tools, and sandbox.
+
+The persisted selection decides the environment the next launch runs in, so choosing WSL2 and restarting starts the WSL2 Host. `DSH_DESKTOP_ENVIRONMENT` (with `DSH_DESKTOP_WSL_DISTRO`) is an explicit per-launch override that wins over it for a debugging or scripted run. A selection that cannot be honored fails loudly on the startup page; the shell never falls back to Windows Native, which would run the user where their Linux sessions and plugins are not.
+
+Switching requires an application restart, and a running session keeps the environment it started in; the settings surface reports the in-use environment and the next-launch environment separately rather than implying a live change. A distribution is offered only after it passes a one-shot probe (`wsl.exe -d <distro> --exec sh -lc 'node --version'`), so an unusable one is listed with its reason and cannot be selected.
+
+WSL2 starts the Host once per launch and keeps it for the whole session; `wsl.exe` performs launch, probing, and lifecycle only, and is never used to wrap an individual tool call. The Linux Host binds an ephemeral loopback port, publishes a versioned binding (endpoint, per-launch bearer token, process id) through an owner-only file, and serves every request over that authenticated connection. Both transports dispatch to the same plugin tree, Remote gateway, asset router, and client assets, so there is one agent implementation rather than two. The Windows side refuses a binding whose transport version differs, reports a handshake deadline, and reports a Host that dies mid-session. Readiness is the endpoint accepting a connection, not the binding file appearing: WSL2 relays Windows loopback connections into the distribution and that relay lags the distribution's own bind by about a second.
+
+Every path the Linux Host reads or writes is translated before launch: the packaged payload, the Desktop profile, and the binding file all live on a Windows drive, which the distribution reaches through `/mnt/<drive>`. Nothing about the Windows process environment crosses into the distribution — `WSLENV` is set explicitly so an ambient Windows value cannot forward this process's `DSH_HOME` or its credentials. `DSH_DESKTOP_WSL_HOME` is the one supported override and takes an absolute Linux path.
+
+Paths follow the environment that must use them. A Windows drive path becomes `/mnt/<drive>/…` inside WSL2 and back; `\\wsl$\<distro>\…` becomes the Linux path, and a path naming a different distribution is refused. A `/mnt/<drive>` project is allowed but crosses the Linux/Windows filesystem boundary on every file operation, so the settings surface warns that a project inside the distribution is much faster. No project is copied or moved.
+
+Windows Native and each distribution keep separate runtime state. Windows Native keeps the existing layout below `$DSH_HOME`; the WSL2 Host keeps its Harness home, profile, sessions, caches, and credentials inside the distribution (`~/.dsh-opl` unless `DSH_DESKTOP_WSL_HOME` overrides it). Two environments therefore never write one database, and a Windows-staged profile — whose native modules are Windows binaries — is never handed to Linux.
+
+Tools running in the same distribution reach that Host's control endpoint directly over loopback inside the distribution, without crossing Windows interop per call; the Windows GUI reaches the same Host through the shell's connection. The [Agent Note](../../.agents/notes/implemented/architecture/2026-09-22-desktop-execution-environments.md) owns the rationale and the deferred coordination work.
+
+### Packaging the Linux payload
+
+A Windows package carries the Linux runtime under `resources/wsl`: a Linux Node.js executable, a dsh tree whose production install ran inside a distribution so its native modules are Linux builds, and a `wsl-runtime.json` manifest. `prepare:wsl` builds it and `package-target.ts` runs it for Windows targets before electron-builder maps the tree into `extraResources`; a packaging machine without a usable WSL2 distribution fails there rather than shipping a package that offers an environment it cannot serve. `verify-opl-package.mjs` requires the payload in every Windows application tree and checks the executable is a Linux x64 ELF image, so a package cannot advertise WSL2 without its Linux Node and Host files.
+
+Settings → Search selects local Bing retrieval or OPL cloud search. Cloud mode accepts an account model ID and tests actual cited sources before saving. Discovery alone does not prove search support. Local retrieval depends on the computer's network/proxy; cloud retrieval runs at the provider, while subsequent page fetches remain local. Counters record calls, failures, latency and returned token usage by model/session. Missing usage stays unknown; counters are not price estimates.
 
 ## Key technical decisions
 
@@ -13,7 +57,7 @@ The desktop application is an Electron shell around the dsh Web UI. It opens no 
 | Package sources | Core installation at startup adds work even when offline. | `extraResources/dsh` carries a complete production dependency tree; the profile installs only external plugins. |
 | Shared modules | Host APIs can depend on module identity. | Desktop links every bundled first-party package into the profile using directory symlinks, or Windows junctions; ordinary plugin dependencies remain local. |
 | State ownership | Sharing executable dependency graphs would let CLI and Desktop change each other's dsh, Cordis, plugin, or native-module versions, while two desktop processes could race on the same profile. | Electron acquires its process-lifetime single-instance lock before any profile access and exclusively owns `$DSH_HOME/profiles/desktop` plus its package-manager state. CLI and Desktop share supported product data under `$DSH_HOME`, but never executable packages, plugin activation, lockfiles, or `node_modules`. |
-| Transport | A listening Web service adds port ownership, authentication, CORS, and exposure concerns; Electron and upstream Node.js also need an explicit cross-process protocol. | The application opens no Web port. `dsh-app://` carries Web assets and Fetch traffic; framed byte pipes carry bounded request and response chunks with backpressure, while Node IPC carries only child lifecycle control. |
+| Transport | A listening Web service adds port ownership, authentication, CORS, and exposure concerns; Electron and upstream Node.js also need an explicit cross-process protocol. | The renderer has no Web port. OPL desktop control uses a separate authenticated loopback endpoint. `dsh-app://` carries Web assets and Fetch traffic; framed byte pipes carry bounded request and response chunks with backpressure, while Node IPC carries only child lifecycle control. |
 | Plugin changes | Package installation and Host startup can fail. | Desktop stops the Host and modifies the current profile directly. Failures retain partial changes for explicit repair; there is no automatic profile rollback. |
 | Updates | Independent shell and dsh updates would recreate version splits, while unchanged shell blocks should not require a complete transfer. | The Electron shell, matching dsh runtime, Node.js, and pnpm form one signed update unit. Platform update artifacts may reuse unchanged blocks, but runtime version selection never splits from the Desktop release. |
 
@@ -37,7 +81,7 @@ The signed `resources/dsh/desktop-runtime.json` binds the shell version, bundled
 4. Plugin add, update, and remove operations use bundled pnpm and Desktop-owned package-manager state. Reserved host packages must be peers; nested copies and aliases of shared packages fail validation. Ordinary plugin dependencies must resolve inside the profile.
 5. Plugin changes stop the backend before modifying the current profile. Successful preparation starts the Host. Package or Host startup failures retain modified files and report the error. Unfinished package operations retain a marker so the next launch retries the locked installation and pending builds. Desktop creates no staging directories, activation journals, or rollback copies.
 
-The loading page does not depend on the Host. Errors offer restart and reinstallation guidance. Disabling plugins and resetting Desktop are offered only when packaged application resources support profile recovery; development and early initialization failures expose restart alone. The plugin manager remains available through the application menu. Runtime identity is checked before any backend starts; plugin changes have no automatic rollback.
+The loading page does not depend on the Host. Errors offer restart and reinstallation guidance. Disabling plugins and resetting Desktop are offered only when packaged application resources support profile recovery; development and early initialization failures expose restart alone. The plugin manager remains available through the application menu; Windows does not bind Ctrl+, to this entry or display a shortcut hint. Native application and editing menus follow the language selected in the application, including changes made while it is running. Runtime identity is checked before any backend starts; plugin changes have no automatic rollback.
 
 Reset deletes every entry in `$DSH_HOME/profiles/desktop` except the held transaction lock, then initializes the built-in profile. It removes Desktop configuration and installed third-party packages without a backup. Shared tasks, settings, and the Harness-home `.env` are untouched. Shell resource and preload failures use a self-contained document with the available recovery actions and diagnostics; its controls do not require preload.
 
@@ -145,6 +189,22 @@ pnpm run package:desktop:win:x64:unsigned
 
 The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, omits automatic-update configuration, strips signing credentials, and creates no release completion record. It does not require EV credentials or an update origin. The signed packaging and upload commands retain their release requirements.
 
+### OPL packaging for macOS and Windows
+
+This distribution packages through its own electron-builder configuration rather than the upstream one. `electron-builder.opl.mjs` supplies the OPL identity, both platform icons, and the artifact names, and leaves `electron-builder.config.mjs` untouched so rebasing on upstream stays small. `scripts/package-target.ts --config <file>` selects between them, and `DSH_DESKTOP_BUILDER_CONFIG` supplies the same value from the environment when no flag is present.
+
+```sh
+# macOS arm64, signed and notarized through the OPL identity
+pnpm run package:opl:desktop:mac:arm64
+
+# Windows x64, NSIS installer and portable executable, unsigned
+pnpm run package:opl:desktop:win:x64:unsigned
+```
+
+Every target writes below `.desktop-build/targets/<target>/`: the macOS release in `artifacts/`, the unsigned Windows release in `unsigned-artifacts/`, and the unpacked application in `win-unpacked/` below whichever of those two the target used (`mac-arm64/OPL DSH.app` for the macOS target). The Windows artifacts are `opl-dsh-<version>-win-x64-setup.exe` and `opl-dsh-<version>-win-x64-portable.exe`, so the release identity travels in the file name.
+
+Install a Windows build with `opl/install-windows.ps1`. It runs the NSIS installer when the build produced one and copies `win-unpacked` otherwise, then re-verifies the installed tree with `opl/verify-opl-package.mjs`; `-KeepPrevious` retains the build it replaced.
+
 ### Windows EV signing
 
 Windows packaging fixes the 7-Zip filter to `BCJ` for compatibility with the bundled NSIS decoder. This preserves ARM64 binaries carried by dependencies in x64 installers; automatic ARM64 filtering produces entries that this decoder cannot extract.
@@ -200,3 +260,13 @@ An unpackaged Electron process uses `.desktop-build/development/project` under i
 - Release signing, notarization, update hosting, and previous-version installed-artifact qualification require the production release environment.
 - Desktop plugins with dependency lifecycle scripts are rejected unless their package appears in the desktop project's reviewed `allowBuilds` policy.
 - The desktop shell shares sessions, settings, credentials, workspaces, and storage under `$DSH_HOME` with CLI dsh, while executable packages, plugin activation, lockfiles, and package-manager state remain separate.
+- Switching execution environments needs an application restart; the running session's Host is never replaced in place.
+- The WSL2 environment requires an installed WSL2 distribution and the Linux payload this build ships under `resources/wsl`; without either, the launch fails with the specific reason rather than falling back to Windows Native.
+- Packaging a Windows release requires a usable WSL2 distribution on the build machine, because the Linux tree's native modules must be installed by a Linux package manager.
+- WSL2 distributions are discovered from the Windows registry, so a distribution installed for another Windows user is not offered.
+- Desktop Plugins manages the Windows Native profile only; a WSL2 environment uses the profile inside its distribution.
+- `session.wait` reports `needs-input` for approvals only; `user-questions` and the other interactive pauses publish no durable settlement.
+- Nothing coordinates a Codex desktop task on the DSH event stream. `session.wait` is the stable interface a future resident coordinator would use; driving Codex automation remains a periodic inspection fallback, not a completion signal.
+- A task notification reports the Client's own subscribed facts, so a cancelled run appears as "task finished": the durable `turn/end` reason is Host-only and does not reach the renderer. Notifications also require a loaded application renderer; the Host has no notification surface of its own.
+- A notification body carries the Session's display title, which the Client derives from the first user message when the Session has none. Windows shows a notification on the lock screen when the user allows notifications there, so that title — and nothing else from the Session — is readable without unlocking.
+- Notification identity, toast appearance, and the installed shortcut's AppUserModelID are verified only by an installed build on Windows, not by the unit tests.

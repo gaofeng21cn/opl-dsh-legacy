@@ -55,6 +55,10 @@ The seam is not an executor: mount exactly one provider per composition, and the
     cwd: /path/to/workspace
 ```
 
+### Windows Agent shell and confined Git Bash
+
+Windows Native profiles accept `shell.agentShell: powershell` (default) or `git-bash` in `settings.yaml`. `shell.gitBashPath` optionally pins an absolute Git for Windows executable; otherwise standard installations and PATH are searched. WSL launchers and non-Git installations are rejected. The choice and Git Bash path apply after a complete application restart; ordinary command budgets remain live. Confined Git Bash launches are brokered: the launch directory must resolve inside the mode's granted roots with MSYS and Windows spellings, `..` traversal, drive switches, and reparse points unified into one comparison, the inherited environment is pinned to the boundary, and a capability probe runs the real backend against the real executable and refuses every dimension it cannot prove. The probe's second dimension is the mode's write boundary itself: an in-workspace write must follow the mode (created under `workspace-write`, denied under `read-only`) and a write outside every writable root must be denied. Paths are normalized by the mounts Git for Windows defines — `/c/…` is a drive, `/tmp/…` the user temp directory, `//server/share/…` a UNC share, and every other absolute MSYS path sits under the installation root behind `/` — while `/mnt/…` and `/cygdrive/…` are refused as Windows Subsystem for Linux and Cygwin drive spellings Git Bash does not mount. Git Bash therefore still supports only explicitly authorized full-access execution on Windows: the restricted-token backend cannot initialize the MSYS runtime, and the refusal reports the observed diagnostic. The persistent PTY terminal keeps the equivalent static refusal, because no probe can authorize a session shell. No shell selection changes permission policy, session directories, or the WSL environment.
+
 ### The shared exit-status contract
 
 Tool results end with a machine-readable exit marker — `[exit code: N]` or `[killed by signal: X]` — so the model can always tell how a command ended. The seam owns that marker format and the `parseExitStatus` helper that splits a rendered result back into its output body and structured exit status, keeping the `bash` and `pwsh` tools from drifting on it.
@@ -83,6 +87,8 @@ The package is one role of a standard capability seam: the Service Definition th
 | [`src/index.ts`](src/index.ts) | Plugin entry: abstract `ShellExecutor` service and the shared settings namespace |
 | [`src/types.ts`](src/types.ts) | Request/spec vocabulary, `ShellRunResult`, `ShellProcess`, and sandbox facts |
 | [`src/render.ts`](src/render.ts) | `parseExitStatus`: the exit-status marker contract the shell tools share |
+| [`src/agent-shell.ts`](src/agent-shell.ts) | Windows Agent-shell selection: Git for Windows resolution, identification, and the PTY's static confinement refusal |
+| [`src/git-bash-broker.ts`](src/git-bash-broker.ts) | Git Bash broker: the confined-launch decision from probed capability, MSYS/Windows path unification, and the launch-parameter guard |
 | — | No runtime invariant companion is published; this stateless Service Definition owns request/result types, while executors and policy own observations. |
 
 ### Settings namespace

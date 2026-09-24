@@ -8,6 +8,7 @@ import type {
 import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { Button, IconChevronDownOutline14, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
+import type { ChatNode } from '../contract/chat-nodes.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
@@ -217,10 +218,23 @@ const ChatNodeList = memo(function ChatNodeList({ order, ...seatProps }: ChatNod
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, loadOlder, loadThrough, loadImage, openView, chatScroll, forkAt, fileMentions,
+  editPrompt, rewindPrompt,
   useTranscriptView, useProjection, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const nodeStore = useChat(s => s.nodes)
+  // The Host owns the rule (only the last direct human prompt is editable); the
+  // view mirrors it from the same append-origin rows so no other row offers the
+  // affordance. A stale mirror only ever loses the button: the Host still refuses.
+  const editablePromptSeq = useMemo(() => {
+    let latest: number | undefined
+    for (const key of order) {
+      const node = nodeStore.get(key) as ChatNode | undefined
+      if (node?.kind !== 'user' && node?.kind !== 'steering') continue
+      latest = latest === undefined ? node.data.seq : Math.max(latest, node.data.seq)
+    }
+    return latest
+  }, [order, nodeStore])
   // The rail's items are accumulated in the Chat snapshot, so this selector is
   // both the data and its change signal: the array identity moves only when a
   // Turn enters, leaves, or changes its preview.
@@ -228,9 +242,12 @@ export function ChatView({
   // Host-computed whole-log outline; the merge is view-layer only (the
   // conversation snapshot never carries projection values).
   const turnOutline = useProjection('turnOutline')
+  // Turns a landed prompt rewrite emptied: the outline still names them, but
+  // their rows are gone, so the rail drops their marks.
+  const supersededTurns = useChat(s => s.supersededTurns)
   const railItems = useMemo(
-    () => mergeTurnRailItems(turnNavigationItems, turnOutline),
-    [turnNavigationItems, turnOutline],
+    () => mergeTurnRailItems(turnNavigationItems, turnOutline, supersededTurns),
+    [turnNavigationItems, turnOutline, supersededTurns],
   )
   const timeline = useChat(s => s.timeline)
   const inbox = useSession(s => s.queue)
@@ -794,6 +811,9 @@ export function ChatView({
             openSkill={openSkill}
             inspectCall={inspectCall}
             forkAt={forkAt}
+            {...editablePromptSeq === undefined ? {} : { editablePromptSeq }}
+            editPrompt={editPrompt}
+            rewindPrompt={rewindPrompt}
             loadImage={loadImage}
             renderMessageImages={renderMessageImages}
             fileMentions={fileMentions}

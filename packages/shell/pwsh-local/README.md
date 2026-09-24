@@ -27,6 +27,10 @@ English | [中文](README.zh.md)
 
 Mount this executor when a composition needs PowerShell command execution — typically on Windows — without confinement. It registers as `ctx.shell`, and the model-facing `pwsh` tool works over it immediately: an agent calls the tool, and the command runs as a fresh `pwsh -Command` process with the budgets below.
 
+### The shared Agent shell settings
+
+The shared [shell settings](../shell/README.md) also expose the Native Agent shell choice and Git Bash path while PowerShell is active. Saving a Git Bash choice validates the executable before persistence; switching providers and model-facing tools requires a complete restart. Command budgets keep their existing live-update behavior.
+
 ### When to choose it
 
 It is the Windows counterpart of `dsh-bash-local`: choose it where `pwsh` is the platform shell, so a composition can swap the POSIX rows for the pwsh rows and keep the same semantics. The executor resolves the `pwsh` executable from an explicit `pwshPath`, well-known Windows install locations, PATH entries, or Windows PowerShell 5.1 as a last resort. For unconfined execution it is the default; compose `dsh-pwsh-sandbox` when commands need the sandbox capability.

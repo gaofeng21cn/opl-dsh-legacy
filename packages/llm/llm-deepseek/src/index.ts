@@ -39,6 +39,15 @@ export {
   resolveRequestImageTarget,
 } from './common/request-pricing.ts'
 export { deepSeekImageTokens, deepSeekRequestImageDimensions } from './common/image-tokens.ts'
+export { attemptAnomaly, controlMarkerFamilies, describeAttemptAnomaly, WireObserver } from './common/protocol-anomaly.ts'
+export type {
+  AttemptAnomaly,
+  AttemptFacts,
+  BlockFacts,
+  ProtocolAnomalyFinding,
+  WireFacts,
+  WireFieldTally,
+} from './common/protocol-anomaly.ts'
 export { DeepSeekFileStore, MAX_IMAGE_BYTES } from './common/file-store.ts'
 export type { DeepSeekFileConnection, DeepSeekFilePolicy, DeepSeekFileReference } from './common/file-store.ts'
 export { DeepSeekFilesClient, MAX_FILE_EXPIRY_SECONDS, MAX_FILE_UPLOAD_BYTES, MAX_STORED_FILE_BYTES, MAX_STORED_FILE_COUNT, MIN_FILE_EXPIRY_SECONDS } from './common/files-api.ts'
@@ -110,6 +119,11 @@ export function apply(ctx: Context, config: Config): void {
     options,
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(`llm-deepseek: unusable Messages replay state on assistant history for route "${provider}/${model}"; sending provider-neutral content (${reason})`)
+    },
+    onProtocolAnomaly: ({ provider, model, report }) => {
+      // Control syntax that arrived as visible text is never executed; this
+      // record is what makes the next occurrence diagnosable without raw SSE.
+      ctx.logger.warn(`llm-deepseek: control-marker anomaly on route "${provider}/${model}"; ${report}`)
     },
     resolveApiKey,
     resolveUserId,

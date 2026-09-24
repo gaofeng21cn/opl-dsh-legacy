@@ -27,6 +27,10 @@ kind: "package-reference"
 
 当组合需要执行 PowerShell 命令——通常是在 Windows 上——且不需要隔离时，挂载此执行器。它注册为 `ctx.shell`，面向模型的 `pwsh` 工具会立即基于它工作：agent（智能体）调用工具，命令即以全新 `pwsh -Command` 进程按下面的预算运行。
 
+### 共享的 Agent shell 设置
+
+PowerShell 生效时，共享 [shell 设置](../shell/README.zh.md)也提供 Native Agent shell 选项及 Git Bash 路径。保存 Git Bash 选项前会验证可执行文件；切换提供者及模型工具需要完全重启。命令预算保留原有的实时更新行为。
+
 ### 何时选择
 
 它是 `dsh-bash-local` 的 Windows 对应实现：当 `pwsh` 是平台 shell 时选择它，组合即可把 POSIX 行换成 pwsh 行并保持相同的语义。执行器从显式 `pwshPath`、常见的 Windows 安装位置、PATH 条目，或作为最后手段的 Windows PowerShell 5.1 解析 `pwsh` 可执行文件。非隔离执行时它就是默认选择；需要沙箱能力时组合 `dsh-pwsh-sandbox`。

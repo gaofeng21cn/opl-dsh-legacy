@@ -1,14 +1,18 @@
 /**
- * Electron child-process entry: boots the desktop project without a listening
- * socket and carries API plus validated Web assets over framed byte pipes.
+ * Electron child-process entry: carries renderer API and assets over private
+ * pipes and exposes authenticated local session control.
  * @module @deepseek-ai/dsh-desktop-host
  */
 
 import { createRequire } from 'node:module'
+import { startControlBridge } from './control-bridge.ts'
+import { ensureDesktopProfile } from './desktop-profile.ts'
+import { serveWslTransport, WSL_DEFAULT_HOME_DIR, WSL_HOME_ENV } from './wsl-serve.ts'
 import { closeSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
-import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
+import { dirname, extname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
@@ -24,7 +28,7 @@ import {
 } from '@deepseek-ai/dsh-app-boot'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
 import { DSH_LAUNCH_ENVIRONMENT_KEY } from '@deepseek-ai/dsh-launch-environment'
-import type {} from '@deepseek-ai/dsh-api-gateway'
+import type { TypertGateway } from '@deepseek-ai/dsh-api-gateway'
 import type { ConnectionFetchHandler } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-client-modules'
 import { renderIndexInjections, type IndexInjection } from '@deepseek-ai/dsh-host-webserver'
@@ -283,6 +287,83 @@ interface NodeRequestInit extends RequestInit {
 }
 
 /**
+ * Boot one installed desktop npm project and return its composed Host.
+ *
+ * Both transports share this composition: the byte-pipe controller the
+ * Electron shell uses on Windows Native and the loopback server a WSL2
+ * distribution serves. Selecting a transport must not select a different agent
+ * implementation, so the plugin tree, Remote gateway, and asset handling are
+ * built exactly once here.
+ *
+ * @param runtimeDir - immutable dsh packages supplied by the Electron application.
+ * @param projectDir - active or staged Electron-owned desktop profile.
+ * @param options - development-only allowance for workspace-linked bundle packages.
+ * @returns the booted context and the handlers every transport dispatches to.
+ */
+export async function composeDesktopHost(
+  runtimeDir: string,
+  projectDir: string,
+  options: { allowLinkedPackages?: boolean } = {},
+): Promise<DesktopHostCore> {
+  const absoluteRuntime = resolve(runtimeDir)
+  const absoluteProject = resolve(projectDir)
+  mkdirSync(absoluteProject, { recursive: true })
+  const rootConfig = join(absoluteProject, ROOT_CONFIG_FILENAME)
+  writeFileSync(rootConfig, ROOT_CONFIG)
+  const environment = loadLayeredEnv('dsh desktop')
+  const composition = desktopComposition(absoluteRuntime, absoluteProject, options.allowLinkedPackages === true)
+  const resolution = await createProfileResolutionGeneration({
+    installAnchor: composition.installAnchor,
+    profile: composition.profile,
+  })
+  const ctx = await boot('dsh desktop', rootConfig, structuredClone(composition.patches), async (hostCtx) => {
+    hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, environment)
+    await hostCtx.plugin(PluginPackages, { generation: resolution })
+    provideCmdline(hostCtx, { args: [], exit: () => {} })
+  })
+  const connection = ctx.get('connection')
+  const clientModules = ctx.get('clientModules')
+  const gateway = ctx.get('typertGateway')
+  if (connection === undefined || clientModules === undefined || gateway === undefined) {
+    await ctx.fiber.dispose()
+    throw new Error('dsh desktop: composition did not provide connection, typertGateway, and clientModules')
+  }
+  let disposing: Promise<void> | undefined
+  return {
+    ctx,
+    // The shared fetch handler and stream handler below are the same routers
+    // the Electron shell reaches over its byte pipes.
+    api: connection.createSharedFetchHandler('/api'),
+    assets: assetHandler(ctx, absoluteRuntime),
+    streams: remoteStreamHandler(ctx),
+    gateway,
+    dshVersion: dshVersion(absoluteRuntime),
+    dispose: async () => {
+      disposing ??= ctx.fiber.dispose()
+      await disposing
+    },
+  }
+}
+
+/** Composed Host handlers and lifecycle shared by every transport. */
+export interface DesktopHostCore {
+  /** Cordis context owning every composed plugin. */
+  readonly ctx: Context
+  /** Remote API router serving `/<prefix>/…`. */
+  readonly api: ConnectionFetchHandler
+  /** Version-matched client asset router. */
+  readonly assets: ConnectionFetchHandler
+  /** Live Remote stream endpoint. */
+  readonly streams: ConnectionFetchHandler
+  /** Remote gateway the control bridge dispatches through. */
+  readonly gateway: TypertGateway
+  /** Installed dsh version carried by this host. */
+  readonly dshVersion: string
+  /** Stop the composed Host and await complete teardown. */
+  dispose(): Promise<void>
+}
+
+/**
  * Boot one installed desktop npm project.
  * @param runtimeDir - immutable dsh packages supplied by the Electron application.
  * @param projectDir - active or staged Electron-owned desktop profile.
@@ -296,35 +377,15 @@ export async function runDesktopHost(
   writeResponse: (frame: Buffer) => Promise<void>,
   options: { allowLinkedPackages?: boolean } = {},
 ): Promise<DesktopHostController> {
-  const absoluteRuntime = resolve(runtimeDir)
   const absoluteProject = resolve(projectDir)
-  mkdirSync(absoluteProject, { recursive: true })
-  const rootConfig = join(absoluteProject, ROOT_CONFIG_FILENAME)
-  writeFileSync(rootConfig, ROOT_CONFIG)
-  const environment = loadLayeredEnv('dsh desktop')
-  const composition = desktopComposition(absoluteRuntime, absoluteProject, options.allowLinkedPackages === true)
-  const resolution = await createProfileResolutionGeneration({
-    installAnchor: composition.installAnchor,
-    profile: composition.profile,
-  })
-  let current: Context | undefined
-  const ctx = await boot('dsh desktop', rootConfig, structuredClone(composition.patches), async (hostCtx) => {
-    current = hostCtx
-    hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, environment)
-    await hostCtx.plugin(PluginPackages, { generation: resolution })
-    provideCmdline(hostCtx, { args: [], exit: () => {} })
-  })
-  current = ctx
-  const connection = ctx.get('connection')
-  const clientModules = ctx.get('clientModules')
-  const gateway = ctx.get('typertGateway')
-  if (connection === undefined || clientModules === undefined || gateway === undefined) {
-    await ctx.fiber.dispose()
-    throw new Error('dsh desktop: composition did not provide connection, typertGateway, and clientModules')
+  const core = await composeDesktopHost(runtimeDir, projectDir, options)
+  if (process.env.DSH_DESKTOP_CONTROL !== '0') {
+    try {
+      const stopControl = await startControlBridge(core.gateway, join(absoluteProject, 'control.json'))
+      core.ctx.effect(() => stopControl, 'desktop: authenticated local control')
+    } catch (error) { await core.dispose(); throw error }
   }
-  const api = connection.createSharedFetchHandler('/api')
-  const assets = assetHandler(ctx, absoluteRuntime)
-  const streams = remoteStreamHandler(ctx)
+  const { api, assets, streams } = core
   const requests = new Map<number, AbortController>()
   let disposing: Promise<void> | undefined
 
@@ -332,14 +393,13 @@ export async function runDesktopHost(
     disposing ??= (async () => {
       for (const controller of requests.values()) controller.abort()
       requests.clear()
-      await current?.fiber.dispose()
-      current = undefined
+      await core.dispose()
     })()
     await disposing
   }
 
   return {
-    dshVersion: dshVersion(absoluteRuntime),
+    dshVersion: core.dshVersion,
     cancel(streamId) {
       requests.get(streamId)?.abort()
     },
@@ -393,8 +453,91 @@ export async function runDesktopHost(
   }
 }
 
+/**
+ * Serve a Linux Host over the distribution's loopback interface.
+ *
+ * This is the WSL2 entry: the process is started once by `wsl.exe` and stays
+ * up for the whole Desktop session, so every tool call and Remote stream is
+ * served in place rather than restarting the distribution per call. The
+ * binding file is the only thing the Windows side needs, and it is the only
+ * path that crosses the boundary.
+ *
+ * The Harness home and the Desktop profile are derived here, inside the
+ * distribution, rather than passed in. They must be Linux paths, and a profile
+ * staged on Windows could not be loaded at all: its native modules are Windows
+ * binaries. Keeping them local also keeps this environment's sessions, caches,
+ * and credentials out of the Windows environment's reach. A profile directory
+ * the distribution does not have yet is created with the bundles the packaged
+ * runtime already carries, so a first launch needs no package manager.
+ *
+ * @param runtimeDir - immutable dsh packages inside the distribution.
+ * @param bindingFile - path the Windows side reads the endpoint and token from.
+ * @param options - development-only allowance for workspace-linked packages.
+ * @returns completion, resolving when the transport stops.
+ */
+export async function serveDesktopHostOverWsl(
+  runtimeDir: string,
+  bindingFile: string,
+  options: { allowLinkedPackages?: boolean } = {},
+): Promise<void> {
+  const home = process.env[WSL_HOME_ENV]?.trim()
+  if (home !== undefined && home !== '' && !isAbsolute(home)) {
+    throw new Error(`dsh desktop: ${WSL_HOME_ENV} must be an absolute Linux path, got ${JSON.stringify(home)}`)
+  }
+  const dshHome = home === undefined || home === '' ? join(homedir(), WSL_DEFAULT_HOME_DIR) : home
+  // The composed Host, every child it spawns, and the layered environment all
+  // read the Harness home from the environment, so it is published before boot.
+  process.env.DSH_HOME = dshHome
+  const projectDir = join(dshHome, 'profiles', 'desktop')
+  // A distribution has no package-manager step, so the Linux profile starts as
+  // the bundles the packaged runtime already carries.
+  ensureDesktopProfile(projectDir)
+  const core = await composeDesktopHost(runtimeDir, projectDir, options)
+  const stopControl = process.env.DSH_DESKTOP_CONTROL === '0'
+    ? undefined
+    : await startControlBridge(core.gateway, join(projectDir, 'control.json'))
+  // A failed listen leaves nothing to serve, so the already-started control
+  // bridge and the composed Host are released before the failure propagates.
+  const stop = await serveWslTransport(core, bindingFile).catch(async (error: unknown) => {
+    if (stopControl !== undefined) await stopControl().catch(() => undefined)
+    await core.dispose()
+    throw error
+  })
+  const shutdownAll = async (): Promise<void> => {
+    await stop().catch(() => undefined)
+    if (stopControl !== undefined) await stopControl().catch(() => undefined)
+    await core.dispose()
+  }
+  // The Host runs until the Windows side closes the connection or the
+  // distribution stops. Lifetime is owned by the caller's process signal.
+  await new Promise<void>((wait) => {
+    const shutdown = (): void => {
+      void shutdownAll().finally(() => { wait() })
+    }
+    process.once('SIGTERM', shutdown)
+    process.once('SIGINT', shutdown)
+    process.once('disconnect', shutdown)
+  })
+}
+
+/** Argument selecting the WSL2 loopback transport entry. */
+const WSL_ENTRY_ARGUMENT = '--serve-wsl'
+
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2]
+  // The WSL2 entry takes only the runtime tree and the binding file: the
+  // Harness home and profile are derived inside the distribution, so no
+  // Electron-staged Windows path crosses the boundary.
+  if (process.argv[3] === WSL_ENTRY_ARGUMENT) {
+    const bindingFile = process.argv[4]
+    if (runtimeDir === undefined || bindingFile === undefined) {
+      throw new Error('dsh desktop: the WSL transport entry expects the runtime tree and the binding path')
+    }
+    await serveDesktopHostOverWsl(runtimeDir, bindingFile, {
+      allowLinkedPackages: process.argv[5] === '--allow-linked-profile',
+    })
+    return
+  }
   const projectDir = process.argv[3]
   if (runtimeDir === undefined || projectDir === undefined || process.send === undefined) {
     throw new Error('dsh desktop: expected runtime and profile directories, byte pipes, and a Node IPC channel')

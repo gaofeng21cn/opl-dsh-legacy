@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import type { SubprocessHandle, SubprocessOutputReader } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessHandle, SubprocessOutcome, SubprocessOutputReader } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { ShellProcess } from '@deepseek-ai/dsh-shell'
 
@@ -119,6 +119,84 @@ describe('LocalBashExecutor.run', () => {
     expect(result.aborted).toBe(true)
     // Mutually exclusive: an upstream cancel classifies as aborted, never also timedOut.
     expect(result.timedOut).toBe(false)
+  })
+
+  it('settles a cancellation that lands inside the provider\'s own pre-spawn check', async () => {
+    const { ctx, bash } = await setup()
+    const controller = new AbortController()
+    const reason = new Error('cancelled during launch')
+    // The provider refuses to start an already-aborted target; the abort lands
+    // inside the spawn call, so this race is deterministic on every host.
+    vi.spyOn(ctx.subprocess, 'spawn').mockImplementation(() => {
+      controller.abort(reason)
+      throw new Error(`aborted before spawn: ${reason.message}`)
+    })
+    const result = await bash.run(bash.resolve({ command: 'sleep 60', signal: controller.signal }))
+    expect(result.aborted).toBe(true)
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBeNull()
+  })
+
+  it('settles a provider start cancellation that reports the caller\'s own reason', async () => {
+    const { ctx, bash } = await setup()
+    const completion = Promise.withResolvers<SubprocessOutcome>()
+    const reader: SubprocessOutputReader = { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }
+    vi.spyOn(ctx.subprocess, 'spawn').mockReturnValue({
+      stdin: undefined, stdout: undefined, stderr: undefined, control: undefined,
+      collected: { stdout: reader, stderr: reader },
+      done: completion.promise,
+      terminate: () => {},
+      waitForExit: () => Promise.resolve(true),
+    })
+    const controller = new AbortController()
+    const reason = new Error('cancel during target start')
+    const pending = bash.run(bash.resolve({ command: 'sleep 60', signal: controller.signal }))
+    controller.abort(reason)
+    // What the managed-range provider reports when the abort beats the target start.
+    completion.reject(reason)
+    const result = await pending
+    expect(result.aborted).toBe(true)
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBeNull()
+  })
+
+  it('propagates an infrastructure rejection that races the caller\'s abort', async () => {
+    const { ctx, bash } = await setup()
+    const completion = Promise.withResolvers<SubprocessOutcome>()
+    const reader: SubprocessOutputReader = { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) }
+    vi.spyOn(ctx.subprocess, 'spawn').mockReturnValue({
+      stdin: undefined, stdout: undefined, stderr: undefined, control: undefined,
+      collected: { stdout: reader, stderr: reader },
+      done: completion.promise,
+      terminate: () => {},
+      waitForExit: () => Promise.resolve(true),
+    })
+    const controller = new AbortController()
+    const pending = bash.run(bash.resolve({ command: 'sleep 60', signal: controller.signal }))
+    controller.abort(new Error('cancel during target start'))
+    // A runner that failed before proving its range empty is not the caller's
+    // cancellation, even while an abort is outstanding.
+    completion.reject(new Error('runner exited before proving its managed range empty'))
+    await expect(pending).rejects.toThrow('runner exited before proving its managed range empty')
+  })
+
+  it('settles a deadline that expires inside the provider\'s own pre-spawn check', async () => {
+    const { ctx, bash } = await setup()
+    vi.useFakeTimers()
+    try {
+      // Fake timers run the deadline callback synchronously, so the expiry is
+      // staged exactly between argv resolution and the provider's abort check.
+      vi.spyOn(ctx.subprocess, 'spawn').mockImplementation(() => {
+        vi.advanceTimersByTime(1_000)
+        throw new Error('aborted before spawn: BASH_TIMEOUT')
+      })
+      const result = await bash.run(bash.resolve({ command: 'sleep 60', timeoutMs: 10 }))
+      expect(result.timedOut).toBe(true)
+      expect(result.aborted).toBe(false)
+      expect(result.exitCode).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('classifies a self-killed command as neither timed out nor aborted', async () => {

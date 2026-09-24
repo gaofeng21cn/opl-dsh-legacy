@@ -125,6 +125,11 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     return this.onUnarchiveSession(request)
   }
 
+  async moveSession(request: Parameters<WorkspaceRemote['moveSession']>[0]) {
+    this.record('moveSession', request)
+    return remoteOk({ moved: true as const })
+  }
+
   async *follow(_signal?: AbortSignal): AsyncGenerator<WorkspaceFollowFrame> {}
 
   private record(method: string, request: unknown): void {

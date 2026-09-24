@@ -14,6 +14,7 @@ import type {
   ResolvedConfig,
   ResolvedRetention,
   ResolvedTargetPolicy,
+  ResolvedThreshold,
 } from './types.ts'
 
 /** Default request-pressure fraction for every routed model. */
@@ -25,6 +26,8 @@ const DEFAULT_RETAIN_RATIO = 0.16
 /** Fields shared by top-level defaults and exact-target overrides. */
 const POLICY_CONFIG_KEYS = [
   'thresholdRatio',
+  'thresholdTokens',
+  'inputBudget',
   'retainRatio',
   'retainTokens',
   'summarizationProvider',
@@ -60,6 +63,56 @@ export class TargetPressureConfigError extends Error {
 }
 
 /**
+ * Pre-step condensation that reached the routed pressure trigger and could not
+ * bring the priced request back below it. It reports the numbers the step
+ * admission decision needs; whether the step may proceed is the caller's policy.
+ */
+export class PressureCompactionError extends Error {
+  /**
+   * @param targetKey - exact provider/model route whose trigger stayed reached.
+   * @param measuredTokens - priced input tokens measured when condensation stopped.
+   * @param thresholdTokens - resolved compaction trigger that stayed reached.
+   * @param inputBudget - resolved effective input budget for that route.
+   * @param contextWindow - adapter-owned capacity for that route.
+   * @param message - actionable detail for the unreduced request.
+   */
+  constructor(
+    readonly targetKey: string,
+    readonly measuredTokens: number,
+    readonly thresholdTokens: number,
+    readonly inputBudget: number,
+    readonly contextWindow: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/**
+ * A refused step: its priced input exceeds the routed effective input budget,
+ * so the request is never sent. `cause` carries the failed condensation when
+ * one ran.
+ */
+export class StepInputBudgetError extends Error {
+  /**
+   * @param targetKey - exact provider/model route whose budget refused the step.
+   * @param measuredTokens - priced input tokens measured at refusal.
+   * @param inputBudget - resolved effective input budget the request exceeds.
+   * @param message - actionable refusal detail.
+   * @param options - standard error options; `cause` carries a failed compaction when present.
+   */
+  constructor(
+    readonly targetKey: string,
+    readonly measuredTokens: number,
+    readonly inputBudget: number,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options)
+  }
+}
+
+/**
  * Resolve and validate service defaults plus exact-target partial overrides.
  * @param config - untrusted plugin configuration after Loader normalization.
  * @returns detached immutable defaults and validated exact-target overrides.
@@ -71,21 +124,28 @@ export function resolveConfig(config: BasicCompactionConfig = {}): ResolvedConfi
     throw new Error('BasicCompactionConfig: auto must be a boolean')
   }
 
-  const thresholdRatio = config.thresholdRatio ?? DEFAULT_THRESHOLD_RATIO
+  const threshold = resolveThreshold(config, { thresholdRatio: DEFAULT_THRESHOLD_RATIO })
   const retention = resolveRetention(config, { retainRatio: DEFAULT_RETAIN_RATIO })
-  validateRatioRetention(thresholdRatio, retention, 'BasicCompactionConfig')
+  validatePressurePolicy(threshold, retention, 'BasicCompactionConfig')
+  validateBudgetedRetention(threshold, retention, config.inputBudget, 'BasicCompactionConfig')
   const modelPolicies = resolveModelPolicies(config.modelPolicies)
   for (const [index, policy] of modelPolicies.entries()) {
-    validateRatioRetention(
-      policy.thresholdRatio ?? thresholdRatio,
-      resolveRetention(policy, retention),
-      `BasicCompactionConfig: modelPolicies[${index}]`,
+    const name = `BasicCompactionConfig: modelPolicies[${index}]`
+    const resolvedThreshold = resolveThreshold(policy, threshold)
+    const resolvedRetention = resolveRetention(policy, retention)
+    validatePressurePolicy(resolvedThreshold, resolvedRetention, name)
+    validateBudgetedRetention(
+      resolvedThreshold,
+      resolvedRetention,
+      policy.inputBudget ?? config.inputBudget,
+      name,
     )
   }
 
   return deepFreeze({
-    thresholdRatio,
+    ...threshold,
     ...retention,
+    ...config.inputBudget === undefined ? {} : { inputBudget: config.inputBudget },
     summarizationProvider: config.summarizationProvider ?? '',
     summarizationModel: config.summarizationModel ?? '',
     maxTokens: config.maxTokens ?? 8192,
@@ -109,13 +169,18 @@ export function resolveTargetPolicy(
   const override = config.modelPolicies.find(policy => (
     policy.provider === target.provider && policy.model === target.model
   ))
+  const inheritedThreshold: ResolvedThreshold = config.thresholdTokens === undefined
+    ? { thresholdRatio: config.thresholdRatio }
+    : { thresholdTokens: config.thresholdTokens }
   const inheritedRetention: ResolvedRetention = config.retainTokens === undefined
     ? { retainRatio: config.retainRatio }
     : { retainTokens: config.retainTokens }
+  const inputBudget = override?.inputBudget ?? config.inputBudget
   return deepFreeze({
     target: { provider: target.provider, model: target.model },
-    thresholdRatio: override?.thresholdRatio ?? config.thresholdRatio,
+    ...resolveThreshold(override ?? {}, inheritedThreshold),
     ...resolveRetention(override ?? {}, inheritedRetention),
+    ...inputBudget === undefined ? {} : { inputBudget },
     summarizationProvider: override?.summarizationProvider ?? config.summarizationProvider,
     summarizationModel: override?.summarizationModel ?? config.summarizationModel,
     maxTokens: override?.maxTokens ?? config.maxTokens,
@@ -126,9 +191,15 @@ export function resolveTargetPolicy(
 
 /**
  * Scale one routed policy into concrete token budgets for its model capacity.
+ *
+ * The effective input budget clamps the configured budget to the routed
+ * capacity, so a model smaller than the deployment budget keeps its own window
+ * and the provider's nominal capacity is never rewritten. Both ratios scale
+ * from that effective budget; an absolute trigger or retention value is taken
+ * verbatim.
  * @param policy - merged policy for the exact routed target.
  * @param contextWindow - positive adapter-owned capacity for that target.
- * @returns detached immutable pressure and retention budgets.
+ * @returns detached immutable admission, pressure, and retention budgets.
  */
 export function resolveCompactSpec(
   policy: ResolvedTargetPolicy,
@@ -141,9 +212,17 @@ export function resolveCompactSpec(
       `BasicCompactionConfig: contextWindow (${contextWindow}) must be a positive integer`,
     )
   }
-  const thresholdTokens = Math.floor(contextWindow * policy.thresholdRatio)
+  const inputBudget = policy.inputBudget === undefined
+    ? contextWindow
+    : Math.min(contextWindow, policy.inputBudget)
+  const absoluteThreshold = policy.thresholdTokens
+  const thresholdTokens = absoluteThreshold === undefined
+    ? Math.floor(inputBudget * policy.thresholdRatio)
+    // An absolute trigger clamps to the effective budget: a route whose own
+    // window is smaller compacts at its own window instead of failing.
+    : Math.min(absoluteThreshold, inputBudget)
   const retainTokens = policy.retainTokens === undefined
-    ? Math.floor(contextWindow * policy.retainRatio)
+    ? Math.floor(inputBudget * policy.retainRatio)
     : policy.retainTokens
   if (retainTokens >= thresholdTokens) {
     throw new TargetPressureConfigError(
@@ -155,7 +234,7 @@ export function resolveCompactSpec(
   return deepFreeze({
     target: { ...policy.target },
     contextWindow,
-    thresholdRatio: policy.thresholdRatio,
+    inputBudget,
     thresholdTokens,
     retainTokens,
     summarizationProvider: policy.summarizationProvider,
@@ -164,6 +243,16 @@ export function resolveCompactSpec(
     compactionRetries: policy.compactionRetries,
     maxOverflowRetries: policy.maxOverflowRetries,
   })
+}
+
+/** Choose an explicit pressure trigger or inherit the already-resolved fallback. */
+function resolveThreshold(
+  config: CompactionPolicyConfig,
+  fallback: ResolvedThreshold,
+): ResolvedThreshold {
+  if (config.thresholdTokens !== undefined) return { thresholdTokens: config.thresholdTokens }
+  if (config.thresholdRatio !== undefined) return { thresholdRatio: config.thresholdRatio }
+  return fallback
 }
 
 /** Choose an explicit retention form or inherit the already-resolved fallback. */
@@ -176,18 +265,55 @@ function resolveRetention(
   return fallback
 }
 
-/** Reject a capacity-independent retention conflict at plugin load. */
-function validateRatioRetention(
-  thresholdRatio: number,
+/**
+ * Reject a capacity-independent trigger/retention conflict at plugin load.
+ * Ratio-trigger conflicts compare ratios; absolute-trigger conflicts compare
+ * token counts, so both are decidable without the routed model's capacity.
+ */
+function validatePressurePolicy(
+  threshold: ResolvedThreshold,
   retention: ResolvedRetention,
   name: string,
 ): void {
-  if (retention.retainRatio !== undefined && retention.retainRatio >= thresholdRatio) {
+  if (threshold.thresholdRatio !== undefined && retention.retainRatio !== undefined
+    && retention.retainRatio >= threshold.thresholdRatio) {
     throw new Error(
       `${name}: retainRatio (${retention.retainRatio}) must be less than `
-      + `the resolved thresholdRatio (${thresholdRatio})`,
+      + `the resolved thresholdRatio (${threshold.thresholdRatio})`,
     )
   }
+  if (threshold.thresholdTokens !== undefined && retention.retainTokens !== undefined
+    && retention.retainTokens >= threshold.thresholdTokens) {
+    throw new Error(
+      `${name}: retainTokens (${retention.retainTokens}) must be less than `
+      + `the resolved thresholdTokens (${threshold.thresholdTokens})`,
+    )
+  }
+}
+
+/**
+ * Reject a trigger/retention conflict a configured input budget already
+ * decides. At any capacity at or above the budget the effective budget is the
+ * budget itself, so both values are known at load and the routed policy would
+ * reject every such model at first use. A policy without a configured budget
+ * stays capacity-dependent and is judged when that model's capacity resolves.
+ */
+function validateBudgetedRetention(
+  threshold: ResolvedThreshold,
+  retention: ResolvedRetention,
+  inputBudget: number | undefined,
+  name: string,
+): void {
+  if (inputBudget === undefined) return
+  const thresholdAtBudget = threshold.thresholdTokens === undefined
+    ? Math.floor(inputBudget * threshold.thresholdRatio)
+    : Math.min(threshold.thresholdTokens, inputBudget)
+  const retainedAtBudget = retention.retainTokens ?? Math.floor(inputBudget * retention.retainRatio)
+  if (retainedAtBudget < thresholdAtBudget) return
+  throw new Error(
+    `${name}: the configured inputBudget (${inputBudget}) retains ${retainedAtBudget} tokens at a `
+    + `${thresholdAtBudget}-token trigger, so retention must be reduced below that trigger`,
+  )
 }
 
 /** Validate, detach, and reject duplicate exact-target policies. */
@@ -229,12 +355,19 @@ function validatePolicy(
   name: string,
 ): void {
   const thresholdRatio = config.thresholdRatio
+  const thresholdTokens = config.thresholdTokens
+  const inputBudget = config.inputBudget
   const retainRatio = config.retainRatio
   const retainTokens = config.retainTokens
   const maxTokens = config.maxTokens
   const compactionRetries = config.compactionRetries
   const maxOverflowRetries = config.maxOverflowRetries
   if (thresholdRatio !== undefined) assertRatio(`${name}.thresholdRatio`, thresholdRatio)
+  if (thresholdTokens !== undefined) assertPositiveInteger(`${name}.thresholdTokens`, thresholdTokens)
+  if (inputBudget !== undefined) assertPositiveInteger(`${name}.inputBudget`, inputBudget)
+  if (thresholdRatio !== undefined && thresholdTokens !== undefined) {
+    throw new Error(`${name}: thresholdRatio and thresholdTokens are mutually exclusive`)
+  }
   if (retainRatio !== undefined) assertRatio(`${name}.retainRatio`, retainRatio)
   if (retainTokens !== undefined) assertNonNegativeInteger(`${name}.retainTokens`, retainTokens)
   if (retainRatio !== undefined && retainTokens !== undefined) {

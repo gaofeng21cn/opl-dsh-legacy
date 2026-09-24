@@ -6,6 +6,8 @@ English | [中文](2026-08-25-electron-desktop-packaging-and-updates.zh.md)
 
 Profile mutation and recovery follow the [in-place profile decision](2026-09-09-desktop-in-place-profile.md).
 
+The [OPL search and desktop control decision](../feature/2026-09-21-opl-search-and-desktop-control.md) partially supersedes the no-listening-port constraint for authenticated automation; renderer transport and profile ownership remain unchanged.
+
 ## Problem
 
 DeepSeek Harness needs an Electron desktop application that reuses the Web UI, works without system Node.js or pnpm, installs dsh and desktop plugins through an application-bundled pnpm, and updates the complete desktop release through one user-facing flow.

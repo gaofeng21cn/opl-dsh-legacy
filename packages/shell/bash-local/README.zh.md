@@ -27,6 +27,10 @@ kind: "package-reference"
 
 当组合需要在 POSIX 上执行 Bash 命令且不需要隔离时，挂载此执行器。它注册为 `ctx.shell`，面向模型的 `bash` 工具会立即基于它工作：agent（智能体）调用工具，命令即以全新 `bash -c` 进程按下面的预算运行。
 
+### Windows Native 下的 Git Bash
+
+在 Windows Native 下，本执行器使用 [shell 设置](../shell/README.zh.md)中经过验证的 Git for Windows 可执行文件。路径在设置接入时固定；没有设置提供者时在首次使用时固定；保存其他路径不会改变正在运行的执行器。Windows 子进程沿用受管理的取消及隐藏控制台启动。Git Bash 对 Windows 程序采用 MSYS 路径转换；它不是 Linux 执行环境。本执行器在任何平台都不隔离命令，因此需要文件隔离的 Windows 组合应挂载 `dsh-bash-sandbox`，由其中的 Git Bash broker 决定每次受限启动。
+
 ### 最小配置
 
 按你需要的预算加载执行器；每个字段都有默认值，因此最小的组合就是单独一个插件条目。当组合了设置提供方时，用户段会叠加在该条目之上，预算无需重载即可在运行时变更（见[运行时调整预算](#adjusting-budgets-at-runtime)）。

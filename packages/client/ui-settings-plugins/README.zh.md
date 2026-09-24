@@ -11,6 +11,8 @@ kind: "package-reference"
 
 使用**插件**设置分区可以配置当前部署公开的插件，也可以打开插件功能自己的页面。**插件配置**标签页会为每个受支持的插件展示一张可展开卡片，标明用户覆盖过哪些值，并允许用户将它们重置为部署默认值。卡片会在本地保留修改，直到用户保存。如果配置在卡片加载后发生变化，保存会被拒绝，而不会覆盖较新的值。
 
+终端卡片同时暂存 Native Agent shell 和可选 Git Bash 可执行文件，通过一次原子的命名空间修改保存字段。保存被拒绝时保留草稿。卡片说明完全重启要求及 Windows Git Bash 的权限限制；不会重启应用或更改权限。这些控件选择 Agent 命令执行器，而非集成终端偏好。
+
 ## 目录
 
 - [使用本包](#use-this-package)
@@ -25,7 +27,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-打开设置中的「插件」分区并选择**插件配置**标签页，即可编辑本部署所组装的宿主平面插件。卡片依次为 shell 执行器（`bash`）、agent loop（智能体循环）的工具调用并行度（`agent-loop`）、subagent 模型选择（`subagent-model-selection`）以及 DeepSeek 搜索提供方（`web-search-deepseek`）。
+打开设置中的「插件」分区并选择**插件配置**标签页，即可编辑本部署所组装的宿主平面插件。卡片依次为 shell 执行器（`bash`）、agent loop（智能体循环）的工具调用并行度（`agent-loop`）、subagent 模型选择（`subagent-model-selection`）、DeepSeek 搜索提供方（`web-search-deepseek`）以及 agent 的输出语言（`output-language`）。
+
+### 输出语言卡
+
+**输出语言**把模型所写散文的语言存入 Host 的 `output-language` 设置分节：**默认**不改变模型自己的选择，**中文**与 **English** 则要求 agent 的回复以及它生成的每份文档、报告或说明文档使用该语言。选择从下一次请求生效；代码、路径与引用原文保持原样，模型内部推理不受影响。重置该卡片会移除用户覆盖项，回到未改动文档本就会解析出的同一个**默认**值。
 
 ### 这里会出现什么
 

@@ -4,9 +4,11 @@
 export type PluginsSettingsLocaleKey =
   | 'nav' | 'title' | 'intro' | 'tabs' | 'configurableTab' | 'empty'
   | 'overridden' | 'reset' | 'readOnly' | 'expand' | 'collapse'
-  | 'save' | 'saving' | 'discard' | 'unsaved' | 'saveFailed' | 'invalidNumber'
+  | 'save' | 'saving' | 'discard' | 'unsaved' | 'saveFailed' | 'invalidNumber' | 'invalidShellValue'
   | 'bashTitle' | 'bashDescription' | 'bashTimeoutMs' | 'bashTimeoutMsHint'
   | 'bashMaxOutputBytes' | 'bashMaxOutputBytesHint'
+  | 'bashAgentShell' | 'bashAgentShellHint' | 'bashAgentShellPowershell' | 'bashAgentShellGitBash'
+  | 'bashGitBashPath' | 'bashGitBashPathHint' | 'bashAgentShellRestart'
   | 'agentLoopTitle' | 'agentLoopDescription' | 'agentLoopMaxParallel' | 'agentLoopMaxParallelHint'
   | 'webSearchTitle' | 'webSearchDescription'
   | 'webSearchApiKey' | 'webSearchApiKeyHint' | 'webSearchApiKeySet' | 'webSearchApiKeyUnset'
@@ -17,6 +19,8 @@ export type PluginsSettingsLocaleKey =
   | 'subagentModelSelectionPartial' | 'subagentModelSelectionUnavailable'
   | 'subagentModelSelectionUnavailableGroup' | 'subagentModelSelectionEmpty'
   | 'subagentModelSelectionRequired' | 'subagentModelSelectionConflict' | 'subagentModelSelectionOff'
+  | 'outputLanguageTitle' | 'outputLanguageDescription' | 'outputLanguageLabel' | 'outputLanguageHint'
+  | 'outputLanguageDefault' | 'outputLanguageChinese' | 'outputLanguageEnglish' | 'outputLanguageInvalid'
 
 /** English copy. */
 export const en: Record<PluginsSettingsLocaleKey, string> = {
@@ -36,13 +40,21 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   discard: 'Discard',
   unsaved: 'Unsaved',
   saveFailed: 'The deployment did not accept these values; they were left for you to correct.',
+  invalidShellValue: 'Choose a supported shell or enter an executable path.',
   invalidNumber: 'Enter a number, or leave blank to use the default.',
   bashTitle: 'Shell',
-  bashDescription: 'Limits every command the agent runs.',
+  bashDescription: 'Agent command shell and execution limits.',
   bashTimeoutMs: 'Command timeout (ms)',
   bashTimeoutMsHint: 'How long one command may run before it is terminated.',
   bashMaxOutputBytes: 'Output cap per stream (bytes)',
   bashMaxOutputBytesHint: 'Output beyond this spills to a temporary file rather than being lost.',
+  bashAgentShell: 'Agent shell',
+  bashAgentShellHint: 'The shell the agent runs commands in on Windows Native. Other platforms always use bash. Git for Windows must be installed for the Git Bash choice; PowerShell is the default. On Windows, Git Bash currently requires full access; use PowerShell for read-only or workspace-write. Selecting Git Bash never changes permissions.',
+  bashAgentShellPowershell: 'PowerShell',
+  bashAgentShellGitBash: 'Git Bash',
+  bashGitBashPath: 'Git Bash path',
+  bashGitBashPathHint: 'Full path to Git for Windows bash.exe. Leave blank to use the standard Git for Windows locations.',
+  bashAgentShellRestart: 'Save, then fully quit and restart the app to apply the shell and executable path. Command limits apply immediately.',
   agentLoopTitle: 'Agent loop',
   agentLoopDescription: 'How the agent dispatches tool calls.',
   agentLoopMaxParallel: 'Parallel tool calls',
@@ -72,6 +84,14 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionRequired: 'Select at least one model before saving.',
   subagentModelSelectionConflict: 'Settings changed elsewhere. Discard your draft and try again.',
   subagentModelSelectionOff: 'Subagents use configured defaults or inherit the parent agent\'s model. Saved model choices are retained.',
+  outputLanguageTitle: 'Output language',
+  outputLanguageDescription: 'The language of the agent\'s replies and generated documents.',
+  outputLanguageLabel: 'Output language',
+  outputLanguageHint: 'Sets the language of the agent\'s replies and of the documents and reports it generates, starting with the next request. Code, paths, and quoted source stay as they are; the model\'s internal reasoning is not changed.',
+  outputLanguageDefault: 'Default',
+  outputLanguageChinese: '中文',
+  outputLanguageEnglish: 'English',
+  outputLanguageInvalid: 'Choose one of the offered languages.',
 }
 
 /** Simplified Chinese copy. */
@@ -92,13 +112,21 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   discard: '放弃修改',
   unsaved: '未保存',
   saveFailed: '本部署没有接受这些值，已保留供你修改。',
+  invalidShellValue: '请选择支持的 shell，或填写可执行文件路径。',
   invalidNumber: '请填数字；留空表示使用默认值。',
   bashTitle: '终端',
-  bashDescription: '限制 agent 运行的每一条命令。',
+  bashDescription: 'Agent 命令执行 shell 与运行限制。',
   bashTimeoutMs: '命令超时（毫秒）',
   bashTimeoutMsHint: '单条命令允许运行多久，超时即终止。',
   bashMaxOutputBytes: '单流输出上限（字节）',
   bashMaxOutputBytesHint: '超出部分会转存到临时文件，而不是被丢弃。',
+  bashAgentShell: 'Agent shell',
+  bashAgentShellHint: 'Windows 本机环境下 Agent 执行命令所用的 shell；其他平台固定使用 bash。选择 Git Bash 需要本机已安装 Git for Windows；默认保持 PowerShell。Git Bash 目前仅支持完全访问；只读或工作区内修改请使用 PowerShell。切换 shell 不会改变权限。',
+  bashAgentShellPowershell: 'PowerShell',
+  bashAgentShellGitBash: 'Git Bash',
+  bashGitBashPath: 'Git Bash 路径',
+  bashGitBashPathHint: 'Git for Windows 的 bash.exe 完整路径。留空表示使用 Git for Windows 的默认安装位置。',
+  bashAgentShellRestart: '保存后请完全退出并重新启动应用，shell 和路径才会生效。命令时限等设置立即生效。',
   agentLoopTitle: 'Agent 循环',
   agentLoopDescription: 'Agent 如何派发工具调用。',
   agentLoopMaxParallel: '并行工具调用数',
@@ -128,4 +156,12 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionRequired: '保存前请至少选择一个模型。',
   subagentModelSelectionConflict: '设置已在其他位置更新。请放弃修改后重试。',
   subagentModelSelectionOff: '关闭后，Subagent 使用配置的默认模型或继承父 Agent 的模型；已选模型会保留。',
+  outputLanguageTitle: '输出语言',
+  outputLanguageDescription: 'Agent 回复与生成文档所用的语言。',
+  outputLanguageLabel: '输出语言',
+  outputLanguageHint: '决定 Agent 回复以及它生成的文档、报告使用哪种语言，从下一次请求生效。代码、路径与引用原文保持原样；不改变模型内部的思考语言。',
+  outputLanguageDefault: '默认',
+  outputLanguageChinese: '中文',
+  outputLanguageEnglish: 'English',
+  outputLanguageInvalid: '请选择提供的语言之一。',
 }

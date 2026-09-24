@@ -677,6 +677,11 @@ export class AgentPresets extends TypertRemoteService {
    * @throws when the preset is unknown or its composition is unusable.
    */
   async recompose(agentCtx: Context, id: string): Promise<AgentPreset> {
+    if (this.composedPreset(agentCtx) === 'chat' && id !== 'chat') {
+      throw new RemoteError('agent-preset/invalid',
+        'Plain chat cannot acquire project tools; open a workspace to start a project session.',
+        { agentPreset: id, reason: 'Plain chat has a fixed tool-free composition.' })
+    }
     const agentKey = scopeOf(agentCtx)
     if (agentKey === undefined) {
       throw new Error('agent-presets: refusing to recompose an unscoped context')

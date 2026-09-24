@@ -58,6 +58,10 @@ export function createElectronBuilderConfig(
     artifactName: 'deepseek-harness-${version}-${os}-${arch}.${ext}',
     directories: { output: unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts },
     asar: true,
+    // Windows attributes a toast notification to the AppUserModelID the
+    // installer wrote onto the Start Menu shortcut, so the packaged manifest
+    // carries the same identity for the running shell to publish.
+    extraMetadata: { dshAppId: appId },
     files: [
       'lib/*.js',
       'lib/*.cjs',
@@ -75,6 +79,11 @@ export function createElectronBuilderConfig(
     ],
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
+      // The Linux payload the WSL2 execution environment runs. It is a real
+      // directory rather than asar content because the distribution executes
+      // the Node.js binary and requires the packages from it directly. Only a
+      // Windows package carries it; the other targets have no WSL2 environment.
+      ...(packagesWindows ? [{ from: buildPaths.wsl, to: 'wsl' }] : []),
     ],
     mac: {
       category: 'public.app-category.developer-tools',

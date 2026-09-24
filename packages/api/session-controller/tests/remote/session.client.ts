@@ -180,6 +180,8 @@ export function queueFrame(
 export const sessionWorld: RemoteTable = {
   unary: {
     'session/prompt': ok({ accepted: true }),
+    'session/editPrompt': ok({ accepted: true, seq: 9 }),
+    'session/rewind': ok({ accepted: true, seq: 11, shadowedSeqs: [7, 9], discarded: [] }),
     'session/cancel': ok({ accepted: true }),
     'session/updateQueue': ok({ accepted: true }),
     'session/rename': ok({ title: 'fk-renamed', seq: 0 }),

@@ -56,4 +56,4 @@ The assembled keyless Web scenario registers an existing temporary project direc
 
 ## Consequences
 
-Deleting a Workspace is intentionally reversible by registering the same directory again with a fresh id, although its prior manual Session order is gone; re-registration does not automatically re-adopt existing Sessions after bootstrap. The operation gives up a one-click cleanup of Session histories or source directories in exchange for a deletion boundary that matches what the record actually owns.
+Deleting a Workspace is intentionally reversible by registering the same directory again with a fresh id, although its prior manual Session order is gone. The new project starts empty for the rest of that run and then refills on the next start, which re-applies directory membership to every Session whose canonical cwd is that directory ([decision](2026-09-23-directory-membership-on-every-start.md)). The operation gives up a one-click cleanup of Session histories or source directories in exchange for a deletion boundary that matches what the record actually owns.

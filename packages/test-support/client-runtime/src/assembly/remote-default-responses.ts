@@ -8,11 +8,22 @@
  */
 import { ok, openStream, type RemoteTable } from '@deepseek-ai/dsh-remote-mock'
 
+/** Id the startup landing Session is created with; the follow stream answers for the same blank Session. */
+const STARTUP_SESSION_ID = 'mock-session-1'
+
 /** Default responses of the boot-time Remote endpoints; a spec loads it first and layers its own table on top. */
 export const remoteDefaultResponses: RemoteTable = {
   unary: {
     // api-session-controller `sessions.handleConnected()` on `connection/reset`.
     'session/list': ok({ items: [] }),
+    // ui-workspace `openChat()`: the startup landing creates one blank Session when no Session is current.
+    'session/create': ok({ sessionId: STARTUP_SESSION_ID }),
+    // api-session-controller `SessionManager.refreshSubagents()` when the startup landing Session opens.
+    'subagents/list': ok({ entries: [], parentAvailable: true }),
+    // ui-commands `CommandDirectory` warming the startup landing Session's slash menu.
+    'commands/list': ok([]),
+    // ui-skill lexicon fetch for the startup landing Session.
+    'skills/list': ok({ skills: [] }),
     // ui-settings `mirror.ensure()` at apply and again on `connection/reset`.
     'settings/describe': ok({ writable: true, hasDocument: false, namespaces: [] }),
     // ui-model-selection `ModelDirectoryResolver` constructor.
@@ -33,14 +44,19 @@ export const remoteDefaultResponses: RemoteTable = {
     // ui-permission-presets `PermissionCatalogDirectory` on its first read for a connection generation.
     'permissionPresets/catalog': ok({ options: [] }),
   },
-  // Stream endpoints the roster opens later than boot; declared so a spec that forgets the script gets a stream miss.
-  streams: [
-    // api-session-controller `SessionEventStream.follow` when a Session opens.
-    'session/follow',
-  ],
   stream: {
     // api-session-controller client `apply`: the control stream's opening baseline, then open.
     'session/control': openStream([{ type: 'baseline', value: { queues: {}, jobs: {}, projections: {} } }]),
+    // api-session-controller `SessionEventStream.follow` for the startup landing Session: the blank log's opening window, then open.
+    'session/follow': openStream([{
+      type: 'snapshot',
+      header: { version: 3, id: STARTUP_SESSION_ID, createdAt: 0, isSeeded: false },
+      cursor: -1,
+      records: [],
+      hasMore: false,
+      projections: { asOfSeq: -1, values: {} },
+      assistantStream: { revision: 0 },
+    }]),
     // api-workspace-controller client `apply`: the follow stream's opening baseline, then open.
     'workspace/follow': openStream([{ type: 'baseline', value: { items: [], archivedSessionIds: [] } }]),
   },

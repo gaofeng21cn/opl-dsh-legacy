@@ -228,7 +228,7 @@ export class SshConnection extends Service {
     combined.throwIfAborted()
     const result = Promise.withResolvers<undefined>()
     const command = execFile('ssh', ['-S', this.controlPath(), ...args, this.config.host], {
-      signal: combined, maxBuffer: 64 * 1024,
+      signal: combined, maxBuffer: 64 * 1024, windowsHide: true,
     }, (error) => { if (error === null) result.resolve(undefined); else result.reject(error) })
     const closed = new Promise<void>((resolve) => { command.once('close', () => { resolve() }) })
     let force: NodeJS.Timeout | undefined

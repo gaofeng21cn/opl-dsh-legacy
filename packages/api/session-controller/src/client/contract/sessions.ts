@@ -33,6 +33,8 @@ export interface ISessions {
    * @returns the Session identity after its local binding is addressable.
    */
   create(opts?: {
+    agentPreset?: string
+    standalone?: boolean
     workspaceId?: WorkspaceId
     cwd?: string
     sessionId?: SessionId

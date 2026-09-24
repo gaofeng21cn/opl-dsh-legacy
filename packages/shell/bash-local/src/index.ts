@@ -1,19 +1,32 @@
 /**
  * Local Service Provider for the bash capability seam over the subprocess
- * capability seam. Public commands run as `bash -c` in a provider-managed range
- * through `ctx.subprocess`; subclasses may reuse the same mechanics with an
- * explicit argv. This executor owns command defaulting, deadlines and cause
+ * capability seam. Public commands run as `<bash> -c` in a provider-managed
+ * range through `ctx.subprocess`; subclasses may reuse the same mechanics with
+ * an explicit argv. This executor owns command defaulting, deadlines and cause
  * classification, the model-friendly terminal environment, and the model-facing
  * stdout/stderr merge for background reads. Execution policy belongs in
  * `tools/pre-execute` or a sandboxing executor.
+ *
+ * On Windows the bash a command runs is Git for Windows' `bash.exe`, resolved
+ * from the `gitBashPath` setting or the well-known Git for Windows locations;
+ * the WSL launcher is never selected, and a host without a usable Git for
+ * Windows fails when the executable resolves rather than falling back to
+ * another shell.
  * @module @deepseek-ai/dsh-bash-local
  */
 
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { SHELL_SETTINGS_NAMESPACE, ShellExecutor } from '@deepseek-ai/dsh-shell'
+import {
+  AGENT_SHELL_SETTINGS_FIELDS,
+  SHELL_SETTINGS_NAMESPACE,
+  ShellExecutor,
+  assertAgentShellSettings,
+  resolveGitBash,
+} from '@deepseek-ai/dsh-shell'
+import type { AgentShellSettings } from '@deepseek-ai/dsh-shell'
 import type { ShellExecRequest, ShellExecSpec, ShellProcess, ShellProcessRead, ShellRunResult, CollectedOutput } from '@deepseek-ai/dsh-shell'
-import type { SubprocessCollect, SubprocessHandle, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessCollect, SubprocessHandle, SubprocessOutcome, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-settings'
 import { clampTimeout, deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
 
@@ -38,7 +51,7 @@ const DEFAULT_GRACE_MS = 3_000
 const DEFAULT_MAX_SPILL_BYTES = 64 * 1024 * 1024
 
 /** Plugin config (all optional — `static Config` supplies the defaults). */
-export interface Config {
+export interface Config extends AgentShellSettings {
   /** Default working directory for commands (default: process.cwd()). */
   cwd?: string
   /** Default foreground timeout in milliseconds. */
@@ -53,8 +66,8 @@ export interface Config {
   graceMs?: number
 }
 
-/** The shape after schemastery applied the defaults (cwd has none). */
-type ResolvedConfig = Required<Omit<Config, 'cwd'>> & Pick<Config, 'cwd'>
+/** The shape after schemastery applied the defaults (cwd and the Agent shell fields have none). */
+type ResolvedConfig = Required<Omit<Config, 'cwd' | 'agentShell' | 'gitBashPath'>> & Pick<Config, 'cwd' | 'agentShell' | 'gitBashPath'>
 
 /** Project a settled collect-mode reader into the final CollectedOutput shape. */
 function finalOutput(reader: SubprocessOutputReader): CollectedOutput {
@@ -73,10 +86,33 @@ function assertPositiveFinite(name: string, value: number): void {
 }
 
 /**
+ * The bash executable this host runs commands through.
+ *
+ * A POSIX host uses the `bash` on PATH, which is what every existing
+ * installation does. A Windows Native host has no such bash: it runs Git for
+ * Windows, resolved and identified from the `gitBashPath` setting or the
+ * well-known Git for Windows locations, and fails loud when none is usable
+ * instead of falling back to another shell.
+ * @param settings - the authoritative Agent shell settings fields.
+ * @returns the absolute Git Bash path on Windows, else `bash` for PATH resolution.
+ * @throws Error naming the selection and why it cannot run.
+ */
+function resolveBashExecutable(settings: AgentShellSettings): string {
+  return process.platform === 'win32' ? resolveGitBash(settings).path : 'bash'
+}
+
+/**
  * Reject a resolved section this executor could not run with. The schema
  * expresses neither "positive and finite" nor the timer bound `graceMs` has to
  * fit, so a stored value is refused where it is written instead of failing at
  * the next command.
+ *
+ * The Agent shell selection is deliberately NOT judged here: this runs on the
+ * composition entry at construction, where the persisted selection has not been
+ * read yet, and probing the wrong settings would reject a host whose Git for
+ * Windows lives at a configured path. {@link validateAgentShellConfig} owns
+ * that judgment on the settings-write path, and the executable resolves again
+ * from the authoritative source before the first command.
  * @param config - the resolved section, schema-valid by construction.
  * @throws Error naming the field that cannot be used.
  */
@@ -90,6 +126,16 @@ export function assertServiceableBashConfig(config: Config): void {
   if (resolved.graceMs > MAX_TIMER_DELAY_MS) {
     throw new Error(`bash-local: graceMs must be no greater than ${MAX_TIMER_DELAY_MS}`)
   }
+}
+
+/**
+ * Reject a stored Agent shell selection this host cannot run, on the settings
+ * write that stores it.
+ * @param config - the resolved section, schema-valid by construction.
+ * @throws Error naming the selection and why it cannot run.
+ */
+export function validateAgentShellConfig(config: Config): void {
+  assertAgentShellSettings(config)
 }
 
 /**
@@ -109,14 +155,31 @@ export class LocalBashExecutor extends ShellExecutor {
     maxOutputBytes: z.number().default(64_000),
     maxSpillBytes: z.number().default(DEFAULT_MAX_SPILL_BYTES),
     graceMs: z.number().default(DEFAULT_GRACE_MS),
+    ...AGENT_SHELL_SETTINGS_FIELDS,
   })
 
   /** The currently authoritative config: the settings section, or the composition entry. */
   private source: () => ResolvedConfig
 
+  /** Executable identity is captured when settings attach and never hot-switched. */
+  private startupShell: AgentShellSettings | undefined
+  private bashPathValue: string | undefined
+
   /** Validated config (schemastery applied the defaults before construction). */
   get config(): ResolvedConfig {
     return this.source()
+  }
+
+  /**
+   * Resolve the executable from the settings captured at attachment (or first
+   * use without settings). Later path edits apply only after a process restart.
+   * @returns the absolute Git Bash path on Windows, else bash via PATH.
+   * @throws when the captured Windows executable is unavailable.
+   */
+  get bashPath(): string {
+    this.startupShell ??= { ...this.config }
+    this.bashPathValue ??= resolveBashExecutable(this.startupShell)
+    return this.bashPathValue
   }
 
   constructor(ctx: Context, config: Config) {
@@ -127,12 +190,20 @@ export class LocalBashExecutor extends ShellExecutor {
     this.source = () => entry
     ctx.inject(['settings'], (settingsCtx) => {
       settingsCtx.settings.installSection(ctx, SHELL_SETTINGS_NAMESPACE, LocalBashExecutor.Config, entry, {
-        validate: assertServiceableBashConfig,
+        validate: (current) => {
+          assertServiceableBashConfig(current)
+          validateAgentShellConfig(current)
+        },
+        // Which shell the agent runs is decided while the plugin tree loads —
+        // the composition mounts one executor and one model-facing tool for the
+        // process — so the section reports itself as restart-applied and a
+        // settings surface can say so instead of promising a live switch.
+        applies: 'restart',
         setSource: (current) => {
           this.source = current as () => ResolvedConfig
+          this.startupShell ??= { ...current() }
         },
-        // Every field is read through the getter at each command, so nothing
-        // derived from the source needs rebuilding when the document changes.
+        // Execution budgets remain live; shell identity requires a restart.
         onChange: () => {},
       })
     })
@@ -211,7 +282,18 @@ export class LocalBashExecutor extends ShellExecutor {
   }
 
   async run(spec: ShellExecSpec): Promise<ShellRunResult> {
-    return (await this.runArgv(spec, ['bash', '-c', spec.command])).result
+    return (await this.runArgv(spec, this.argv(spec))).result
+  }
+
+  /**
+   * The bash invocation argv for one resolved spec — the argv-level seam a
+   * confining subclass wraps through `ctx.sandbox.confine` (the bash twin of
+   * `PwshLocalExecutor.argv`; see `@deepseek-ai/dsh-bash-sandbox`).
+   * @param spec - resolved execution settings and the caller-owned command.
+   * @returns the executable and arguments handed to `ctx.subprocess`.
+   */
+  protected argv(spec: ShellExecSpec): string[] {
+    return [this.bashPath, '-c', spec.command]
   }
 
   /**
@@ -249,8 +331,25 @@ export class LocalBashExecutor extends ShellExecutor {
         }
       } finally { d.signal.removeEventListener('abort', abort) }
     } else { argv = argvOrPrepare }
-    const handle = this.ctx.subprocess.spawn(this.spawnSpec(spec, argv, spec.stdoutMaxBytes, d.signal))
-    const outcome = await handle.done
+    let handle: SubprocessHandle
+    try {
+      handle = this.ctx.subprocess.spawn(this.spawnSpec(spec, argv, spec.stdoutMaxBytes, d.signal))
+    } catch (error) {
+      // A deadline that expires between argv resolution and the provider's own
+      // pre-spawn abort check rejects instead of starting the target. That is
+      // the same cancellation the branch above settles, not an infrastructure
+      // failure, so it reports the first abort cause rather than a wrapper error.
+      if (!d.signal.aborted) throw error
+      const timedOut = timeoutOf(d.signal, 'BASH_TIMEOUT') !== undefined
+      return {
+        spawnRequested: false,
+        result: {
+          exitCode: null, signal: null, timedOut, aborted: !timedOut, timeoutMs: spec.timeoutMs,
+          stdout: { text: '', truncated: false }, stderr: { text: '', truncated: false },
+        },
+      }
+    }
+    const outcome = await this.settledOutcome(handle, d.signal)
     const collected = LocalBashExecutor.collected(handle)
     // Only this executor's timeout reason counts as timedOut; outer deadlines count as aborts.
     const timedOut = timeoutOf(d.signal, 'BASH_TIMEOUT') !== undefined
@@ -268,10 +367,33 @@ export class LocalBashExecutor extends ShellExecutor {
     }
   }
 
-  async start(spec: ShellExecSpec): Promise<ShellProcess> {
-    return Promise.resolve(this.startArgv(spec, ['bash', '-c', spec.command]))
+  /**
+   * Await one managed handle's outcome, settling a cancellation the provider
+   * reported as the caller's own abort reason.
+   *
+   * The managed-range provider maps a target start cancelled by the caller's
+   * abort to that caller's exact reason, because no command outcome exists to
+   * report. The shell seam settles caller aborts as results, so that specific
+   * rejection becomes a signal-less outcome the caller classifies from its own
+   * deadline. Every other rejection — a runner that exited before proving its
+   * range empty, or any infrastructure failure racing the abort — keeps
+   * propagating.
+   * @param handle - live provider handle whose outcome is awaited.
+   * @param signal - the fused deadline signal the provider observed.
+   * @returns the provider's outcome, or a signal-less outcome for its cancellation report.
+   */
+  private async settledOutcome(handle: SubprocessHandle, signal: AbortSignal): Promise<SubprocessOutcome> {
+    try {
+      return await handle.done
+    } catch (error) {
+      if (!signal.aborted || signal.reason === undefined || error !== signal.reason) throw error
+      return { exitCode: null, signal: null }
+    }
   }
 
+  async start(spec: ShellExecSpec): Promise<ShellProcess> {
+    return Promise.resolve(this.startArgv(spec, this.argv(spec)))
+  }
   /**
    * Start an explicit argv with the background lifecycle, environment, output,
    * cancellation, and managed-range ownership semantics of this executor.

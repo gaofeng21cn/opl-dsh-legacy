@@ -4,6 +4,9 @@
  * usage are deferred until `[DONE]`, covering both finish-attached and trailing usage-only shapes
  * while ensuring no chunk follows `finish`.
  *
+ * The reasoning channel is read under both names an endpoint may use for it, so a gateway that
+ * streams `reasoning` produces the same blocks as the official `reasoning_content`.
+ *
  * Translate DeepSeek wire chunks into the harness `StreamChunk` protocol.
  * @module dsh-llm-deepseek/translate
  */
@@ -12,7 +15,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { EMPTY_RESPONSE_CODE, LlmError } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, FinishReason, StreamChunk, TokenUsage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { DONE } from './sse.ts'
-import type { WireChunk, WireUsage } from './types.ts'
+import type { WireChunk, WireDelta, WireUsage } from './types.ts'
 
 /** One open block under assembly. */
 interface OpenBlock {
@@ -101,6 +104,28 @@ function closeBlock(block: OpenBlock): ContentBlock {
 }
 
 /**
+ * Resolve the reasoning text one delta contributes.
+ *
+ * DeepSeek streams the CoT as `reasoning_content`; an OpenAI-compatible gateway
+ * in front of the same model may stream it as `reasoning` instead. The two names
+ * are alternative spellings of one channel, never two channels, so the first
+ * name that carries text wins and the others are ignored for that delta.
+ * Concatenating them would duplicate every reasoning token, which the endpoint
+ * rejects when the turn is passed back.
+ *
+ * An empty string is "no update" rather than a value: the live first chunk opens
+ * with `reasoning_content: ''` and must not open a reasoning block.
+ * @param delta - the wire delta of one streamed choice.
+ * @returns the text this delta contributes, or undefined when it carries none.
+ */
+export function reasoningDelta(delta: WireDelta | undefined): string | undefined {
+  for (const value of [delta?.reasoning_content, delta?.reasoning]) {
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return undefined
+}
+
+/**
  * Consume SSE data payloads (ending with `[DONE]`) and yield StreamChunks.
  * Malformed JSON payloads abort the stream with `MALFORMED_RESPONSE`.
  * @param payloads - SSE data payloads from {@link parseSse}, `[DONE]`-terminated.
@@ -152,10 +177,9 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
     for (const choice of chunk.choices ?? []) {
       const delta = choice.delta
 
-      // Reasoning first: thinking mode interleaves it before text. The
-      // empty-string first chunk must not open a block.
-      const reasoning = delta?.reasoning_content
-      if (typeof reasoning === 'string' && reasoning.length > 0) {
+      // Reasoning first: thinking mode interleaves it before text.
+      const reasoning = reasoningDelta(delta)
+      if (reasoning !== undefined) {
         if (!reasoningBlock) {
           reasoningBlock = open('reasoning')
           yield { type: 'block-start', index: reasoningBlock.index, blockType: 'reasoning' }

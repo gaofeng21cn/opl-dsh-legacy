@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   DESKTOP_PACKAGES_DIR,
   DESKTOP_PACKAGE_SET_FILE,
+  desktopCoreBuildKey,
   desktopCorePackageOverrides,
   desktopDshPackageSpec,
   parseDesktopCorePackageSet,
@@ -66,6 +67,13 @@ describe('desktop core package set', () => {
       '@deepseek-ai/dsh-base': 'file:./desktop-packages/dsh-base.tgz',
       '@deepseek-ai/dsh-desktop-host': 'file:./desktop-packages/dsh-desktop-host.tgz',
     })
+  })
+
+  it('approves the core build script under the spec pnpm records for a local tarball', () => {
+    expect(desktopCoreBuildKey({
+      '@deepseek-ai/dsh-subprocess-local': 'file:./desktop-packages/dsh-subprocess-local.tgz',
+    })).toBe('@deepseek-ai/dsh-subprocess-local@file:desktop-packages/dsh-subprocess-local.tgz')
+    expect(desktopCoreBuildKey({})).toBe('@deepseek-ai/dsh-subprocess-local')
   })
 
   it('rejects version drift, descriptor disorder, corruption, and extra files', () => {

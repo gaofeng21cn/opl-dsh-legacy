@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use the **Plugins** settings section to configure the plugins exposed by the current deployment and to open feature-specific plugin pages. The **Plugin configuration** tab presents one expandable card for each supported plugin, shows which values the user overrode, and lets the user reset them to deployment defaults. Cards keep edits local until save. If the configuration changed after the card loaded, the save is rejected instead of overwriting the newer values.
 
+The Shell card stages the Native Agent shell and optional Git Bash executable together and saves its fields in one atomic namespace mutation. Rejected saves retain the draft. The card explains the full-restart requirement and Windows Git Bash permission limitation; it never restarts the app or changes permissions. These controls select the Agent command executor, not an integrated terminal preference.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)
@@ -25,7 +27,11 @@ Use the **Plugins** settings section to configure the plugins exposed by the cur
 <a id="use-this-package"></a>
 ## Use this package
 
-Open the Plugins section in Settings and select the **Plugin configuration** tab to edit the host-plane plugins this deployment composes. The cards appear in this order: the shell executor (`bash`), the agent loop's tool-call parallelism (`agent-loop`), subagent model selection (`subagent-model-selection`), and the DeepSeek search provider (`web-search-deepseek`).
+Open the Plugins section in Settings and select the **Plugin configuration** tab to edit the host-plane plugins this deployment composes. The cards appear in this order: the shell executor (`bash`), the agent loop's tool-call parallelism (`agent-loop`), subagent model selection (`subagent-model-selection`), the DeepSeek search provider (`web-search-deepseek`), and the agent's output language (`output-language`).
+
+### The Output language card
+
+**Output language** stores the language of model-authored prose in the Host's `output-language` settings section: **Default** leaves the model's own choice untouched, while **中文** and **English** ask for that language in the agent's replies and in every document, report, or documentation file it produces. The choice applies from the next request; code, paths, and quoted source stay as written, and the model's internal reasoning is not affected. Resetting the card removes the user override, leaving the same **Default** an untouched document already resolves.
 
 ### What appears here
 

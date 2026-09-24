@@ -17,9 +17,10 @@
    design (see this package's README), so the two import the same seam surface */
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { SHELL_SETTINGS_NAMESPACE, ShellExecutor } from '@deepseek-ai/dsh-shell'
+import { SHELL_SETTINGS_NAMESPACE, ShellExecutor, AGENT_SHELL_SETTINGS_FIELDS, assertAgentShellSettings } from '@deepseek-ai/dsh-shell'
+import type { AgentShellSettings } from '@deepseek-ai/dsh-shell'
 import type { ShellExecRequest, ShellExecSpec, ShellProcess, ShellProcessRead, ShellRunResult, CollectedOutput } from '@deepseek-ai/dsh-shell'
-import type { SubprocessCollect, SubprocessHandle, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessCollect, SubprocessHandle, SubprocessOutcome, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-settings'
 import { clampTimeout, deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
 /* jscpd:ignore-end */
@@ -55,7 +56,7 @@ const DEFAULT_GRACE_MS = 3_000
 const DEFAULT_MAX_SPILL_BYTES = 64 * 1024 * 1024
 
 /** Plugin config (all optional — `static Config` supplies the defaults). */
-export interface Config {
+export interface Config extends AgentShellSettings {
   /** Default working directory for commands (default: process.cwd()). */
   cwd?: string
   /** Default foreground timeout in milliseconds. */
@@ -77,8 +78,9 @@ export interface Config {
   pwshPath?: string
 }
 
-/** The shape after schemastery applied the defaults (cwd/pwshPath have none). */
-type ResolvedConfig = Required<Omit<Config, 'cwd' | 'pwshPath'>> & Pick<Config, 'cwd' | 'pwshPath'>
+/** The shape after schemastery applied the defaults (cwd/pwshPath and the Agent shell fields have none). */
+type ResolvedConfig = Required<Omit<Config, 'cwd' | 'pwshPath' | 'agentShell' | 'gitBashPath'>>
+  & Pick<Config, 'cwd' | 'pwshPath' | 'agentShell' | 'gitBashPath'>
 
 // Resolution lives in its own dependency-free module so the repository's
 // coverage-gate probe shares the exact definition the suites use.
@@ -121,6 +123,20 @@ export function assertServiceablePwshConfig(config: Config): void {
 }
 
 /**
+ * Reject a stored Agent shell selection this host cannot run.
+ *
+ * This executor is the one mounted while PowerShell is selected, so it is the
+ * only validator that can refuse a switch to Git Bash at the moment the user
+ * writes it: the bash executor mounts only after the next load, where the same
+ * failure would surface as a startup error instead of a rejected edit.
+ * @param config - the resolved section, schema-valid by construction.
+ * @throws Error naming the selection and why it cannot run.
+ */
+export function validateAgentShellConfig(config: Config): void {
+  assertAgentShellSettings(config)
+}
+
+/**
  * Local PowerShell executor over `ctx.subprocess`. Bounded output, spill
  * files, and managed-range termination are the subprocess service's mechanics;
  * this executor supplies their configured budgets per spawn.
@@ -136,6 +152,7 @@ export class PwshLocalExecutor extends ShellExecutor {
     maxSpillBytes: z.number().default(DEFAULT_MAX_SPILL_BYTES),
     graceMs: z.number().default(DEFAULT_GRACE_MS),
     pwshPath: z.string(),
+    ...AGENT_SHELL_SETTINGS_FIELDS,
   })
 
   /** The currently authoritative config: the settings section, or the composition entry. */
@@ -167,7 +184,14 @@ export class PwshLocalExecutor extends ShellExecutor {
     this.resolvedPwshPath = resolvePwshPath(entry.pwshPath)
     ctx.inject(['settings'], (settingsCtx) => {
       settingsCtx.settings.installSection(ctx, SHELL_SETTINGS_NAMESPACE, PwshLocalExecutor.Config, entry, {
-        validate: assertServiceablePwshConfig,
+        validate: (current) => {
+          assertServiceablePwshConfig(current)
+          validateAgentShellConfig(current)
+        },
+        // The Agent shell selection decides which executor and model-facing
+        // tool the composition mounts, and that happens while the plugin tree
+        // loads; see the bash twin for the same section contract.
+        applies: 'restart',
         setSource: (current) => {
           this.source = current as () => ResolvedConfig
         },
@@ -291,8 +315,25 @@ export class PwshLocalExecutor extends ShellExecutor {
         }
       } finally { d.signal.removeEventListener('abort', abort) }
     } else { argv = argvOrPrepare }
-    const handle = this.ctx.subprocess.spawn(this.spawnSpec(spec, spec.stdoutMaxBytes, d.signal, argv))
-    const outcome = await handle.done
+    let handle: SubprocessHandle
+    try {
+      handle = this.ctx.subprocess.spawn(this.spawnSpec(spec, spec.stdoutMaxBytes, d.signal, argv))
+    } catch (error) {
+      // A deadline that expires between argv resolution and the provider's own
+      // pre-spawn abort check rejects instead of starting the target. That is
+      // the same cancellation the branch above settles, not an infrastructure
+      // failure, so it reports the first abort cause rather than a wrapper error.
+      if (!d.signal.aborted) throw error
+      const timedOut = timeoutOf(d.signal, 'BASH_TIMEOUT') !== undefined
+      return {
+        spawnRequested: false,
+        result: {
+          exitCode: null, signal: null, timedOut, aborted: !timedOut, timeoutMs: spec.timeoutMs,
+          stdout: { text: '', truncated: false }, stderr: { text: '', truncated: false },
+        },
+      }
+    }
+    const outcome = await this.settledOutcome(handle, d.signal)
     const collected = PwshLocalExecutor.collected(handle)
     // Only this executor's timeout reason counts as timedOut; outer deadlines count as aborts.
     const timedOut = timeoutOf(d.signal, 'BASH_TIMEOUT') !== undefined
@@ -307,6 +348,30 @@ export class PwshLocalExecutor extends ShellExecutor {
         stdout: finalOutput(collected.stdout),
         stderr: finalOutput(collected.stderr),
       },
+    }
+  }
+
+  /**
+   * Await one managed handle's outcome, settling a cancellation the provider
+   * reported as the caller's own abort reason.
+   *
+   * The managed-range provider maps a target start cancelled by the caller's
+   * abort to that caller's exact reason, because no command outcome exists to
+   * report. The shell seam settles caller aborts as results, so that specific
+   * rejection becomes a signal-less outcome the caller classifies from its own
+   * deadline. Every other rejection — a runner that exited before proving its
+   * range empty, or any infrastructure failure racing the abort — keeps
+   * propagating.
+   * @param handle - live provider handle whose outcome is awaited.
+   * @param signal - the fused deadline signal the provider observed.
+   * @returns the provider's outcome, or a signal-less outcome for its cancellation report.
+   */
+  private async settledOutcome(handle: SubprocessHandle, signal: AbortSignal): Promise<SubprocessOutcome> {
+    try {
+      return await handle.done
+    } catch (error) {
+      if (!signal.aborted || signal.reason === undefined || error !== signal.reason) throw error
+      return { exitCode: null, signal: null }
     }
   }
 

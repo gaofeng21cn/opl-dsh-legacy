@@ -111,6 +111,16 @@ Files 模式通过 `maxRequestFilesBytes` 与 `maxImagesPerRequest` 限制保留
 
 非 2xx 响应以稳定 code 失败：`AUTH`（401/403）、`QUOTA`、`RATE_LIMIT`、`CONTEXT_WINDOW_EXCEEDED`、`INVALID_REQUEST`、`SERVER` 以及其他情况的 `HTTP_<status>`；响应前传输失败抛出 `TRANSPORT`，调用方中止抛出 `ABORTED`，流空闲超时抛出 `TIMEOUT`。请求扩展准备、字段冲突或 2xx 后接受失败使用 `REQUEST_EXTENSION`。当提供方未指出 file id 时，规范化图片拒绝会列出所有可能附件及其持久位置。陈旧文件拒绝会使点名映射（或该次尝试使用的全部映射）失效，并允许一次替换模型请求。协议违规抛出 `STREAM_CLOSED` 或 `MALFORMED_RESPONSE`；不带内容块的终止 `stop` 变成 `EMPTY_RESPONSE`，默认重试策略会重试它。任何位置都没有密钥的请求以 `MISSING_CREDENTIAL` 失败；格式错误的凭据以 `INVALID_CREDENTIAL` 失败，并点名需要修复的引用——绝不包含密钥的任何部分。
 
+`TRANSPORT` 失败携带 `transportStage`（`fetch` 本身被拒时为 `request`，响应体在流中途失败时为 `response-body`），以及底层平台错误的 `causeName` 与 errno 风格 `causeCode`。没有它们，每种网络故障、DNS 失败、TLS 拒绝与停滞读取都会持久化为同一行；这三者都不是渲染后的消息，因此端点、请求头、凭据与请求正文都不会进入持久化事件。
+
+### 模型输出中的控制标记
+
+chat-completions 端点可能流式返回一个控制语法从未变成结构化字段的轮次：CoT 以 `<thinking>` 分隔符包裹出现在 `delta.content` 中，或者整个工具调用以 `<｜DSML｜invoke>` 风格标记出现在其中而完全没有 `delta.tool_calls`。适配器按可能使用的两个线上字段名读取 CoT——官方 `reasoning_content` 与别名 `reasoning`——同一分片同时携带两者时解析为一份贡献，而不是拼接。可见文本中的标记既不会作为工具调用执行，也不会从回答中剥离。
+
+适配器对每次尝试观测两次：一次在原始载荷到达时、转换之前，一次在转换产出的块上。`onProtocolAnomaly` 为每个异常尝试报告一条警告，同时呈现两侧——原始 delta 字段及其分片数与字符数、原始结束原因、载荷源是否到达终止哨兵，与块侧的文本、思考、标记族、结构化工具调用与映射后的结束原因并列。标记文本、提示与思考内容绝不保留，也不存储原始 SSE，因此该记录可以安全引用。
+
+两侧回答的是不同问题，任何一侧单独都不足以定论。原始 `content` 携带某个标记族、且文本块携带同一标记族，说明该语法在本适配器之前就已作为可见内容进入，因此本地映射在该维度上是忠实的——但这不能说明它是模型产生的还是上游网关转换的。原始思考通道携带的标记族出现在产出的文本中、却不在产出的思考中，才是文本／思考映射缺陷的形态。原始 `tool_calls` 分片或 `tool-calls` 结束原因对应不到任何已组装块，表示调用在本地丢失。仅在思考内部出现的标记只作为背景记录，绝不作为缺陷上报，因为模型可能合法地在其自身 CoT 中写出该语法。流在正文中途失败时，所有原始计数都是部分统计，由 `wire-incomplete` 与 `complete=false` 标记。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -196,6 +206,8 @@ Files 模式通过 `maxRequestFilesBytes` 与 `maxImagesPerRequest` 限制保留
 loop 保留的响应块会追加到下一个请求，并保留其更早的可复用前缀；被丢弃的块不再有后续缓存影响。更换提供方或模型会选中不同的缓存域。
 
 ## 已知限制与延期工作
+
+诊断 Chat Completions 推理回传时，将 `DSH_REASONING_TRACE_DIR` 设为绝对路径可启用逐次请求 JSON 文件，包含 SHA-256 指纹（UTF-16LE）、字符数、字段存在状态、工具调用 ID 的哈希和 HTTP 状态。可比较原始推理字段、组装块、投影历史与序列化请求，不记录消息正文或凭据。历史详情保留最后 128 条助手消息及完整历史摘要。文件持续累积，需手动清理；诊断后应取消该变量。进程被强制结束可能丢失当前报告。这些文件只观察生成过程，不修补缺失推理；投影输入也不能独立证明磁盘持久化无损。
 
 - Responses 协议尚未实现，配置值 `responses` 会被拒绝。
 

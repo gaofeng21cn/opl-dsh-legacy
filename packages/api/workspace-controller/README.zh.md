@@ -6,6 +6,8 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
+moveSession 接收 sessionId 与可选 workspaceId；省略目标会将会话移到项目外。持久化归属的跟随数据更新来源和目标项目，重连恢复权威成员关系。此命令不改变 Session cwd、文件或历史。
+
 ## 概述
 
 `@deepseek-ai/dsh-api-workspace-controller` 拥有 Host 的 `ctx.workspaceController` 服务和生成的 Client `ctx.remote.workspace` namespace。它的 Remote 方法负责创建、重命名、移除和重排 Workspace，在 Workspace 内重排 Session，归档与取消归档 Session，以及跟随完整的 Workspace 投影。当 Client 必须修改或跟随 Workspace 导航时，请通过 API 网关使用它。本包同时拥有 `ctx.directoryPickerController` 与生成的 `ctx.remote.directoryPicker` namespace，因为它承载的选目录 seam 是抽象的，自身从不作为 Loader entry。

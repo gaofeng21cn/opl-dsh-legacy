@@ -134,10 +134,22 @@ export interface WireDelta {
   /** Visible text. Null/empty on reasoning/tool-call chunks. */
   content?: string | null
   /**
-   * Thinking-mode CoT. The FIRST chunk carries an empty string (must not
-   * open a reasoning block); absent entirely in non-thinking mode.
+   * Thinking-mode CoT under the official DeepSeek name. The FIRST chunk carries
+   * an empty string (must not open a reasoning block); absent entirely in
+   * non-thinking mode.
    */
   reasoning_content?: string | null
+  /**
+   * The same CoT under the alias an OpenAI-compatible gateway may stream.
+   *
+   * The OPL Gateway carries thinking output in `reasoning` and never in
+   * `reasoning_content`; a client that reads only the official name sees an
+   * empty CoT and cannot pass it back, which the endpoint rejects with
+   * `The reasoning_text in the thinking mode must be passed back to the API.`
+   * A delta carrying both names is one CoT, not two, so the names are resolved
+   * rather than concatenated — see {@link reasoningDelta}.
+   */
+  reasoning?: string | null
   tool_calls?: WireToolCallDelta[]
 }
 

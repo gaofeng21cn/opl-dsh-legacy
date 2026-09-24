@@ -81,9 +81,13 @@ describe('generated tsconfig package aliases', () => {
   it('covers every workspace package in the committed config', () => {
     const config = readFileSync(resolve(root, 'tsconfig.base.json'), 'utf8')
     // Includes the packages the generator skips because their name does not
-    // match their directory: those carry hand-written aliases.
+    // match their directory, and the packages whose scope the generator does
+    // not emit at all: those carry hand-written aliases, so nothing else would
+    // report one that lost its alias.
     const names = collectPackageNames()
     expect(names).toContain('@deepseek-ai/dsh-typert-protocol')
+    expect(names).toContain('@one-person-lab/dsh-llm-opl-gateway')
+    expect(names).toContain('@one-person-lab/dsh-client-ui-settings-opl-gateway')
     expect(uncoveredPackages(names, mappedSpecifiers(config))).toEqual([])
   })
 

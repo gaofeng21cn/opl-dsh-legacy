@@ -1,25 +1,21 @@
 /** Download and verify the upstream Node.js runtime and copy the pinned pnpm CLI. */
 
-import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { cpSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { chmod, readFile } from 'node:fs/promises'
+import { cpSync, createReadStream, createWriteStream, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmod } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import extractZip from 'extract-zip'
 import { extract } from 'tar'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { fetchVerifiedNodeArchive, NODE_VERSION, type NodeArchiveArch, type NodeArchivePlatform } from './node-archive.ts'
 
-const NODE_VERSION = '24.17.0'
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
 const RUNTIME_ROOT = BUILD_PATHS.runtime
 const DOWNLOAD_ROOT = BUILD_PATHS.downloads
 
-type RuntimePlatform = 'darwin' | 'linux' | 'win'
-type RuntimeArch = 'arm64' | 'x64'
-
-function target(): { platform: RuntimePlatform; arch: RuntimeArch } {
+function target(): { platform: NodeArchivePlatform; arch: NodeArchiveArch } {
   const rawPlatform = process.env.DSH_DESKTOP_TARGET_PLATFORM ?? process.env.npm_config_platform ?? process.platform
   const rawArch = process.env.DSH_DESKTOP_TARGET_ARCH ?? process.env.npm_config_arch ?? process.arch
   const platform = rawPlatform === 'win32' ? 'win' : rawPlatform
@@ -30,32 +26,27 @@ function target(): { platform: RuntimePlatform; arch: RuntimeArch } {
   return { platform, arch: rawArch }
 }
 
-async function download(url: string, path: string): Promise<void> {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`desktop runtime: ${url} returned HTTP ${String(response.status)}`)
-  writeFileSync(path, new Uint8Array(await response.arrayBuffer()), { mode: 0o600 })
-}
-
-async function prepareNode(platform: RuntimePlatform, arch: RuntimeArch): Promise<void> {
-  const extension = platform === 'win' ? 'zip' : 'tar.gz'
-  const folder = `node-v${NODE_VERSION}-${platform}-${arch}`
-  const archiveName = `${folder}.${extension}`
-  const releaseRoot = `https://nodejs.org/download/release/v${NODE_VERSION}`
-  const archive = join(DOWNLOAD_ROOT, archiveName)
-  const sums = join(DOWNLOAD_ROOT, `node-v${NODE_VERSION}-SHASUMS256.txt`)
-  if (!existsSync(archive)) await download(`${releaseRoot}/${archiveName}`, archive)
-  if (!existsSync(sums)) await download(`${releaseRoot}/SHASUMS256.txt`, sums)
-  const line = (await readFile(sums, 'utf8')).split(/\r?\n/u)
-    .find(candidate => candidate.endsWith(`  ${archiveName}`))
-  if (line === undefined) throw new Error(`desktop runtime: ${archiveName} is absent from Node.js SHASUMS256.txt`)
-  const expected = line.split(/\s+/u)[0]
-  const actual = createHash('sha256').update(await readFile(archive)).digest('hex')
-  if (actual !== expected) throw new Error(`desktop runtime: checksum mismatch for ${archiveName}`)
+async function prepareNode(platform: NodeArchivePlatform, arch: NodeArchiveArch): Promise<void> {
+  const { archive, extension, folder } = await fetchVerifiedNodeArchive({
+    platform,
+    arch,
+    downloads: DOWNLOAD_ROOT,
+  })
 
   const extraction = BUILD_PATHS.nodeExtract
   rmSync(extraction, { recursive: true, force: true })
   mkdirSync(extraction, { recursive: true })
-  if (platform === 'win') await extractZip(archive, { dir: extraction })
+  if (extension === 'zip' && process.platform === 'win32') {
+    // The verified upstream ZIP can stall extract-zip's stream pipeline on
+    // Windows. Use the system libarchive reader and require a successful exit.
+    const unpack = spawnSync(join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'tar.exe'),
+      ['-xf', archive, '-C', extraction], { encoding: 'utf8', windowsHide: true, timeout: 120_000 })
+    if (unpack.error !== undefined || unpack.status !== 0) {
+      throw new Error(
+        'desktop runtime: ZIP extraction failed: ' + (unpack.error?.message ?? (unpack.stderr.trim() || String(unpack.status))),
+      )
+    }
+  } else if (extension === 'zip') await extractZip(archive, { dir: extraction })
   else await extract({ cwd: extraction, file: archive })
   const source = join(extraction, folder, platform === 'win' ? 'node.exe' : 'bin/node')
   const destinationRoot = join(RUNTIME_ROOT, 'node')
@@ -69,7 +60,7 @@ async function prepareNode(platform: RuntimePlatform, arch: RuntimeArch): Promis
   const hostCanExecute = platform === hostPlatform
     && (arch === process.arch || (platform === 'darwin' && arch === 'x64' && process.arch === 'arm64'))
   if (hostCanExecute) {
-    const result = spawnSync(destination, ['--version'], { encoding: 'utf8' })
+    const result = spawnSync(destination, ['--version'], { encoding: 'utf8', windowsHide: true })
     if (result.error !== undefined || result.status !== 0 || result.stdout.trim() !== `v${NODE_VERSION}`) {
       const detail = result.error?.message ?? result.signal ?? result.stderr.trim()
       const outcome = detail === '' ? `exit ${String(result.status)}` : detail

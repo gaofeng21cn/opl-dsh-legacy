@@ -27,6 +27,15 @@ const DESKTOP_UPLOAD_CREDENTIAL_ENV_NAMES = new Set([
   'DOWNLOAD_PROD_COS_SECRET_KEY',
 ])
 
+/** electron-builder configuration used when no override is supplied. */
+export const DEFAULT_DESKTOP_BUILDER_CONFIG = 'electron-builder.config.mjs'
+
+/** Environment variable that selects the electron-builder configuration file. */
+export const DESKTOP_BUILDER_CONFIG_ENV = 'DSH_DESKTOP_BUILDER_CONFIG'
+
+/** Configuration file names this script accepts; they must stay inside the package. */
+const DESKTOP_BUILDER_CONFIG_PATTERN = /^[A-Za-z0-9._-]+\.mjs$/u
+
 /** Fixed platform and architecture identifiers exposed by package scripts. */
 export type DesktopPackageTargetName = 'mac-arm64' | 'mac-x64' | 'win-x64'
 
@@ -102,6 +111,32 @@ export function withoutDesktopUploadCredentials(environment: NodeJS.ProcessEnv):
     .filter(([name]) => !DESKTOP_UPLOAD_CREDENTIAL_ENV_NAMES.has(name)))
 }
 
+/**
+ * Select the electron-builder configuration one packaging run uses.
+ *
+ * A downstream distribution ships its own configuration next to the upstream
+ * one — OPL's is `electron-builder.opl.mjs` — and must not have to copy the
+ * packaging script to reach it. The value is restricted to a file name inside
+ * `apps/desktop` so a mistyped variable can never point the build at an
+ * arbitrary module.
+ * @param invoked - `--config` value from the command line, when present.
+ * @param env - Packaging environment.
+ * @returns Configuration file name relative to `apps/desktop`.
+ */
+export function resolveDesktopBuilderConfig(
+  invoked: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const selected = invoked?.trim()
+  const candidates = selected === undefined || selected === '' ? [env[DESKTOP_BUILDER_CONFIG_ENV]?.trim()] : [selected]
+  const resolved = candidates[0]
+  if (resolved === undefined || resolved === '') return DEFAULT_DESKTOP_BUILDER_CONFIG
+  if (!DESKTOP_BUILDER_CONFIG_PATTERN.test(resolved)) {
+    throw new Error(`desktop package: the builder configuration must be a file name in apps/desktop (received ${resolved})`)
+  }
+  return resolved
+}
+
 function isTargetName(value: string): value is DesktopPackageTargetName {
   return Object.hasOwn(TARGETS, value)
 }
@@ -173,6 +208,7 @@ interface DesktopPackageInvocation {
   readonly directory: boolean
   readonly prepareOnly: boolean
   readonly unsigned: boolean
+  readonly config: string
 }
 
 function hostTargetName(platform: NodeJS.Platform, arch: string): DesktopPackageTargetName {
@@ -200,6 +236,7 @@ export function parseDesktopPackageInvocation(
       dir: { type: 'boolean', default: false },
       'prepare-only': { type: 'boolean', default: false },
       unsigned: { type: 'boolean', default: false },
+      config: { type: 'string' },
     },
   })
   if (positionals.length > 1) throw new Error('desktop package: expected at most one target')
@@ -211,6 +248,7 @@ export function parseDesktopPackageInvocation(
     directory: values.dir,
     prepareOnly: values['prepare-only'],
     unsigned: values.unsigned,
+    config: resolveDesktopBuilderConfig(values.config),
   }
 }
 
@@ -219,18 +257,20 @@ export function parseDesktopPackageInvocation(
  * @param target - Supported release target.
  * @param directory - Whether to stop at an unpacked application directory.
  * @param artifact - Optional single artifact built from an existing signed application.
+ * @param config - electron-builder configuration file inside `apps/desktop`.
  * @returns Arguments that keep publishing under the separate validated upload command.
  */
 export function desktopElectronBuilderArguments(
   target: DesktopPackageTarget,
   directory: boolean,
   artifact?: DesktopPrepackagedArtifact,
+  config: string = DEFAULT_DESKTOP_BUILDER_CONFIG,
 ): readonly string[] {
   return [
     'exec',
     'electron-builder',
     '--config',
-    'electron-builder.config.mjs',
+    config,
     target.builderPlatform,
     ...(artifact === undefined ? [] : [artifact.format]),
     target.builderArch,
@@ -310,10 +350,15 @@ async function main(): Promise<void> {
   await runPnpm(['run', 'prepare:runtime'], targetEnv)
   await runPnpm(['run', 'prepare:packages'], targetEnv)
   await runPnpm(['run', 'prepare:dsh'], targetEnv)
+  // A Windows package carries the Linux payload its WSL2 execution environment
+  // runs. Building it needs a WSL2 distribution, so a machine without one fails
+  // here rather than shipping a package that offers an environment it cannot
+  // serve.
+  if (target.platform === 'win32') await runPnpm(['run', 'prepare:wsl'], targetEnv)
   if (invocation.prepareOnly) return
   if (target.platform === 'darwin' && !invocation.directory) {
     await runPnpm([
-      ...desktopElectronBuilderArguments(target, true),
+      ...desktopElectronBuilderArguments(target, true, undefined, invocation.config),
       '--config.mac.notarize=false',
     ], electronBuilderEnv)
     await packageMacOSArtifacts({
@@ -321,9 +366,9 @@ async function main(): Promise<void> {
       version: packageVersion(join(APP_ROOT, 'package.json'), 'desktop package'),
       artifactsRoot: buildPaths.artifacts,
       environment: electronBuilderEnv,
-    }, artifact => runPnpm(desktopElectronBuilderArguments(target, false, artifact), electronBuilderEnv))
+    }, artifact => runPnpm(desktopElectronBuilderArguments(target, false, artifact, invocation.config), electronBuilderEnv))
   } else {
-    await runPnpm(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv)
+    await runPnpm(desktopElectronBuilderArguments(target, invocation.directory, undefined, invocation.config), electronBuilderEnv)
   }
   if (!invocation.directory && !invocation.unsigned) writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
 }

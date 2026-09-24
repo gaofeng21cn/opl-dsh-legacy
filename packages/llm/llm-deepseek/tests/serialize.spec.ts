@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageMediaType, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
-import { createUserMessage, ToolCallId, ReasoningEffortId, createMessage } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, createUserMessage, ToolCallId, ReasoningEffortId, createMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import {
   serializeMessages,
@@ -10,6 +10,14 @@ import {
   serializeRequestWithImages,
 } from '../src/protocols/chat-completions/serialize.ts'
 import type { ImageSerializationOptions } from '../src/protocols/chat-completions/serialize.ts'
+import { DONE } from '../src/protocols/chat-completions/sse.ts'
+import { translate } from '../src/protocols/chat-completions/translate.ts'
+
+async function* feed(...payloads: (string | object)[]): AsyncGenerator<string> {
+  for (const payload of payloads) {
+    yield typeof payload === 'string' ? payload : JSON.stringify(payload)
+  }
+}
 
 type FileResolver = Extract<ImageSerializationOptions['representation'], { kind: 'file' }>['resolveFileId']
 
@@ -135,6 +143,48 @@ describe('serializeMessages', () => {
       reasoning_content: 'I should check the weather.',
       tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Paris"}' } }],
     }])
+  })
+
+  it('passes back the CoT a gateway alias streamed, through the assembler and serializer', async () => {
+    // This covers the in-memory assembler→serializer chain only. The durable
+    // path — save, reload from storage, rebuild the next request — is pinned by
+    // tests/reasoning-persistence.spec.ts against real JSONL persistence.
+    const assembler = new BlockAssembler()
+    for await (const chunk of translate(feed(
+      { choices: [{ delta: { role: 'assistant', content: null, reasoning: '' } }] },
+      { choices: [{ delta: { content: null, reasoning: 'Check ' } }] },
+      { choices: [{ delta: { content: null, reasoning: 'the weather.' } }] },
+      { choices: [{ delta: {
+        tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Paris"}' } }],
+      } }] },
+      { choices: [{ delta: { content: '' }, finish_reason: 'tool_calls' }] },
+      DONE,
+    ))) assembler.push(chunk)
+
+    const assistant = createMessage({
+      role: 'assistant',
+      content: assembler.message().content,
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+    expect(assistant.content).toEqual([
+      { type: 'reasoning', text: 'Check the weather.' },
+      { type: 'tool-call', id: ToolCallId('call-1'), name: 'get_weather', arguments: '{"city":"Paris"}' },
+    ])
+
+    const wire = serializeMessages([
+      assistant,
+      createUserMessage({
+        content: [{ type: 'tool-result', toolCallId: ToolCallId('call-1'), content: [{ type: 'text', text: '{"ok":true}' }] }],
+        source: { kind: 'plugin', plugin: 'test' },
+      }),
+    ])
+    expect(wire[0]).toEqual({
+      role: 'assistant',
+      content: '',
+      reasoning_content: 'Check the weather.',
+      tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"Paris"}' } }],
+    })
+    expect(wire[1]).toEqual({ role: 'tool', tool_call_id: 'call-1', content: '{"ok":true}' })
   })
 
   it('serializes parallel tool calls in order', () => {

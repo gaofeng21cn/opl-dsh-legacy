@@ -102,6 +102,9 @@ export type WorkspaceBrowserInjected = {
    * open it; without an explicit workspace, inherit the current Session
    * Workspace, then the recent Workspace, or clear into the New Session view.
    */
+  /** Move only project ownership, preserving the working directory. */
+  moveSession: (sessionId: SessionId, workspaceId?: WorkspaceId) => Promise<void>
+  openChat: () => Promise<void>
   startSession: (workspaceId?: WorkspaceId) => void
   /** Open a real Session. */
   open: (sessionId: SessionId) => void

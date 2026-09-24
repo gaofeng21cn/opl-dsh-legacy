@@ -20,6 +20,7 @@ import {
 import { delimiter, dirname, join, resolve, sep } from 'node:path'
 import {
   DESKTOP_HOST_PACKAGE,
+  desktopCoreBuildKey,
   desktopCorePackageOverrides,
   verifyDesktopCorePackageSet,
 } from './core-package-set.ts'
@@ -79,7 +80,6 @@ export type DesktopProjectMutation =
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
-const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const DESKTOP_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] as const
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\nstrictDepBuilds: true\n'
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/u
@@ -104,10 +104,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
   const overrideSection = entries.length === 0
     ? ''
     : `overrides:\n${entries.map(([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`).join('\n')}\n`
-  const coreBuildSpec = overrides[CORE_BUILD_PACKAGE]
-  const coreBuildKey = coreBuildSpec === undefined
-    ? CORE_BUILD_PACKAGE
-    : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
+  const coreBuildKey = desktopCoreBuildKey(overrides)
   return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
 }
 
@@ -473,6 +470,9 @@ export class DesktopProjectManager {
           XDG_STATE_HOME: this.paths.pnpm.state,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
+        // Package transactions run while the shell shows its loading page; a
+        // console window per pnpm invocation would appear over the window.
+        windowsHide: true,
       })
       let failure: Error | undefined
       let diagnostics = ''

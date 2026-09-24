@@ -74,6 +74,8 @@ function renderBashCard(state: Partial<BashCardState> = {}) {
     ...settled,
     timeoutMs: field('60000'),
     maxOutputBytes: field('64000'),
+    agentShell: field('powershell'),
+    gitBashPath: field(''),
     ...state,
   })
   const actions = cardActions()
@@ -207,6 +209,18 @@ describe('ConfigurablePluginsTab', () => {
 })
 
 describe('BashCard', () => {
+  it('shows the native shell choice, permission limitation and restart requirement', () => {
+    const actions = renderBash()
+    fireEvent.click(screen.getByText(en.bashTitle))
+    const select = screen.getByLabelText(en.bashAgentShell)
+    expect((select as HTMLSelectElement).value).toBe('powershell')
+    fireEvent.change(select, { target: { value: 'git-bash' } })
+    expect(actions.edit).toHaveBeenCalledWith('agentShell', 'git-bash')
+    expect(screen.getByText(en.bashAgentShellRestart)).toBeTruthy()
+    expect(screen.getByText(en.bashAgentShellHint)).toBeTruthy()
+    expect(en.bashAgentShellHint).toContain('never changes permissions')
+  })
+
   it('renders nothing while its namespace is unavailable', () => {
     const { container } = render(<div />)
     renderBash({ available: false })

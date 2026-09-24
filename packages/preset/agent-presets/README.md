@@ -7,9 +7,13 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
+The shipped chat preset provides a complete conversational persona and context compaction without model-facing tools or workspace instructions. The GUI addresses it through its separate chat entry. Recomposition refuses switching a chat to another preset, including a blank chat; persisted sessions and forks retain the preset through the existing log.
+
 ## Summary
 
 Use `dsh-agent-presets` to give each session the tools, prompt sections, and skills named by one preset's `agent.cordis.yml`. One process can run sessions with different presets while keeping their state separate. The preset list combines shipped definitions with configured and user roots, reports why a preset cannot start, and can create a local preset by copying an existing one. Deployments and users can choose defaults; only an empty session may switch presets. Treat every authored preset as trusted configuration because it grants the capabilities of the plugins it selects.
+
+On Windows Native, standard, ptc, and cordis expose exactly the shell tool selected at host startup; minimal selects the corresponding persistent terminal backend. The Git Bash path for minimal is also captured at startup. Linux, macOS, and WSL keep Bash regardless of the Native choice. See [shell settings](../../shell/shell/README.md) for restart behavior and the Git Bash confinement limitation.
 
 ## Table of Contents
 

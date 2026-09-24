@@ -38,6 +38,38 @@ export interface FieldProps {
 }
 
 /**
+ * One field's head: its label and, when saving would leave a user-layer entry,
+ * the overridden badge with the reset that stages a clear.
+ * @param props - the field's copy, its override state, and the reset action.
+ * @returns the field head row shared by every control.
+ */
+function FieldHead(props: Pick<
+  FieldProps,
+  'id' | 'label' | 'overridden' | 'overriddenLabel' | 'resetLabel' | 'disabled' | 'onReset'
+>) {
+  return (
+    <div className={css.head}>
+      <label className={css.label} htmlFor={props.id}>{props.label}</label>
+      {props.overridden
+        ? (
+          <span className={css.badges}>
+            <Tag tone="neutral">{props.overriddenLabel}</Tag>
+            <button
+              type="button"
+              className={css.reset}
+              disabled={props.disabled}
+              onClick={props.onReset}
+            >
+              {props.resetLabel}
+            </button>
+          </span>
+        )
+        : null}
+    </div>
+  )
+}
+
+/**
  * A staged value field. `numeric` only hints the keypad: which drafts a field
  * accepts is decided by its spec, so the control never silently rewrites what
  * the user typed.
@@ -52,24 +84,7 @@ export function ValueField(props: FieldProps & {
 }) {
   return (
     <div className={css.field}>
-      <div className={css.head}>
-        <label className={css.label} htmlFor={props.id}>{props.label}</label>
-        {props.overridden
-          ? (
-            <span className={css.badges}>
-              <Tag tone="neutral">{props.overriddenLabel}</Tag>
-              <button
-                type="button"
-                className={css.reset}
-                disabled={props.disabled}
-                onClick={props.onReset}
-              >
-                {props.resetLabel}
-              </button>
-            </span>
-          )
-          : null}
-      </div>
+      <FieldHead {...props} />
       <input
         id={props.id}
         className={props.invalid ? css.inputInvalid : css.input}
@@ -86,6 +101,48 @@ export function ValueField(props: FieldProps & {
       </p>
     </div>
   )
+}
+
+/**
+ * A staged fixed-choice field. The control offers exactly the values the field's
+ * spec accepts, so choosing one can never stage a draft the save would refuse;
+ * the label and hint stay the card's copy.
+ * @param props - the field's copy, its staged value, and the edit actions.
+ * @param props.options - the choices, in display order.
+ * @returns the labelled control.
+ */
+export function ChoiceField(props: FieldProps & {
+  /** The offered choices, as stored values with their displayed labels. */
+  options: ReadonlyArray<{ value: string; label: string }>
+}) {
+  return (
+    <div className={css.field}>
+      <FieldHead {...props} />
+      <select
+        id={props.id}
+        className={css.input}
+        value={props.text}
+        disabled={props.disabled}
+        onChange={(event) => { props.onEdit(event.target.value) }}
+      >
+        {props.options.map(option => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+      <p className={css.hint}>{props.hint}</p>
+    </div>
+  )
+}
+
+/**
+ * A note that a card's values take effect only on the next load. It is prose
+ * rather than a control: the choice is stored immediately and the user decides
+ * when to reload, so nothing here writes or restarts anything.
+ * @param props - the note's copy.
+ * @returns the notice line.
+ */
+export function RestartNotice(props: { text: string }) {
+  return <p className={css.restart}>{props.text}</p>
 }
 
 /**

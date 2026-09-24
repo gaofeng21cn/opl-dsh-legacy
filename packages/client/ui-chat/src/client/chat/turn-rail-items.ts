@@ -55,19 +55,22 @@ function outlineEntries(outline: unknown): readonly unknown[] {
  * A turn present in both sides keeps the loaded anchor, taking an outline
  * preview only where the window's own is empty (a mid-Turn window head, or a
  * turn whose loaded nodes carry no text); turns on one side only pass
- * through. Result ascends by turn.
+ * through. Turns a superseding prompt rewrite emptied drop out entirely: the
+ * outline still names them, but no row is left to scroll to.
  * @param loaded - loaded-window rail items (timeline order).
  * @param outline - `turnOutline` projection value, treated as wire data.
+ * @param supersededTurns - loaded Turns whose every row a prompt rewrite hid.
  * @returns every known turn, ascending; a stable empty array when none.
  */
 export function mergeTurnRailItems(
   loaded: readonly TurnNavigationItem[],
   outline: unknown,
+  supersededTurns: ReadonlySet<number>,
 ): readonly TurnRailItem[] {
   const byTurn = new Map<number, TurnRailItem>()
   for (const raw of outlineEntries(outline)) {
     const entry = outlineEntry(raw)
-    if (entry === undefined) continue
+    if (entry === undefined || supersededTurns.has(entry.turn)) continue
     byTurn.set(entry.turn, {
       turn: entry.turn,
       prompt: entry.prompt,

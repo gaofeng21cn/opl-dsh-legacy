@@ -22,7 +22,11 @@ import { importOplGatewayKey } from './opl-credentials.ts'
 /** File recording which key value this plugin adopted, without the secret. */
 export const ADOPTION_RECORD_FILENAME = 'opl-gateway-key-adoption.json'
 
-/** Fingerprint of one key value. */
+/**
+ * Fingerprint of one key value.
+ * @param value - key material to fingerprint; the value itself is never recorded.
+ * @returns the SHA-256 hex digest stored in the adoption record.
+ */
 export function keyFingerprint(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }

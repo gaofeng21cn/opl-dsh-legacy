@@ -63,6 +63,10 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 Both dialects expose the same readiness contract, so consumers are dialect-agnostic. A send settles when the shell is ready again: after the controlled prompt is verified, after the foreground process group provably waits on stdin (Linux), after output silence (`inferred_idle`), or at the absolute `timeoutMs`. An `inferred_idle` or `timeout` result does not prove the foreground command exited.
 
+### Native Git Bash selection
+
+The Native Git Bash choice also selects this backend for the minimal preset. It receives the startup Git Bash path, retains interactive Bash state, and does not read a later edited shell selection. Windows restricted modes refuse a Bash terminal before one is allocated: MSYS initializes per-user runtime objects (its shared mapping and signal pipes) whose security descriptors name the user SID, which the restricted token's write check never matches, and a session shell cannot be authorized by the one-shot broker's capability probe. PowerShell retains confined-mode support, and the static refusal keeps the decision independent of any host fact a probe would have to establish.
+
 ### Sandboxing and safe operation
 
 The shell runs under the effective sandbox boundary for its whole life. Changing the effective sandbox mode is rejected while the owner still has open sessions or a spawn in progress — wait for creation to settle and close the sessions first, so a terminal opened with wider access cannot survive a downgrade. The backend supplies only terminal-specific environment overrides; the subprocess provider applies its shared credential scrub.

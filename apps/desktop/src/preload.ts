@@ -1,9 +1,13 @@
 /** Context-isolated renderer bridge for desktop package and update operations. */
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { DESKTOP_IPC, type DshDesktopApi, type DesktopUpdateState } from './ipc.ts'
+import {
+  DESKTOP_IPC,
+  type DesktopShellPreferences,
+  type DshDesktopApi,
+  type DesktopUpdateState,
+} from './ipc.ts'
 import type { DesktopBackendState } from './backend-controller.ts'
-
 const api: DshDesktopApi = {
   protocolVersion: 1,
   locale: () => ipcRenderer.invoke(DESKTOP_IPC.localeGet) as Promise<ReturnType<DshDesktopApi['locale']> extends Promise<infer T> ? T : never>,
@@ -31,6 +35,19 @@ const api: DshDesktopApi = {
       const handle = (_event: Electron.IpcRendererEvent, state: DesktopUpdateState): void => { listener(state) }
       ipcRenderer.on(DESKTOP_IPC.updatesState, handle)
       return () => { ipcRenderer.off(DESKTOP_IPC.updatesState, handle) }
+    },
+  },
+  environment: {
+    status: () => ipcRenderer.invoke(DESKTOP_IPC.environmentStatus) as ReturnType<DshDesktopApi['environment']['status']>,
+    select: selection => ipcRenderer.invoke(DESKTOP_IPC.environmentSelect, selection) as ReturnType<DshDesktopApi['environment']['select']>,
+  },
+  preferences: {
+    get: () => ipcRenderer.invoke(DESKTOP_IPC.preferencesGet) as Promise<DesktopShellPreferences>,
+    set: update => ipcRenderer.invoke(DESKTOP_IPC.preferencesSet, update) as Promise<DesktopShellPreferences>,
+    subscribe(listener) {
+      const handle = (_event: Electron.IpcRendererEvent, value: DesktopShellPreferences): void => { listener(value) }
+      ipcRenderer.on(DESKTOP_IPC.preferencesState, handle)
+      return () => { ipcRenderer.off(DESKTOP_IPC.preferencesState, handle) }
     },
   },
 }

@@ -68,7 +68,7 @@ interface WorkspacePackage {
 
 /**
  * Walk `packages/<group>/<directory>` once, in a stable order.
- * @returns Every directory whose manifest names a `@deepseek-ai/dsh-` package and that carries `src`.
+ * @returns Every directory whose manifest names a package and that carries `src`.
  */
 function workspacePackages(): WorkspacePackage[] {
   const packages = join(ROOT, 'packages')
@@ -79,7 +79,7 @@ function workspacePackages(): WorkspacePackage[] {
     for (const directory of readdirSync(groupDir).sort()) {
       const packageDir = join(groupDir, directory)
       const name = packageName(join(packageDir, 'package.json'))
-      if (name === undefined || !name.startsWith(PREFIX)) continue
+      if (name === undefined) continue
       if (existsSync(join(packageDir, 'src'))) found.push({ group, directory, packageDir, name })
     }
   }
@@ -125,11 +125,12 @@ export function collectPackageAliases(): PackageAlias[] {
  * Collect every workspace package the aliases must cover.
  *
  * Unlike {@link collectPackageAliases} this keeps packages whose name does not
- * match their directory. The generator cannot map those — only a hand-written
- * alias can — but they still have to be mapped by something, because deleting
- * the group wildcards removed the fallback that used to catch them.
+ * match their directory, and packages outside the generated scope entirely.
+ * The generator cannot map those — only a hand-written alias can — but they
+ * still have to be mapped by something, because deleting the group wildcards
+ * removed the fallback that used to catch them.
  *
- * @returns Declared names of every `@deepseek-ai/dsh-` package carrying a `src` directory.
+ * @returns Declared names of every package under `packages/` carrying a `src` directory.
  */
 export function collectPackageNames(): string[] {
   return workspacePackages()
@@ -140,11 +141,11 @@ export function collectPackageNames(): string[] {
 /**
  * Read the bare package specifiers a config maps, generated region included.
  * @param text - `tsconfig.base.json` contents.
- * @returns Specifiers mapped without a subpath.
+ * @returns Specifiers mapped without a subpath, whatever their scope.
  */
 export function mappedSpecifiers(text: string): Set<string> {
   const keys = new Set<string>()
-  for (const match of text.matchAll(/^\s*"(@deepseek-ai\/dsh-[^"/]+)":/gm)) {
+  for (const match of text.matchAll(/^\s*"(@[^"/]+\/[^"/]+)":/gm)) {
     const key = match[1]
     if (key !== undefined) keys.add(key)
   }
@@ -232,8 +233,8 @@ if (process.argv[1] && import.meta.filename === resolve(process.argv[1])) {
   if (uncovered.length > 0) {
     console.error(
       'gen-tsconfig-paths: no alias maps '
-      + `${uncovered.join(', ')}; add a hand-written entry, because a package named after `
-      + 'something other than its directory cannot be generated.',
+      + `${uncovered.join(', ')}; add a hand-written entry, because the generator emits only `
+      + `'${PREFIX}<directory>' and cannot map a differently named or differently scoped package.`,
     )
     process.exitCode = 1
   } else if (current === next) {

@@ -11,6 +11,7 @@ import {
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import { workspaceView } from './feed.ts'
 import type {
+  WorkspaceMoveSessionRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceCreateRequest,
@@ -171,6 +172,22 @@ export class WorkspaceCommands {
   async unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue> {
     await this.ctx.workspaceRegistry.unarchiveSession(request.sessionId)
     return { archivedSessionIds: [...this.ctx.workspaceRegistry.archivedSessionIds] }
+  }
+
+  /**
+   * Move a Session between project groups without changing its cwd.
+   * @param request - Session identity and optional destination project.
+   * @returns acknowledgement after durable placement.
+   */
+  async moveSession(request: WorkspaceMoveSessionRequest): Promise<{ moved: true }> {
+    if (request.workspaceId !== undefined) this.requireWorkspace(request.workspaceId)
+    try {
+      await this.ctx.workspaceRegistry.moveSession(request.sessionId, request.workspaceId)
+    } catch (error) {
+      if (!(error instanceof WorkspaceUnknownSessionError)) throw error
+      throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+    }
+    return { moved: true }
   }
 
   private requireWorkspace(workspaceId: WorkspaceId): Workspace {

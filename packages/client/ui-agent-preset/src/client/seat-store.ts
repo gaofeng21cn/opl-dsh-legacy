@@ -181,6 +181,11 @@ export class AgentPresetSeatController {
   async apply(): Promise<void> {
     const staged = this.staged
     const session = this.currentSession()
+    if (presetOf(session) === 'chat') {
+      this.staged = undefined
+      this.set({ current: 'chat', busy: false, error: null })
+      return
+    }
     if (staged === undefined) {
       const current = session === undefined ? this.fallback : presetOf(session) ?? ''
       if (current !== this.store.getSnapshot().current) this.set({ current })
