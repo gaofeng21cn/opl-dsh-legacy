@@ -12,6 +12,12 @@ import { SessionCommandController } from '../src/commands.ts'
 import type { SessionEditPromptRequest } from '../src/types.ts'
 import { installSessionReadTestServices } from './test-remote.ts'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'session-controller-fixture': { kind: 'session-controller-fixture' }
+  }
+}
+
 interface EditHarness {
   readonly ctx: Context
   readonly session: Session
@@ -256,7 +262,7 @@ describe('session editPrompt', () => {
     const { session, controller, secondSeq } = await editHarness()
     const injectedSeq = session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'injected notice' }],
-      source: { kind: 'user' },
+      source: { kind: 'session-controller-fixture' },
     }), { surfaceOp: 'append' }).seq
 
     const result = await controller.editPrompt({

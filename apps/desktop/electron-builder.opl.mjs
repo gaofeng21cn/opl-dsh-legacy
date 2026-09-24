@@ -31,7 +31,7 @@
 
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import base from './electron-builder.config.mjs'
+import { createElectronBuilderConfig } from './scripts/electron-builder-config.mjs'
 import {
   verifyOplAppBundle,
   verifyOplDiskImage,
@@ -41,7 +41,9 @@ import {
 
 const macIconPath = fileURLToPath(new URL('./opl/icon.icns', import.meta.url))
 const windowsIconPath = fileURLToPath(new URL('./opl/icon.ico', import.meta.url))
-const baseConfig = base
+const baseConfig = createElectronBuilderConfig(
+  process.env, process.platform, process.arch, undefined, undefined, true,
+)
 
 /** Reverse-DNS identity of this product. */
 const APP_ID = 'com.onepersonlab.dsh'

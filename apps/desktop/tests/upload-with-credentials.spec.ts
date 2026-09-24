@@ -21,6 +21,7 @@ async function check(mode: 'valid' | 'plaintext' | 'blank' | 'missing' | 'upload
   if (mode === 'upload' || mode === 'upload-failure') {
     const scripts = join(root, 'apps/desktop/scripts')
     await mkdir(scripts, { recursive: true })
+    await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module' }))
     entry = join(scripts, 'upload-with-credentials.ps1')
     await copyFile(launcher, entry)
     await symlink(fileURLToPath(new URL('../../../node_modules', import.meta.url)), join(root, 'node_modules'), 'junction')

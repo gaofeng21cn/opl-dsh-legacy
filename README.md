@@ -2,141 +2,95 @@
 
 English | [中文](README.zh.md)
 
-OPL 维护的 DeepSeek Harness fork：本仓库维护 OPL Gateway 接入、桌面打包、Windows/WSL 支持，以及 Codex 与 DSH 协作插件，并从这里发布 OPL DSH。
+OPL 自维护的 DeepSeek Harness 桌面发行版，面向使用 OPL Gateway 和 Codex 的个人开发者。DSH 负责模型推理、工具执行、权限控制和会话管理；OPL 提供网关接入、桌面分发与协作扩展。
 
-> 非官方发行版，与 DeepSeek 无隶属、背书或支持关系。`upstream` 远端只用于同步 DeepSeek Harness 基线；本 fork 自己维护插件、打包配置、本地修复、发布和问题跟踪。
+> 本项目是独立维护的 fork，与 DeepSeek 无隶属关系。上游来源：[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。问题反馈与版本下载均由本仓库维护。
 
 <a id="run"></a>
 
-## 下载与安装
+## 下载与开始使用
 
-从 [Releases](https://github.com/gaofeng21cn/opl-dsh/releases) 下载 macOS 的 `opl-dsh-<版本>-mac-arm64.dmg` 或 Windows 的 `opl-dsh-<版本>-win-x64-setup.exe`。macOS 打开镜像后把 **OPL DSH** 拖进「应用程序」；Windows 直接运行安装程序。
+前往 [GitHub Releases](https://github.com/gaofeng21cn/opl-dsh/releases)，以对应版本页面实际提供的附件为准。macOS 支持 Apple Silicon、macOS 13 及以上；Windows 构建目标为 Windows 10/11 x64。
 
-- 已签名并通过 Apple 公证，首次打开无需额外步骤。
-- 支持 Apple Silicon（arm64），要求 macOS 13 或更高。
-- Windows 10 或 11 x64。安装程序未配置代码签名，首次打开时 SmartScreen 会提示。
-- 需要一个 OPL Gateway 账号，无需安装其他软件。
+1. macOS 打开 DMG，将 **OPL DSH** 拖入「应用程序」；Windows 运行安装程序。
+2. 打开 **设置 → OPL Gateway**，登录账号。
+3. 在会话中选择 **OPL Gateway / DeepSeek-V4.1-Flash**，开始工作。
 
-## 开始使用
+账号页可查看余额、Token 用量、费用和推理地址。应用直接连接 OPL Gateway，无需安装 OPL App、OPL Framework 或额外的命令行工具。
 
-1. 打开 **OPL DSH**，进入 **设置 → OPL Gateway**。
-2. 用 OPL Gateway 账号登录。
-3. 回到会话，在模型选择器中选择 **DeepSeek-V4.1-Flash**。
+## 主要能力
 
-同一页面会显示账号、余额、今日与累计 Token 及费用，以及当前使用的推理地址。
+| 能力 | 使用方式 |
+| --- | --- |
+| DeepSeek 原生接入 | 使用 DSH 官方 `DeepSeekAdapter`，通过 Messages 协议调用模型，保留 DSH 的思考、工具调用与会话处理 |
+| OPL Gateway | 独立登录、申请 DeepSeek 分组密钥、查询用量和配置搜索 |
+| Codex 与 DSH 协作 | Codex Skill 派发、继续和查询 DSH 任务，DSH 插件记录任务反馈 |
+| 会话与项目 | 普通聊天、编辑重发、会话与文件回退、会话移动到项目 |
+| 桌面体验 | 通知、托盘、关闭行为设置；Windows 支持原生执行与 WSL2 |
+| Shell | PowerShell、Bash 与 Git Bash，沿用 DSH 权限和执行环境 |
 
-如果本机已在 OPL App 中登录过 OPL Gateway，本应用会直接沿用账号登录状态，第 2 步已完成。
+## 账号、密钥与升级
 
-## 数据与密钥
+OPL DSH 只申请或复用 **DeepSeek 分组**的独立 API key，默认模型为 `deepseek-v4.1-flash`，默认推理地址为 `https://gateway.medopl.com/v1`。
 
-macOS 的会话、设置与凭据保存在 `~/.dsh-opl`，Windows 保存在 `%APPDATA%\\@deepseek-ai\\dsh-desktop\\dsh-home`；可用 `DSH_OPL_HOME` 在任一平台迁移该目录。登录只保存用于自动续期的会话令牌，不保存密码。DSH 会为本机申请或复用 OPL Gateway **DeepSeek 分组**的独立 key；旧的 Codex/AGI 分组 key 不会被导入。模型请求默认发往 `https://gateway.medopl.com/v1`。
+升级后，旧版的 Codex/AGI 分组 key 不会被改组或自动禁用。应用使用新的 `OPL_GATEWAY_DEEPSEEK_API_KEY` 凭据槽；持有有效登录会话时申请或复用 DeepSeek key。若账号页提示分组或登录问题，请重新登录，并确认账号可使用 DeepSeek 分组。
 
-## 已知限制
+本机已有 OPL App 登录记录时可用于账号状态识别，但其中的 Codex/AGI key 不会作为 DSH 推理凭据导入。登录保存用于续期的会话令牌，不保存密码。
 
-- Windows 版本未配置代码签名证书，首次打开时 SmartScreen 会提示一次。
-- 若账号需要交互式验证（人机校验或两步验证），请先完成验证；本应用只处理邮箱和密码。
+| 平台 | 默认数据目录 |
+| --- | --- |
+| macOS | `~/.dsh-opl` |
+| Windows | `%APPDATA%\@deepseek-ai\dsh-desktop\dsh-home` |
 
-## For developers
+可通过 `DSH_OPL_HOME` 指定数据目录。升级前建议备份该目录；它包含会话、设置和凭据。
+
+## Codex 与 DSH 协作
+
+协作由两部分组成：DSH 内的 `task-feedback` 插件和本仓库的 [opl-dsh-workflow Skill](.agents/skills/opl-dsh-workflow/SKILL.md)。Codex 通过本地控制接口调度任务；模型请求、工具执行和权限判断仍由 DSH 承担。
+
+将 `.agents/skills/opl-dsh-workflow` 安装到 Codex 的 skills 目录，按照 [配置说明](.agents/skills/opl-dsh-workflow/references/setup.md) 创建本机私有配置。设置 `startCommand` 后，Skill 在未发现桌面控制连接时自动启动 DSH，并等待连接就绪。macOS 可配置 `/usr/bin/open` 和参数 `["-a", "OPL DSH"]`。
+
+派发和继续操作使用显式 operation 标识，重试会复用已有记录。自动唤醒 Codex 还需要配置可用的回调桥；安装 Skill 本身不代表后台通知已经接通。
+
+## 构建与维护
 
 <a id="run-from-source"></a>
 
-### Build the macOS app
-
-You need macOS, Node.js ≥ 22.19, pnpm, and a Developer ID certificate (plus notarization credentials to distribute).
+需要 Node.js 24、pnpm，以及目标平台原生构建工具。
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
+pnpm run build:official
+pnpm run typecheck
+```
 
-# Prepare the runtime and package set (builds the whole repository; takes a while)
-DSH_DESKTOP_APP_ID=com.onepersonlab.dsh \
-DSH_DESKTOP_MACOS_SIGNING_IDENTITY='<certificate name, without the "Developer ID Application:" prefix>' \
+macOS 分发使用钥匙串中可用的 Developer ID Application 证书和 notarytool 凭据配置：
+
+```sh
+DSH_DESKTOP_MACOS_SIGNING_IDENTITY='<certificate name without Developer ID Application prefix>' \
 DSH_DESKTOP_MACOS_TEAM_ID='<10-character Team ID>' \
 APPLE_KEYCHAIN_PROFILE='<notarytool profile>' \
-DSH_DESKTOP_AUTO_UPDATE_ENV=production \
-pnpm --filter @deepseek-ai/dsh-desktop run prepare:package
-
-# Produce .app / .dmg / .zip
-cd apps/desktop
-DSH_DESKTOP_APP_ID=com.onepersonlab.dsh \
-DSH_DESKTOP_MACOS_SIGNING_IDENTITY='<as above>' \
-DSH_DESKTOP_MACOS_TEAM_ID='<as above>' \
-APPLE_KEYCHAIN_PROFILE='<notarytool profile>' \
-DOWNLOAD_TEST_ORIGIN=https://download.deepseek.com \
-pnpm exec electron-builder --config electron-builder.opl.mjs --mac --arm64 --publish never
+pnpm --filter @deepseek-ai/dsh-desktop run package:opl:mac:arm64
 ```
 
-Artifacts land in `apps/desktop/.desktop-build/targets/mac-arm64/artifacts/` as `opl-dsh-<version>-mac-arm64.dmg`. Add `DSH_OPL_NOTARIZE=1` to notarize as part of the build.
-
-Install a local build with `apps/desktop/opl/install-macos.sh`. It requires an empty destination: `ditto` merges into an existing bundle and leaves resources the signature does not cover, which macOS then reports as `a sealed resource is missing or invalid`.
-
-### Build the Windows app
-
-You need Windows 10 or 11 on x64, Node.js >= 22.19, pnpm, Python, and the Visual C++ Build Tools that native modules compile against.
-
-```sh
-pnpm install
-pnpm run typecheck
-pnpm exec vitest run apps/desktop packages/llm/llm-opl-gateway \
-  packages/client/ui-settings-opl-gateway packages/util/home-paths
-
-DSH_DESKTOP_APP_ID=com.onepersonlab.dsh \
-pnpm run package:opl:desktop:win:x64:unsigned
-```
-
-Artifacts land in `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/` as an unsigned NSIS installer and portable executable. `pnpm run package:opl:desktop:win:x64:dir:unsigned` stops at the unpacked `win-unpacked/` tree for a faster development launch. Install a local build with `apps/desktop/opl/install-windows.ps1`.
-
-### Call DeepSeek from a Windows shell
-
-The repository includes a headless entry that shares the OPL Gateway configuration with the desktop app:
+Windows 需要 Visual C++ Build Tools、Python 和可用的 WSL2 Linux 发行版来构建内置 Linux 运行时：
 
 ```powershell
-.\\scripts\\opl-dsh.cmd "list the files in the current workspace"
+pnpm run package:opl:desktop:win:x64:unsigned
+.\scripts\opl-dsh.cmd "list the files in the current workspace"
 ```
 
-It uses the `opl-headless` profile and emits the final answer as JSON. Pass `--session-id <session-id>` to continue an existing session. The default Harness home is `%APPDATA%\\@deepseek-ai\\dsh-desktop\\dsh-home`; set `DSH_OPL_HOME` to keep state elsewhere.
+构建产物位于 `apps/desktop/.desktop-build/targets/`。OPL 构建使用独立产品标识 `com.onepersonlab.dsh`，经 GitHub Releases 手动更新，不接入上游强制更新服务。详细平台说明见 [桌面文档](apps/desktop/README.md)。
 
-| Variable | Default | Effect |
-| --- | --- | --- |
-| `DSH_OPL_HOME` | `~/.dsh-opl` | Harness home for sessions, settings, and credentials; must be a portable path such as `~/.dsh-opl` |
-| `DSH_OPL_NOTARIZE` | unset | Set to `1` to notarize the disk image during packaging |
-| `OPL_GATEWAY_STATE_ROOT` | auto-detected | OPL app state directory, read only to reuse an existing sign-in |
-| `DSH_DESKTOP_BUILDER_CONFIG` | `electron-builder.config.mjs` | electron-builder configuration used by packaging scripts |
+上游只作为同步来源；OPL 自维护网关插件、协作能力和打包配置。同步后需核对这些改动与新版 DSH 接口，并运行相应测试。发布只面向本 fork，不使用上游 npm scope 的发布工作流。
 
-### What this repository adds
+## 当前限制
 
-| Addition | Location |
-| --- | --- |
-| OPL Gateway provider route | `packages/llm/llm-opl-gateway` |
-| OPL Gateway account page | `packages/client/ui-settings-opl-gateway` |
-| OPL packaging identity and installer | `apps/desktop/electron-builder.opl.mjs`, `apps/desktop/opl/` |
-| Windows x64 packaging and installation | `apps/desktop/opl/install-windows.ps1`, `apps/desktop/opl/verify-opl-package.mjs` |
-| Downstream npm scope support in the release gates | `scripts/package-scope.ts` |
+- Windows 安装包未配置代码签名，SmartScreen 可能显示提示。
+- macOS 安装包需完成签名与 Apple 公证后才提供下载；源码发布与安装包发布状态分别以 Release 附件为准。
+- 需要人机验证或两步验证的账号登录流程尚未内置。
+- 模型与搜索能力由 Gateway 的分组、路由及账号权限决定。
 
-The gateway plugin talks to the OPL Gateway HTTP API directly and does not shell out. `opl connect gateway …` is not required at runtime, so the app works on a machine with no OPL installation. It requests and reuses only a key from the OPL Gateway `DeepSeek` group; a key from the OPL App's `Codex` or `AGI` group is not accepted.
+## 许可证
 
-### Platform fixes maintained by this fork
-
-1. **Editing menu** (`apps/desktop/src/menus.ts`). The upstream shell replaces Electron's default menu without an `editMenu` role, which leaves the standard macOS editing shortcuts and the input context menu unhandled.
-2. **System certificate trust** (`apps/desktop/src/host-process.ts`). The bundled Node trusts only its own roots, so behind a TLS-inspecting proxy or a private CA every outbound request fails while curl and browsers work. The host therefore passes `--use-system-ca`.
-
-These fixes are part of this fork's maintenance scope and do not depend on upstream accepting external pull requests.
-
-### Staying in sync with upstream
-
-```sh
-git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
-git fetch upstream master
-git rebase upstream/master main
-```
-
-The fork keeps its changes reviewable and reapplies them after each upstream sync. Upstream moves fast and has announced breaking changes, so after each rebase re-run:
-
-```sh
-npx vitest run packages/llm/llm-opl-gateway packages/client/ui-settings-opl-gateway apps/desktop
-```
-
-and one real session: pick `OPL Gateway / DeepSeek-V4.1-Flash` and get a reply.
-
-## License
-
-Upstream code is MIT, see [LICENSE](LICENSE). Packages added here are MIT as well.
+本项目及新增插件使用 [MIT License](LICENSE)，保留上游版权与第三方依赖声明。

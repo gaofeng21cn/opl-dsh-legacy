@@ -12,6 +12,20 @@ vi.mock('node:child_process', async (importOriginal) => {
 })
 
 describe('installer preparation preserves application dependencies', () => {
+  it('keeps downstream manual updates independent of upstream update services', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: 'com.onepersonlab.dsh',
+      DSH_DESKTOP_MACOS_SIGNING_IDENTITY: 'Example Company (TEAMID1234)',
+      DSH_DESKTOP_MACOS_TEAM_ID: 'TEAMID1234',
+      APPLE_KEYCHAIN_PROFILE: 'fixture',
+    }, 'darwin', 'arm64', undefined, undefined, true)
+    expect(config.publish).toBeNull()
+    expect(config.extraMetadata.dshMandatoryUpdatePolicy).toBeUndefined()
+    expect(config.mac.forceCodeSigning).toBe(true)
+    expect(config.mac.hardenedRuntime).toBe(true)
+  })
+
   it.each(['win32', 'darwin'] as const)('rejects a missing production policy before signing on %s', async (platform) => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     expect(() => createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.example.installer',

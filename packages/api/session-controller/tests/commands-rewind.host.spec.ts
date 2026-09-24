@@ -12,6 +12,12 @@ import { ApiSessionAgentController } from '../src/agent.ts'
 import { SessionCommandController } from '../src/commands.ts'
 import { installSessionReadTestServices } from './test-remote.ts'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'session-controller-fixture': { kind: 'session-controller-fixture' }
+  }
+}
+
 interface RewindHarness {
   readonly ctx: Context
   readonly session: Session
@@ -268,7 +274,7 @@ describe('session rewind', () => {
     const { session, controller, inbox, secondSeq } = await rewindHarness()
     admit(session, inbox, 'next-step', createUserMessage({
       content: [{ type: 'text', text: 'file changed: a.ts' }],
-      source: { kind: 'user' },
+      source: { kind: 'session-controller-fixture' },
     }))
     const typed = createUserMessage({
       content: [{ type: 'text', text: 'queued follow-up' }],
@@ -286,7 +292,7 @@ describe('session rewind', () => {
   it('leaves queue work admitted before the rewound prompt pending', async () => {
     const earlier = createUserMessage({
       content: [{ type: 'text', text: 'admitted before the rewound prompt' }],
-      source: { kind: 'user' },
+      source: { kind: 'session-controller-fixture' },
     })
     const { session, controller, inbox, secondSeq } = await rewindHarness({ admitBeforeLastPrompt: earlier })
     const result = await controller.rewind({ sessionId: session.id, seq: secondSeq })

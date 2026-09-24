@@ -34,18 +34,6 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
       .filter({ has: page.locator('button[aria-label^="Session actions for "]') })
   }
 
-  /** Wait until the ungrouped section is visible and expanded. */
-  async function ungroupedSection(): Promise<void> {
-    const row = page.getByText('Ungrouped', { exact: true }).locator('..').locator('..')
-    await expect.poll(async () => {
-      if (await row.getAttribute('aria-expanded') !== 'true') {
-        await page.getByText('Ungrouped', { exact: true }).click()
-        await page.waitForTimeout(50)
-      }
-      return await row.getAttribute('aria-expanded')
-    }, { timeout: 5_000 }).toBe('true')
-  }
-
   /**
    * Reveal and click a row action, re-hovering if a projection update replaces
    * the row before its hover-only button becomes visible.
@@ -64,7 +52,7 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
   beforeAll(async () => {
     scaffold = await launchWebScaffold({})
     // Seed one cold session; with no Workspace registered it is the sidebar's
-    // only row, in the Ungrouped bucket.
+    // only row outside projects.
     await seedSession(scaffold, await readFile(SEED, 'utf8'), SEED_ID)
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
@@ -107,7 +95,6 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
 
     await page.getByRole('button', { name: 'View options' }).click()
     await page.getByRole('menuitem', { name: 'Show archived', exact: true }).click()
-    await ungroupedSection()
     await expect.poll(() => sessionRow.count(), { timeout: 10_000 }).toBe(1)
     await clickHoverAction(sessionRow, `Session actions for ${title}`)
     await page.getByRole('menuitem', { name: 'Unarchive session' }).click()
@@ -117,7 +104,6 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
     ).toEqual([])
     await page.getByRole('button', { name: 'View options' }).click()
     await page.getByRole('menuitem', { name: 'Show archived', exact: true }).click()
-    await ungroupedSection()
     await expect.poll(() => sessionRow.count(), { timeout: 15_000 }).toBe(1)
 
     // Reload: the restored row is rebuilt from the host baseline, so the
