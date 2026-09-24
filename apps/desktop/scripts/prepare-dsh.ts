@@ -90,7 +90,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
         ...Object.fromEntries(Object.entries(process.env).filter(([name]) => (
           name !== 'NODE_OPTIONS' && name !== 'NODE_PATH'
           && !(/^DSH_DESKTOP_/u.test(name)
-            && !/^DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNING_PROBE)$/u.test(name))
+            && !/^DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNING_KEYCHAIN|SIGNING_PROBE)$/u.test(name))
           && !/^(?:npm|pnpm|corepack)_/iu.test(name)
         ))),
         NPM_CONFIG_REGISTRY: registry,
