@@ -31,7 +31,13 @@ export async function signMacOSRuntime(
   root: string, appId: string, expected: MacOSSigningEnvironment, cacheDirectory?: string,
 ): Promise<number> {
   const files = inventoryDesktopRuntime(root).map(file => file.path).filter(path => MACH_O_MAGICS.has(magic(join(root, path))))
-  const policy = cacheDirectory === undefined ? undefined : macOSCachePolicy(process.env.DSH_DESKTOP_MACOS_SIGNING_PROBE ?? '')
+  const probe = process.env.DSH_DESKTOP_MACOS_SIGNING_PROBE?.trim()
+  // The cache is an optimization. A runtime child that cannot receive the
+  // temporary probe must sign its files directly rather than treating the
+  // missing cache metadata as a signing failure.
+  const policy = cacheDirectory === undefined || probe === undefined || probe === ''
+    ? undefined
+    : macOSCachePolicy(probe)
   let hits = 0
   let misses = 0
   let next = 0
