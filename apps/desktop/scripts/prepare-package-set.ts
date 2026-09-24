@@ -25,7 +25,6 @@ import {
 } from '../src/core-package-set.ts'
 import { capture } from '../../../scripts/release/process.ts'
 import { tarballFiles } from '../../../scripts/release/tarball.ts'
-import { isWorkspacePackageName } from '../../../scripts/package-scope.ts'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'

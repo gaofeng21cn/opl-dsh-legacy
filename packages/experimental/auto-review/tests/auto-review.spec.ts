@@ -99,7 +99,11 @@ const PRESETS = {
   'danger-full-access': { sandbox: 'danger-full-access', approval: 'never', name: 'Full access' },
 } satisfies NonNullable<PermissionConfig['presets']>
 
-const DEFAULT_PERMISSION: PermissionConfig = { presets: PRESETS, defaultPreset: 'workspace-write' }
+type PermissionConfigInput = {
+  presets: NonNullable<PermissionConfig['presets']>
+  defaultPreset: string
+}
+const DEFAULT_PERMISSION: PermissionConfigInput = { presets: PRESETS, defaultPreset: 'workspace-write' }
 
 /** Approval stand-in; the default carries no `request`, so no answerer exists. */
 const NO_ANSWERER = { config: { policy: 'ask' } }
@@ -134,7 +138,7 @@ function reasoningDecisionChunks(text: string): StreamChunk[] {
 
 async function harness(
   script: ReviewScript[],
-  permissionConfig: PermissionConfig = DEFAULT_PERMISSION,
+  permissionConfig: PermissionConfigInput = DEFAULT_PERMISSION,
   autoConfig: AutoReview.Config = {},
   approval: unknown = NO_ANSWERER,
 ): Promise<{ ctx: Context; adapter: RecordingAdapter; auto: PluginFiber }> {

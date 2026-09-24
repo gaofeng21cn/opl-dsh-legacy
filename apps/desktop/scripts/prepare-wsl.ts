@@ -38,6 +38,7 @@ import {
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { fetchVerifiedNodeArchive, NODE_VERSION } from './node-archive.ts'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
+import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
 
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
 const WSL_ROOT = BUILD_PATHS.wsl
@@ -262,13 +263,17 @@ function prepareLinuxDshTree(distro: string, linuxNode: string, pnpmEntry: strin
     // host's: this tree is installed for Linux even when packaging runs on
     // Windows, and naming the host here would strip the Linux addons.
     const target = { platform: 'linux' as NodeJS.Platform, arch: LINUX_ARCH as 'x64' }
+    const modules = join(staged, 'node_modules')
+    const officeManifest = JSON.parse(readFileSync(join(modules, '@deepseek-ai/libreoffice-kit/package.json'), 'utf8'))
+    const officeEngine = selectOfficeEngine(officeManifest, target)
     const destination = join(WSL_ROOT, 'dsh')
     rmSync(destination, { recursive: true, force: true })
     mkdirSync(join(destination, 'node_modules'), { recursive: true })
-    const modules = join(staged, 'node_modules')
     cpSync(modules, join(destination, 'node_modules'), {
       recursive: true, dereference: true,
-      filter: source => desktopRuntimeFileExclusion(source.slice(modules.length + 1).replaceAll('\\', '/'), target) === undefined,
+      filter: source => desktopRuntimeFileExclusion(
+        source.slice(modules.length + 1).replaceAll('\\', '/'), target, officeEngine,
+      ) === undefined,
     })
     rmSync(staged, { recursive: true, force: true })
     writeFileSync(join(destination, 'package.json'), `${JSON.stringify({

@@ -40,7 +40,7 @@ function adapter(url: string) {
 }
 const options = (): GenerateOptions => ({
   provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: ReasoningEffortId('max'),
-  messages: [createUserMessage({ content: [{ type: 'text', text: 'SECRET-PROMPT' }], source: { kind: 'plugin', plugin: 'test' } })],
+  messages: [createUserMessage({ content: [{ type: 'text', text: 'SECRET-PROMPT' }], source: { kind: 'user' } })],
 })
 afterEach(async () => {
   vi.unstubAllEnvs()

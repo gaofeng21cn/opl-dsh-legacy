@@ -136,7 +136,7 @@ function derivedUserTexts(session: Session): string[] {
 }
 
 /** The marker node one rewind committed. */
-function marker(session: Session, events: readonly SessionEvent[]): SessionEvent<'system/message'> {
+function marker(session: Session, events: readonly SessionEvent[]): SessionEvent<'developer/message'> {
   const found = events.findLast(
     (event): event is SessionEvent<'developer/message'> => isRewindSurfaceEvent(event),
   )
@@ -268,7 +268,7 @@ describe('session rewind', () => {
     const { session, controller, inbox, secondSeq } = await rewindHarness()
     admit(session, inbox, 'next-step', createUserMessage({
       content: [{ type: 'text', text: 'file changed: a.ts' }],
-      source: { kind: 'plugin', plugin: 'watcher' },
+      source: { kind: 'user' },
     }))
     const typed = createUserMessage({
       content: [{ type: 'text', text: 'queued follow-up' }],
@@ -286,7 +286,7 @@ describe('session rewind', () => {
   it('leaves queue work admitted before the rewound prompt pending', async () => {
     const earlier = createUserMessage({
       content: [{ type: 'text', text: 'admitted before the rewound prompt' }],
-      source: { kind: 'plugin', plugin: 'fixture' },
+      source: { kind: 'user' },
     })
     const { session, controller, inbox, secondSeq } = await rewindHarness({ admitBeforeLastPrompt: earlier })
     const result = await controller.rewind({ sessionId: session.id, seq: secondSeq })

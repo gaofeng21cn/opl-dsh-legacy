@@ -1113,10 +1113,8 @@ describe('pressure measurement and retention', () => {
 
     const calls = new Set<string>()
     for (const message of session.deriveMessages()) {
-      for (const block of message.content) {
-        if (block.type === 'tool-call') calls.add(block.id)
-        if (block.type === 'tool-result') expect(calls.has(block.toolCallId)).toBe(true)
-      }
+      for (const block of message.content) if (block.type === 'tool-call') calls.add(block.id)
+      if (message.role === 'tool') expect(calls.has(message.toolCallId)).toBe(true)
     }
   })
 

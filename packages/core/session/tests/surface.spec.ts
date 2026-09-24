@@ -1030,7 +1030,14 @@ describe('conversation rewind marker', () => {
       type: 'developer/message',
       seq: SessionSeq(seq),
       time: seq,
-      data: { turn: 1, step: 1, message: createDeveloperMessage({ content: text === '' ? [] : [{ type: 'text', text }], source: { kind: plugin === 'rewind' ? 'rewind' : 'test' } }) },
+      data: {
+        turn: 1,
+        step: 1,
+        message: createDeveloperMessage({
+          content: text === '' ? [] : [{ type: 'text', text }],
+          source: plugin === 'rewind' ? { kind: 'rewind' } : { kind: 'test' },
+        }),
+      },
       surfaceOp: surfaceOp(op),
       ...op === 'append' ? {} : { sourceEventSeqs: [SessionSeq(op.startSeq)] },
     }

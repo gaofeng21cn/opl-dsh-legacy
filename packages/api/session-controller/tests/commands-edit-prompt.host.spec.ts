@@ -256,7 +256,7 @@ describe('session editPrompt', () => {
     const { session, controller, secondSeq } = await editHarness()
     const injectedSeq = session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'injected notice' }],
-      source: { kind: 'plugin', plugin: 'fixture' },
+      source: { kind: 'user' },
     }), { surfaceOp: 'append' }).seq
 
     const result = await controller.editPrompt({

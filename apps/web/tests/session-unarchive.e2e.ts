@@ -34,6 +34,18 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
       .filter({ has: page.locator('button[aria-label^="Session actions for "]') })
   }
 
+  /** Wait until the ungrouped section is visible and expanded. */
+  async function ungroupedSection(): Promise<void> {
+    const row = page.getByText('Ungrouped', { exact: true }).locator('..').locator('..')
+    await expect.poll(async () => {
+      if (await row.getAttribute('aria-expanded') !== 'true') {
+        await page.getByText('Ungrouped', { exact: true }).click()
+        await page.waitForTimeout(50)
+      }
+      return await row.getAttribute('aria-expanded')
+    }, { timeout: 5_000 }).toBe('true')
+  }
+
   /**
    * Reveal and click a row action, re-hovering if a projection update replaces
    * the row before its hover-only button becomes visible.

@@ -25,7 +25,7 @@ async function run(events: Record<string, unknown>[], sink?: DeepSeekAdapterOpti
     options: () => resolveAdapterOptions({ baseURL: endpoint.url }),
     resolveApiKey: async () => 'SECRET-KEY',
     resolveUserId: () => 'test' as AnonymousUserId,
-    onProtocolAnomaly: sink,
+    ...(sink === undefined ? {} : { onProtocolAnomaly: sink }),
     prepareExtensions,
   })
   return chunks(adapter.stream(options()))
