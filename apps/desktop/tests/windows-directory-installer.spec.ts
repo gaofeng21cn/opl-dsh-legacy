@@ -2,12 +2,32 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { expect, it } from 'vitest'
-import { directoryInstallerExits, directoryInstallSection, directoryUninstaller } from '../scripts/windows-directory-installer.mjs'
+import { expect, it, vi } from 'vitest'
+import { directoryInstallerExits, directoryInstallSection, directoryUninstaller, installWindowsDirectoryInstaller } from '../scripts/windows-directory-installer.mjs'
 
 const require = createRequire(import.meta.url)
 const section = readFileSync(join(dirname(require.resolve('app-builder-lib/package.json')),
   'templates/nsis/installSection.nsh'), 'utf8')
+
+it('leaves the portable NSIS script to the upstream builder', async () => {
+  require('app-builder-lib')
+  const { NsisTarget } = require('app-builder-lib/out/targets/nsis/NsisTarget.js') as typeof import('app-builder-lib/out/targets/nsis/NsisTarget.js')
+  const prototype = NsisTarget.prototype
+  const original = Reflect.get(prototype, 'computeFinalScript')
+  const upstream = vi.fn(async (source: string) => source)
+  const marker = Symbol.for('@deepseek-ai/dsh-desktop/directory-installer')
+  Reflect.set(prototype, 'computeFinalScript', upstream)
+  Reflect.deleteProperty(prototype, marker)
+  try {
+    installWindowsDirectoryInstaller()
+    const result = await Reflect.apply(Reflect.get(prototype, 'computeFinalScript'), { isPortable: true }, ['portable script', true, new Map()])
+    expect(result).toBe('portable script')
+    expect(upstream).toHaveBeenCalledOnce()
+  } finally {
+    Reflect.set(prototype, 'computeFinalScript', original)
+    Reflect.deleteProperty(prototype, marker)
+  }
+})
 
 it('keeps data cleanup out of the upstream template while retaining application removal and registration cleanup', () => {
   const source = readFileSync(join(dirname(require.resolve('app-builder-lib/package.json')), 'templates/nsis/uninstaller.nsh'), 'utf8')

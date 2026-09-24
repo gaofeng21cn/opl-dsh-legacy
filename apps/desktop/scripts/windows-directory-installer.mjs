@@ -63,6 +63,7 @@ export function installWindowsDirectoryInstaller() {
   prototype[patched] = true
   const compute = prototype.computeFinalScript
   prototype.computeFinalScript = async function (source, ...args) {
+    if (this.isPortable) return compute.call(this, source, ...args)
     const directory = join(this.outDir, '.nsis-directory-installer')
     await mkdir(directory, { recursive: true })
     const section = join(directory, 'installSection.nsh')
