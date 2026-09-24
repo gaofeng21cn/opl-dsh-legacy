@@ -23,22 +23,15 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
   let tripwire: ReturnType<typeof watchConsole>
 
   /**
-   * Expand the Ungrouped group when it renders collapsed so its rows are
-   * addressable, then return the section holding them.
-   * @returns the expanded Ungrouped section locator.
+   * The ordinary Session rows. Sessions outside every project are direct rows
+   * under the section header, so there is no bucket to expand; a blank
+   * New Session row is a provisional placeholder without the row verbs and is
+   * therefore not one of these.
+   * @returns the locator matching ordinary Session rows.
    */
-  async function ungroupedSection(): Promise<Locator> {
-    const header = page.getByText('Ungrouped', { exact: true })
-    const groupRow = header.locator('..').locator('..')
-    await expect.poll(async () => {
-      if (await groupRow.count() === 0) return 'absent'
-      if (await groupRow.getAttribute('aria-expanded') !== 'true') {
-        await header.click()
-        return 'collapsed'
-      }
-      return 'expanded'
-    }, { timeout: 15_000 }).toBe('expanded')
-    return groupRow.locator('..')
+  function ordinaryRows(): Locator {
+    return page.getByRole('treeitem')
+      .filter({ has: page.locator('button[aria-label^="Session actions for "]') })
   }
 
   /**
@@ -77,8 +70,7 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
     onTestFailed(() => saveFailureShot(page, 'web-e2e-session-unarchive'))
     // Select the only visible Session, then give it a user-owned title: the
     // locator binds to the seed's own copy on both sides of the round trip.
-    const seededRow = (await ungroupedSection()).locator('[role="treeitem"]')
-      .filter({ has: page.locator('button[aria-label^="Session actions for "]') })
+    const seededRow = ordinaryRows()
     await expect.poll(() => seededRow.count(), { timeout: 10_000 }).toBe(1)
     await seededRow.click()
     await expect.poll(() => seededRow.getAttribute('aria-selected'), { timeout: 10_000 }).toBe('true')
@@ -89,12 +81,12 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
     await expect.poll(() => sessionRow.count(), { timeout: 10_000 }).toBe(1)
     await expect.poll(() => sessionRow.getAttribute('aria-selected'), { timeout: 10_000 }).toBe('true')
 
-    // Archive from the row menu: no confirmation dialog, and losing the last
-    // visible Session withdraws the whole Ungrouped bucket.
+    // Archive from the row menu: no confirmation dialog, and losing the only
+    // ordinary Session leaves the sidebar with no ordinary row at all.
     await clickHoverAction(sessionRow, `Session actions for ${title}`)
     await page.getByRole('menuitem', { name: 'Archive session' }).click()
     await expect.poll(() => sessionRow.count(), { timeout: 10_000 }).toBe(0)
-    await expect.poll(() => page.getByText('Ungrouped', { exact: true }).count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => ordinaryRows().count(), { timeout: 10_000 }).toBe(0)
     // Durable on the host: the registry-global set carries the id while the
     // Session log itself stays in persistence untouched.
     expect([...scaffold.ctx.workspaceRegistry.archivedSessionIds]).toEqual([SessionId(SEED_ID)])
@@ -122,7 +114,6 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
     await page.reload({ waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     acknowledgeReloadConnectionLoss(tripwire, warningStart)
-    await ungroupedSection()
     await expect.poll(() => sessionRow.count(), { timeout: 15_000 }).toBe(1)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

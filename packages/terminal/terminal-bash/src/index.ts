@@ -4,6 +4,7 @@
  * @module @deepseek-ai/dsh-terminal-bash
  */
 
+import { assertGitBashConfinement } from '@deepseek-ai/dsh-shell'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
@@ -100,6 +101,7 @@ export const PWSH_PROMPT_SETUP =
 async function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutionPolicy, signal?: AbortSignal): Promise<string[]> {
   const argv = [config.shellPath, ...config.shellArgs]
   if (policy.mode === 'danger-full-access') return argv
+  if (config.shellDialect === 'bash') assertGitBashConfinement(policy.mode)
   const sandbox = ctx.get('sandbox')
   if (sandbox === undefined) {
     throw new Error(`terminal-bash: sandbox mode "${policy.mode}" requires a ctx.sandbox provider in the execution world`)

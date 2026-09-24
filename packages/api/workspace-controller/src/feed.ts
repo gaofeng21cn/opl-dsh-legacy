@@ -50,6 +50,7 @@ export class WorkspaceFeed {
   private order: readonly string[]
   private archived: readonly string[]
   private pinned: readonly string[]
+  private placements = '{}'
 
   /** @param ctx - Host context containing the authoritative Workspace registry. */
   constructor(private readonly ctx: Context) {
@@ -100,6 +101,13 @@ export class WorkspaceFeed {
     if (change.table === '') {
       if (change.operation !== 'put') return
       const state = workspaceDomainState.parse(change.value)
+      const placements = JSON.stringify(state.sessionPlacements ?? {})
+      if (placements !== this.placements) {
+        this.placements = placements
+        for (const workspace of this.ctx.workspaceRegistry.list()) {
+          this.publish({ type: 'upsert', workspace: workspaceView(workspace) })
+        }
+      }
       const nextOrder = state.workspaceIds.map(String)
       const orderChanged = !sameStrings(this.order, nextOrder)
       for (const id of state.workspaceIds) {
@@ -134,7 +142,9 @@ export class WorkspaceFeed {
     if (!this.knownIds.has(change.key)) return
     this.publish({
       type: 'upsert',
-      workspace: changedWorkspaceView(change.key, change.value),
+      workspace: { ...changedWorkspaceView(change.key, change.value),
+        sessionIds: [...this.ctx.workspaceRegistry.projectMembers(WorkspaceId(change.key), workspaceRecord.parse(change.value).sessionIds)],
+      },
     })
   }
 

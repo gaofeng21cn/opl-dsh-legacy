@@ -1900,6 +1900,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'acknowledgement that cancellation was requested.',
       },
       {
+        signature: '@Remote(\'wait\') wait(request: SessionWaitRequest, signal: AbortSignal): Promise<SessionWaitValue>',
+        description: 'Await one Session\'s next terminal outcome without polling.\n\nResolves as soon as the awaited turn ends (completed, failed, or cancelled) or the Session stops for human input; an already-settled Session resolves from its recorded state. Caller cancellation rejects.',
+        parameters: [{ name: 'request', description: 'Session identity and optional exact turn number.' }, { name: 'signal', description: 'caller lifetime owned by the Remote carrier.' }],
+        returns: 'the outcome and the turn it belongs to.',
+      },
+      {
         signature: '@Remote(\'page\') page(request: SessionPageRequest, signal: AbortSignal): Promise<SessionPage>',
         description: 'Read one cold-safe, message-aligned Session history page.',
         parameters: [{ name: 'request', description: 'durable address, backward cursor, and page budget.' }, { name: 'signal', description: 'cancellation for persistence reads.' }],
@@ -3467,6 +3473,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the updated Workspace projection.',
       },
       {
+        signature: '@Remote(\'moveSession\') moveSession(request: WorkspaceMoveSessionRequest): Promise<{ moved: true }>',
+        description: 'Change project membership while retaining the Session working directory.',
+        parameters: [{ name: 'request', description: 'Session identity and optional destination project.' }],
+        returns: 'acknowledgement after durable placement.',
+      },
+      {
         signature: '@Remote(\'archiveSession\') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>',
         description: 'Hide one known Session from Workspace grouping surfaces.',
         parameters: [{ name: 'request', description: 'Session identity to archive.' }],
@@ -3606,6 +3618,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Resolve by canonical directory path without creating or mutating a workspace. A missing path rejects during `realpath`; an existing unowned directory returns `undefined`.',
         parameters: [{ name: 'path', description: 'Existing directory path in a fully qualified spelling.' }],
         returns: 'the workspace owning the canonical path, when one exists.',
+      },
+      {
+        signature: 'projectMembers(id: WorkspaceId, sessions: readonly SessionId[]): readonly SessionId[]',
+        description: 'Resolve explicit sidebar placement over the original directory account.',
+        parameters: [{ name: 'id', description: 'destination project.' }, { name: 'sessions', description: 'original directory-matching members.' }],
+        returns: 'visible members, including sessions whose cwd belongs elsewhere.',
+      },
+      {
+        signature: 'moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void>',
+        description: 'Change project ownership with one durable write, preserving Session logs and files.',
+        parameters: [{ name: 'sessionId', description: 'existing Session to place.' }, { name: 'workspaceId', description: 'registered destination; omitted removes project ownership.' }],
+        returns: 'committed placement; rejects unknown identities or failed storage writes.',
       },
     ],
   },
@@ -6135,7 +6159,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionCreateRequest',
-    declaration: 'export interface SessionCreateRequest {\n    readonly workspaceId?: WorkspaceId;\n    readonly cwd?: string;\n    readonly sessionId?: SessionId;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionCreateRequest {\n    readonly standalone?: boolean;\n    readonly workspaceId?: WorkspaceId;\n    readonly cwd?: string;\n    readonly sessionId?: SessionId;\n    readonly agentPreset?: string;\n}',
   },
   {
     name: 'SessionCreateValue',
@@ -6276,6 +6300,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionId',
     declaration: 'export type SessionId = Branded<\'SessionId\'>;',
+  },
+  {
+    name: 'SessionInputRequest',
+    declaration: 'export interface SessionInputRequest {\n    readonly sessionId: SessionId;\n    readonly approvalId?: string;\n    readonly toolName?: string;\n}',
   },
   {
     name: 'SessionInspection',
@@ -6568,6 +6596,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionUpdateQueueValue',
     declaration: 'export interface SessionUpdateQueueValue {\n    readonly accepted: true;\n}',
+  },
+  {
+    name: 'SessionWaitOutcome',
+    declaration: 'export type SessionWaitOutcome = {\n    readonly kind: \'completed\';\n} | {\n    readonly kind: \'failed\';\n    readonly message: string;\n    readonly code?: string;\n} | {\n    readonly kind: \'cancelled\';\n    readonly cause: string;\n} | {\n    readonly kind: \'needs-input\';\n    readonly request: SessionInputRequest;\n};',
+  },
+  {
+    name: 'SessionWaitRequest',
+    declaration: 'export interface SessionWaitRequest {\n    readonly sessionId: SessionId;\n    readonly turn?: number;\n}',
+  },
+  {
+    name: 'SessionWaitValue',
+    declaration: 'export interface SessionWaitValue {\n    readonly turn: number;\n    readonly outcome: SessionWaitOutcome;\n}',
   },
   {
     name: 'SessionWireEvent',
@@ -7728,6 +7768,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceInsertSessionBeforeRequest',
     declaration: 'export interface WorkspaceInsertSessionBeforeRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n    readonly beforeSessionId?: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceMoveSessionRequest',
+    declaration: 'export interface WorkspaceMoveSessionRequest {\n    readonly sessionId: SessionId;\n    readonly workspaceId?: WorkspaceId;\n}',
   },
   {
     name: 'WorkspaceOrderValue',

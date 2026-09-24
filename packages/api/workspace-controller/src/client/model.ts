@@ -92,6 +92,16 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   }
 
   /**
+   * Move ownership; the follow stream supplies the committed projection.
+   * @param sessionId - Session identity.
+   * @param workspaceId - destination project; absent means outside projects.
+   * @returns acknowledgement after durable placement.
+   */
+  async moveSession(sessionId: import('@deepseek-ai/dsh-session/types').SessionId, workspaceId?: WorkspaceId): Promise<RemoteResult<{ moved: true }>> {
+    return this.remote.moveSession({ sessionId, ...(workspaceId === undefined ? {} : { workspaceId }) })
+  }
+
+  /**
    * Create or resolve a Workspace and merge the unary result immediately.
    * @param input - existing absolute path to adopt.
    * @returns generated Remote result.

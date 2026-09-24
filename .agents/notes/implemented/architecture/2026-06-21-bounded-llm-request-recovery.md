@@ -35,10 +35,16 @@ interface LlmFailure {
   status?: number
   providerRetryAfterMs?: number
   requestId?: ProviderRequestId
+  offloadImages?: number
+  transportStage?: 'request' | 'response-body'
+  causeName?: string
+  causeCode?: string
 }
 ```
 
 `code` remains the provider-neutral machine-routing taxonomy established by `HarnessError`; the new fields are observations from the provider boundary. `ProviderRequestId` is owned and constructed by `dsh-llm`, then serializes as its provider-issued string. The payload deliberately has no `retryable`, `failover`, `partialOutput`, provider, model, phase, or route id fields. Retryability belongs to policy, provider/model are already in the durable request header, and partial output is preserved by the failed attempt's embedded stream.
+
+`offloadImages` belongs to the image-offload projection, and the three `TRANSPORT` diagnostics come from [thinking-mode CoT passback and control-marker reporting](../bug-fix/2026-09-22-reasoning-passback-and-control-markers.md). All four are structured provider facts of the same kind as `status` and `requestId`, so they extend this payload rather than introducing a parallel failure shape; `transportStage`, `causeName`, and `causeCode` hold fixed vocabularies rather than rendered messages, keeping credentials, request bodies, and reasoning text out of the durable record.
 
 `LlmError` carries `failure: LlmFailure` and preserves `failure.code === error.code`. `FinishReasonMap.error` and `FinishReasonMap.aborted` carry the same payload instead of parallel failure shapes. The final adapter boundary detaches those facts from adapter-thrown values and emits the appropriate terminal finish; unknown SDK exceptions receive an `UNKNOWN` payload. Exact thrown-object identity does not cross the LLM stream seam.
 

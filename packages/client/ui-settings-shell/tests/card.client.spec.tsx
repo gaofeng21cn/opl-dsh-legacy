@@ -22,7 +22,7 @@ function field(text: string, rest: Partial<SettingsFieldState> = {}): SettingsFi
 
 function renderCard(state: Partial<ShellCardState> = {}, view: 'summary' | 'page' = 'page') {
   const store = createSnapshotStore<ShellCardState>({
-    ...settled, timeoutMs: field('60000'), maxOutputBytes: field('64000'), ...state,
+    ...settled, timeoutMs: field('60000'), maxOutputBytes: field('64000'), agentShell: field('powershell'), gitBashPath: field(''), ...state,
   })
   const actions = { edit: vi.fn(), resetField: vi.fn(), save: vi.fn(), discard: vi.fn() }
   const props = { ...actions, view, t, useShellCard: bindSnapshotSelector(store) } as ShellCardProps
@@ -50,7 +50,18 @@ describe('ShellCard', () => {
 
     expect(screen.getByLabelText(en.timeoutMs)).toBeTruthy()
     expect(screen.getByLabelText(en.maxOutputBytes)).toBeTruthy()
+    expect(screen.getByLabelText(en.bashAgentShell)).toBeTruthy()
+    expect(screen.getByLabelText(en.bashGitBashPath)).toBeTruthy()
     expect(screen.queryByText(en.title)).toBeNull()
+  })
+
+  it('stages the Windows shell and executable without changing permissions', () => {
+    const actions = renderCard()
+    fireEvent.change(screen.getByLabelText(en.bashAgentShell), { target: { value: 'git-bash' } })
+    fireEvent.change(screen.getByLabelText(en.bashGitBashPath), { target: { value: 'C:\\Git\\bin\\bash.exe' } })
+    expect(actions.edit).toHaveBeenCalledWith('agentShell', 'git-bash')
+    expect(actions.edit).toHaveBeenCalledWith('gitBashPath', 'C:\\Git\\bin\\bash.exe')
+    expect(screen.getByText(en.bashAgentShellRestart)).toBeTruthy()
   })
 
   it('stages an edit instead of writing it', () => {

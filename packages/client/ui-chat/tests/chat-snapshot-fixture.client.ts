@@ -21,6 +21,7 @@ import {
 } from '../src/client/contract/turn-process.ts'
 
 const EMPTY: readonly never[] = []
+const NO_TURNS: ReadonlySet<number> = new Set()
 
 function sameValues<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
@@ -533,5 +534,6 @@ export function chatSnapshotFixture(input: {
     navigation: { items: () => items },
     timeline,
     legacy,
+    supersededTurns: NO_TURNS,
   }
 }

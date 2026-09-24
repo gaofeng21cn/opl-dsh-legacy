@@ -28,6 +28,15 @@
     },
     {
       "path": "../../util/values"
+    },
+    {
+      "path": "../store"
+    },
+    {
+      "path": "../ui-primitives"
+    },
+    {
+      "path": "../ui-plugin-manager/tsconfig.client.json"
     }
   ]
 }

@@ -143,6 +143,11 @@ export class TestWorkspaces implements IWorkspaces {
    * observable effect: the id joins the list state's archive set.
    * @param sessionId - session to archive.
    */
+  async moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void> {
+    this.calls.push({ method: 'moveSession', args: [sessionId, workspaceId] })
+    await (this.stubs.get('moveSession')?.(sessionId, workspaceId) as Promise<void> | undefined)
+  }
+
   async archiveSession(sessionId: SessionId): Promise<void> {
     this.calls.push({ method: 'archiveSession', args: [sessionId] })
     const stub = this.stubs.get('archiveSession')

@@ -487,17 +487,26 @@ export class SessionManager {
   */
   async create(
     opts: {
+      agentPreset?: string
+      standalone?: boolean
       workspaceId?: WorkspaceId
       cwd?: string
       sessionId?: SessionId
     } = {},
   ): Promise<RemoteResult<{ sessionId: SessionId }>> {
-    const shared = opts.sessionId === undefined ? {} : { sessionId: opts.sessionId }
+    const shared = {
+      ...(opts.standalone === undefined ? {} : { standalone: opts.standalone }),
+      ...(opts.sessionId === undefined ? {} : { sessionId: opts.sessionId }),
+      ...(opts.agentPreset === undefined ? {} : { agentPreset: opts.agentPreset }),
+    }
     const payload = opts.workspaceId !== undefined
       ? { workspaceId: opts.workspaceId, ...shared }
       : { ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }), ...shared }
     const result = await this.remote.session.create(payload)
     if (result.ok) {
+      if (result.value.agentPreset !== undefined) {
+        this.projectionStore(result.value.sessionId).apply('agentPreset', result.value.agentPreset, sessionSeqCursor(0))
+      }
       this.recordMutation({ kind: 'placeholder', summary: { agentAvailable: true,
         sessionId: result.value.sessionId, updatedAt: Date.now(), running: false, blank: true,
         ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),

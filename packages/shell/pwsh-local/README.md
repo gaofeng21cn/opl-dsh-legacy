@@ -27,13 +27,17 @@ English | [中文](README.zh.md)
 
 Mount this executor when a composition needs PowerShell command execution — typically on Windows — without confinement. It registers as `ctx.shell`, and the model-facing `pwsh` tool works over it immediately: an agent calls the tool, and the command runs as a fresh `pwsh -Command` process with the budgets below.
 
+### The shared Agent shell settings
+
+The shared [shell settings](../shell/README.md) also expose the Native Agent shell choice and Git Bash path while PowerShell is active. The selected Git Bash executable is validated when it resolves; switching providers and model-facing tools requires a complete restart. Command budgets keep their existing live-update behavior.
+
 ### When to choose it
 
 It is the Windows counterpart of `dsh-bash-local`: choose it where `pwsh` is the platform shell, so a composition can swap the POSIX rows for the pwsh rows and keep the same semantics. The executor resolves the `pwsh` executable from an explicit `pwshPath`, well-known Windows install locations, PATH entries, or Windows PowerShell 5.1 as a last resort. For unconfined execution it is the default; compose `dsh-pwsh-sandbox` when commands need the sandbox capability.
 
 ### Minimal configuration
 
-Load the executor with the budgets you want; every field has a default, so the smallest composition is the plugin entry alone. The settings provider (when composed) layers a user section over this entry, so budgets can change at runtime without a reload (see [Adjusting budgets at runtime](#adjusting-budgets-at-runtime)).
+Load the executor with the budgets you want; every field has a default, so the smallest composition is the plugin entry alone. The Plugins page edits this profile entry, and volatile budgets change at runtime without a reload (see [Adjusting budgets at runtime](#adjusting-budgets-at-runtime)).
 
 ```yaml
 - id: bash
@@ -72,7 +76,7 @@ Resolve with `onExpiry: 'none'` and await `execute` to run a command in the back
 <a id="adjusting-budgets-at-runtime"></a>
 ### Adjusting budgets at runtime
 
-Execution budgets are volatile Config fields sampled when resolving each command. The Plugins page edits the active executor’s profile entry. Complete Config validation rejects invalid numbers and timer limits before a form write reaches disk.
+Execution budgets are volatile Config fields sampled when resolving each command. The Plugins page edits the active executor’s profile entry. The executor rejects nonpositive budgets and unusable timer limits when the next command resolves.
 
 -----
 
@@ -92,7 +96,7 @@ The executor is the PowerShell Service Provider for the `ctx.shell` seam built o
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: `PwshLocalExecutor`, `Config`, settings wiring, argv seam |
+| [`src/index.ts`](src/index.ts) | Plugin entry: `PwshLocalExecutor`, `Config`, live profile configuration and argv seam |
 | [`src/resolve.ts`](src/resolve.ts) | Pure `resolvePwshPath`/`candidatePwshPaths` executable resolution |
 | — | No runtime invariant companion is published; this package exposes no independent event sequence or mutable data relation beyond contracts enforced at its owning seam. |
 | `tests/` | Exercised behavior: budgets, classification, resolution, background handles |

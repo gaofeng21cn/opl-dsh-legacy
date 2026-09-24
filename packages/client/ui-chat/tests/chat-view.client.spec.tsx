@@ -453,6 +453,9 @@ function makeHarness(
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     chatScroll,
     forkAt,
+    // The owner rule needs a live Session snapshot; this harness has none.
+    editPrompt: () => Promise.resolve(null),
+    rewindPrompt: () => Promise.resolve(null),
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
     t,

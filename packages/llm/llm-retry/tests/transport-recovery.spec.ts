@@ -121,6 +121,14 @@ describe('bounded retry through the real DeepSeek HTTP/SSE adapter', () => {
       .toEqual([[1, 1]])
     expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry').map(event => event.data.failure.code))
       .toEqual(['TRANSPORT'])
+    // A refused connection must say so: "TRANSPORT" alone cannot be told apart
+    // from a DNS failure, a TLS refusal, or a stalled read.
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry').map(event => event.data.failure))
+      .toEqual([expect.objectContaining({
+        code: 'TRANSPORT',
+        transportStage: 'request',
+        causeCode: 'ECONNREFUSED',
+      })])
     expect(finalAssistantText(agent)).toBe('connected after retry')
   })
 
@@ -158,6 +166,10 @@ describe('bounded retry through the real DeepSeek HTTP/SSE adapter', () => {
       .toEqual([[1, 1]])
     expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry').map(event => event.data.failure.code))
       .toEqual(['TRANSPORT'])
+    // A body that ends mid-stream is a different phase from a refused
+    // connection, and the record must distinguish them.
+    expect(agent.session.snapshotEvents().filter(event => event.type === 'llm/retry').map(event => event.data.failure))
+      .toEqual([expect.objectContaining({ code: 'TRANSPORT', transportStage: 'response-body' })])
     expect(finalAssistantText(agent)).toBe('recovered response')
   })
 
@@ -282,5 +294,53 @@ describe('bounded retry through the real DeepSeek HTTP/SSE adapter', () => {
     if (end?.type === 'turn/end' && end.data.reason.kind === 'error') {
       expect(end.data.reason.error.message).toBe('DeepSeek Messages transport failed')
     }
+  })
+
+  it('records the terminal transport failure with its phase, not just its code', async () => {
+    const server = await start(['connection_reset', 'connection_reset', 'connection_reset'], {
+      apiKey: 'mock-key',
+    })
+    context = await harness(server.baseURL)
+    const agent = await context.agentLoop.create(SessionId('wire-exhausted-detail'), {
+      provider: 'deepseek-official',
+      model: 'mock-model',
+    })
+
+    await sendAndWait(context, agent)
+
+    const end = agent.session.snapshotEvents().at(-1)
+    expect(end).toMatchObject({
+      type: 'turn/end',
+      data: {
+        reason: {
+          kind: 'error',
+          error: expect.objectContaining({ code: 'TRANSPORT', transportStage: 'request' }),
+        },
+      },
+    })
+  })
+
+  it('keeps credentials, request bodies, and headers out of the persisted failure', async () => {
+    const port = await unusedPort()
+    context = await harness(`http://127.0.0.1:${port}`, { initialDelayMs: 10 })
+    const agent = await context.agentLoop.create(SessionId('wire-sanitized'), {
+      provider: 'deepseek-official',
+      model: 'mock-model',
+    })
+
+    await sendAndWait(context, agent)
+
+    // The request carried the stub key and a known prompt; neither may reach a
+    // durable event, because these events are written to the session log and
+    // rendered in the UI.
+    const persisted = JSON.stringify(
+      agent.session.snapshotEvents().filter(event => event.type === 'llm/retry' || event.type === 'turn/end'),
+    )
+    expect(persisted).not.toContain('mock-key')
+    expect(persisted).not.toContain('Bearer')
+    expect(persisted).not.toContain('authorization')
+    expect(persisted).not.toContain('recover through the provider boundary')
+    // The identifying part of the failure is still present.
+    expect(persisted).toContain('ECONNREFUSED')
   })
 })

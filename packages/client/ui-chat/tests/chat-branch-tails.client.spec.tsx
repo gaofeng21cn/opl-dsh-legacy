@@ -38,6 +38,13 @@ const useDetachedChat: ChatNodeViewProps['useChat'] = bindSnapshotSelector({
   getSnapshot: () => ({ order: [], nodes: new Map() }),
 } as never)
 
+// Row fixtures are settled: the edit affordance is exercised by the dedicated
+// user-prompt-edit spec, so this seat only reports an idle session.
+const useDetachedSession: ChatNodeViewProps['useSession'] = bindSnapshotSelector({
+  subscribe: () => () => {},
+  getSnapshot: () => ({ running: false }),
+} as never)
+
 interface MessageItemProps {
   readonly node: ConversationNode
   readonly t: ChatNodeViewProps['t']
@@ -67,7 +74,8 @@ function MessageItem({ node, t: translate, referenceLabels, skillNames }: Messag
         : node,
   }
   const props = {
-    node: viewNode, t: translate, renderMessageImages, openFile: vi.fn(), openSkill: vi.fn(), useChat: useDetachedChat,
+    node: viewNode, t: translate, renderMessageImages, openFile: vi.fn(), openSkill: vi.fn(),
+    useChat: useDetachedChat, useSession: useDetachedSession, editPrompt: () => Promise.resolve(null),
   } as unknown as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
@@ -158,7 +166,7 @@ describe('MessageItem arms', () => {
     expect(resolved.container.textContent).toContain('/123 then ')
   })
 
-  it('user bubbles expose clock / copy and neither branch nor edit; copy writes the text', () => {
+  it('user bubbles expose clock / copy and neither branch nor edit for an unaddressed row; copy writes the text', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -178,7 +186,8 @@ describe('MessageItem arms', () => {
     expect(screen.getByText('14:24')).toBeTruthy()
     expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '编辑' })).toBeNull()
+    // No `editablePromptSeq` owner fact: the Host never offers this row for editing.
+    expect(screen.queryByRole('button', { name: '编辑并重发' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '复制' }))
     expect(writeText).toHaveBeenCalledWith('hello bubble')
   })

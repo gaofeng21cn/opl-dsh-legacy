@@ -13,6 +13,7 @@ import type {
 } from '../contract/snapshot.ts'
 import { TURN_PROCESS_INDEPENDENT_KINDS } from '../contract/turn-process.ts'
 import { sessionRecallLabels, skillInvocationName } from './event-projection.ts'
+import { SupersededBranchFilter } from './superseded-branch.ts'
 import { sameTurnNavigationItem, turnNavigationItem } from './turn-navigation.ts'
 import { ChatTurnProcessProjector } from './turn-process-presentation.ts'
 
@@ -20,6 +21,7 @@ const EMPTY_KEYS: readonly string[] = []
 const EMPTY_TURNS: readonly number[] = []
 const EMPTY_ITEMS: readonly TurnNavigationItem[] = []
 const EMPTY_LIST: readonly never[] = []
+const EMPTY_TURN_SET: ReadonlySet<number> = new Set()
 
 function sameReferences<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
@@ -1060,6 +1062,8 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
   private readonly legacy = new LegacySliceBuilder()
   private readonly referenceLabels = new ReferenceLabelProjector()
   private readonly skillNames = new SkillNameProjector()
+  private readonly supersededBranches = new SupersededBranchFilter()
+  private supersededTurns: ReadonlySet<number> = EMPTY_TURN_SET
   private order: readonly string[] = EMPTY_KEYS
   private latestGroupInput: ConversationGroupInput<ChatConversationViewNode>
   private readonly readGroupNode = (key: NodeKey): ChatConversationViewNode | undefined => this.store.get(key)
@@ -1085,8 +1089,12 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     readonly nodes: readonly ChatConversationViewNode[]
     readonly timeline: ConversationTimelineSnapshot
   }): ChatSnapshot {
-    const nodes = this.skillNames.replace(this.referenceLabels.replace(input.nodes))
+    this.supersededBranches.adopt(input.nodes)
+    const nodes = this.skillNames.replace(
+      this.referenceLabels.replace(this.supersededBranches.hide(input.nodes)),
+    )
     this.store.replace(nodes)
+    this.refreshSupersededTurns()
     this.order = orderedVisibleChatNodes(nodes).map(node => node.key)
     this.locations.rebuild(this.order, this.store)
     this.store.replaceProcesses(this.order, this.locations)
@@ -1109,7 +1117,14 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     readonly timeline: ConversationTimelineSnapshot
     readonly changedTurns?: readonly number[]
   }): ChatSnapshot {
-    const upserts = this.skillNames.apply(this.referenceLabels.apply(input.upserts, this.store), this.store)
+    // A rewrite prompt can arrive after the branch it replaced is already
+    // materialized, so adopting one hides resident rows in the same publication.
+    const adopted = this.supersededBranches.adopt(input.upserts)
+    const changed = adopted ? this.withHiddenResidents(input.upserts) : input.upserts
+    const upserts = this.skillNames.apply(
+      this.referenceLabels.apply(this.supersededBranches.hide(changed), this.store),
+      this.store,
+    )
     const processTurns = new Set<number>()
     let structural = false
     const contentOnly: ChatConversationViewNode[] = []
@@ -1133,6 +1148,8 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     }
     this.store.upsert(upserts)
     let changedTurnOrders: readonly number[] = EMPTY_TURNS
+    // A row landing later in a hidden Turn restores that Turn's rail mark.
+    if (adopted || upserts.some(node => this.restoresSupersededTurn(node))) this.refreshSupersededTurns()
     if (structural) {
       const next = orderedVisibleChatNodes(this.store.values()).map(node => node.key)
       this.order = sameReferences(this.order, next) ? this.order : next
@@ -1169,6 +1186,35 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     this.store.publish()
   }
 
+  /** Resident rows a branch adopted in this batch hides, in addition to the upserts. */
+  private withHiddenResidents(
+    upserts: readonly ChatConversationViewNode[],
+  ): readonly ChatConversationViewNode[] {
+    const residents = this.store.values()
+    const hidden = this.supersededBranches.hide(residents)
+    if (hidden === residents) return upserts
+    const byKey = new Map(upserts.map(node => [node.key, node]))
+    for (const [index, node] of residents.entries()) {
+      const next = hidden[index]
+      if (next === undefined || next === node) continue
+      byKey.set(node.key, next)
+    }
+    return [...byKey.values()]
+  }
+
+  /** Whether one arriving row returns a currently hidden Turn to the rail. */
+  private restoresSupersededTurn(node: ChatConversationViewNode): boolean {
+    const turn = locationCoordinates(node.location).turn
+    return turn !== undefined && this.supersededTurns.has(turn)
+  }
+
+  /** Re-derive Turns a superseded branch left without a visible row. */
+  private refreshSupersededTurns(): void {
+    const next = this.supersededBranches.supersededTurns(this.store.values())
+    if (sameTurnSet(this.supersededTurns, next)) return
+    this.supersededTurns = next
+  }
+
   private snapshot(
     timeline: ConversationTimelineSnapshot,
     legacy = this.legacy.replace(EMPTY_LIST, timeline),
@@ -1180,8 +1226,16 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
       navigation: this.navigation,
       timeline,
       legacy,
+      supersededTurns: this.supersededTurns,
     }
   }
+}
+
+/** Whether two Turn sets carry the same members, so the snapshot keeps its reference. */
+function sameTurnSet(left: ReadonlySet<number>, right: ReadonlySet<number>): boolean {
+  if (left.size !== right.size) return false
+  for (const turn of left) if (!right.has(turn)) return false
+  return true
 }
 
 /** Turns owning the given nodes, for the content-only navigation update. */

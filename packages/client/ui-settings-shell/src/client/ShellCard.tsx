@@ -1,7 +1,7 @@
 /** The shell executor's settings page: the limits every command the agent runs is bound by. */
 
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
-import { SettingsForm, SettingsValueField } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SettingsForm, SettingsValueField, SettingsChoiceField, SettingsRestartNotice } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { formLabels } from './locales.ts'
 import type { ShellCardFace } from './shell-card-controller.ts'
@@ -24,6 +24,35 @@ export function ShellCard(props: ShellCardProps) {
   const disabled = !state.writable
   return (
     <SettingsForm labels={formLabels(t)} state={state} onSave={props.save} onDiscard={props.discard}>
+      <SettingsChoiceField
+        id="plugin-config-bash-agent-shell"
+        label={t('bashAgentShell')}
+        hint={t('bashAgentShellHint')}
+        overriddenLabel={t('overridden')}
+        resetLabel={t('reset')}
+        invalidLabel={t('invalidShellValue')}
+        options={[
+          { value: 'powershell', label: t('bashAgentShellPowershell') },
+          { value: 'git-bash', label: t('bashAgentShellGitBash') },
+        ]}
+        disabled={disabled}
+        {...state.agentShell}
+        onEdit={(text) => { props.edit('agentShell', text) }}
+        onReset={() => { props.resetField('agentShell') }}
+      />
+      <SettingsValueField
+        id="plugin-config-bash-git-path"
+        label={t('bashGitBashPath')}
+        hint={t('bashGitBashPathHint')}
+        overriddenLabel={t('overridden')}
+        resetLabel={t('reset')}
+        invalidLabel={t('invalidShellValue')}
+        disabled={disabled}
+        {...state.gitBashPath}
+        onEdit={(text) => { props.edit('gitBashPath', text) }}
+        onReset={() => { props.resetField('gitBashPath') }}
+      />
+      <SettingsRestartNotice text={t('bashAgentShellRestart')} />
       <SettingsValueField
         id="plugin-config-shell-timeout"
         label={t('timeoutMs')}

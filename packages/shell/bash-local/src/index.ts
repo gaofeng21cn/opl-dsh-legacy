@@ -1,18 +1,25 @@
 /**
  * Local Service Provider for the bash capability seam over the subprocess
- * capability seam. Public commands run as `bash -c` in a provider-managed range
- * through `ctx.subprocess`; subclasses may reuse the same mechanics with an
- * explicit argv. This executor owns command defaulting, deadlines and cause
+ * capability seam. Public commands run as `<bash> -c` in a provider-managed
+ * range through `ctx.subprocess`; subclasses may reuse the same mechanics with
+ * an explicit argv. This executor owns command defaulting, deadlines and cause
  * classification, the model-friendly terminal environment, and the model-facing
  * stdout/stderr merge for background reads. Execution policy belongs in
  * `tools/pre-execute` or a sandboxing executor.
+ *
+ * On Windows the bash a command runs is Git for Windows' `bash.exe`, resolved
+ * from the `gitBashPath` setting or the well-known Git for Windows locations;
+ * the WSL launcher is never selected, and a host without a usable Git for
+ * Windows fails when the executable resolves rather than falling back to
+ * another shell.
  * @module @deepseek-ai/dsh-bash-local
  */
 
 import type { Volatile } from '@deepseek-ai/cordis'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { ShellExecutor } from '@deepseek-ai/dsh-shell'
+import { AGENT_SHELL_SETTINGS_FIELDS, ShellExecutor, assertAgentShellSettings, resolveGitBash } from '@deepseek-ai/dsh-shell'
+import type { AgentShellSettings } from '@deepseek-ai/dsh-shell'
 import type { ShellExecRequest, ShellExecSpec, ShellExecution, ShellProcess, ShellProcessRead, ShellRunResult, CollectedOutput } from '@deepseek-ai/dsh-shell'
 import type { SubprocessCollect, SubprocessHandle, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { clampTimeout, deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -38,7 +45,7 @@ const DEFAULT_GRACE_MS = 3_000
 const DEFAULT_MAX_SPILL_BYTES = 64 * 1024 * 1024
 
 /** Validated plugin configuration with live command budgets. */
-export interface Config {
+export interface Config extends AgentShellSettings {
   /** Default working directory for commands (default: process.cwd()). */
   cwd: Volatile<string | undefined>
   /** Default foreground timeout in milliseconds. */
@@ -70,6 +77,22 @@ function assertPositiveFinite(name: string, value: number): void {
 }
 
 /**
+ * The bash executable this host runs commands through.
+ *
+ * A POSIX host uses the `bash` on PATH, which is what every existing
+ * installation does. A Windows Native host has no such bash: it runs Git for
+ * Windows, resolved and identified from the `gitBashPath` setting or the
+ * well-known Git for Windows locations, and fails loud when none is usable
+ * instead of falling back to another shell.
+ * @param settings - the authoritative Agent shell settings fields.
+ * @returns the absolute Git Bash path on Windows, else `bash` for PATH resolution.
+ * @throws Error naming the selection and why it cannot run.
+ */
+function resolveBashExecutable(settings: AgentShellSettings): string {
+  return process.platform === 'win32' ? resolveGitBash(settings).path : 'bash'
+}
+
+/**
  * Reject a resolved section this executor could not run with. The schema
  * expresses neither "positive and finite" nor the timer bound `graceMs` has to
  * fit, so a stored value that cannot be used fails at the next command.
@@ -85,6 +108,15 @@ export function assertServiceableBashConfig(config: Config): void {
   if (config.graceMs.get() > MAX_TIMER_DELAY_MS) {
     throw new Error(`bash-local: graceMs must be no greater than ${MAX_TIMER_DELAY_MS}`)
   }
+}
+
+/**
+ * Validate a configured Agent shell selection against this host.
+ * @param config - the executor configuration carrying the shared shell fields.
+ * @throws Error naming a Git Bash selection this host cannot run.
+ */
+export function validateAgentShellConfig(config: Config): void {
+  assertAgentShellSettings(config)
 }
 
 /**
@@ -104,7 +136,16 @@ export class LocalBashExecutor extends ShellExecutor {
     maxOutputBytes: z.number().default(64_000).volatile(),
     maxSpillBytes: z.number().default(DEFAULT_MAX_SPILL_BYTES).volatile(),
     graceMs: z.number().default(DEFAULT_GRACE_MS).volatile(),
+    ...AGENT_SHELL_SETTINGS_FIELDS,
   })
+
+  private bashPathValue: string | undefined
+
+  /** Executable captured on first use; non-volatile path edits remount the executor. */
+  get bashPath(): string {
+    this.bashPathValue ??= resolveBashExecutable(this.config)
+    return this.bashPathValue
+  }
 
   constructor(ctx: Context, readonly config: Config) {
     super(ctx)
@@ -185,7 +226,15 @@ export class LocalBashExecutor extends ShellExecutor {
   }
 
   async execute(spec: ShellExecSpec): Promise<ShellExecution> {
-    return this.executeArgv(spec, ['bash', '-c', spec.command])
+    return this.executeArgv(spec, this.argv(spec))
+  }
+
+  /** The executable and arguments handed to the subprocess provider.
+   * @param spec - resolved command settings.
+   * @returns the configured Bash executable and command arguments.
+   */
+  protected argv(spec: ShellExecSpec): string[] {
+    return [this.bashPath, '-c', spec.command]
   }
 
   /**
@@ -248,10 +297,9 @@ export class LocalBashExecutor extends ShellExecutor {
       } finally { signal.removeEventListener('abort', abort) }
     } else { argv = argvOrPrepare }
 
-    // A synchronous spawn throw (pre-aborted signal, alternative subprocess
-    // implementations) is contained into the same settled-killed shape as an
-    // asynchronous spawn rejection, so execute() itself never throws for a
-    // spawn problem and result() carries the failure uniformly.
+    // A spawn rejected after its signal aborts is a cancellation with no target
+    // outcome. Other synchronous spawn failures settle the handle as killed
+    // and remain failures of result().
     let running: SubprocessHandle | undefined
     let syncSpawnError: { error: unknown } | undefined
     try {
@@ -271,9 +319,10 @@ export class LocalBashExecutor extends ShellExecutor {
     const spawned = preparationTimedOut
       ? Promise.resolve({ exitCode: null, signal: null })
       : running !== undefined ? running.done
-      // The original throw is preserved for callers even when it was not an Error.
-      // eslint-disable-next-line prefer-promise-reject-errors
-        : Promise.reject(spawnThrow())
+        : spawnSignal?.aborted === true ? Promise.resolve({ exitCode: null, signal: null })
+        // The original throw is preserved for callers even when it was not an Error.
+        // eslint-disable-next-line prefer-promise-reject-errors
+          : Promise.reject(spawnThrow())
 
     // A provider rejection produces no process output, so the subprocess
     // service has nothing to buffer: once the provider rejected, its
@@ -320,8 +369,9 @@ export class LocalBashExecutor extends ShellExecutor {
         // target started has no exit to report and rejects with the
         // cancellation reason instead. The result projection classifies it
         // from the deadline wiring; nothing is a provider failure. A
-        // synchronous spawn throw never produced a handle and stays a failure.
-        if (running !== undefined && (proc.status === 'killed' || spawnSignal?.aborted === true)) {
+        // different rejection that races an abort remains a provider failure.
+        if (running !== undefined && (proc.status === 'killed'
+          || (spawnSignal?.aborted === true && error === spawnSignal.reason))) {
           proc.status = 'killed'
           this.onProcessDone(proc, collected.stderr.readFrom(0).text, false)
           disarm()

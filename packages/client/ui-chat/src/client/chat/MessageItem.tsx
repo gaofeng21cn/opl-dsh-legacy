@@ -1,13 +1,19 @@
-import { Fragment, memo, useEffect, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
+import type {
+  ChatNodeOwnerProps, ChatNodeViewProps, ChatPromptEditFailure, ChatPromptRewindFailure, ChatViewSlotProps,
+} from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
 import { MessageIconActions } from './MessageIconActions.tsx'
+import {
+  PromptActionFailure, promptEditFailureCopy, promptRewindFailureCopy, UserPromptEditAction,
+  UserPromptEditor, UserPromptRewindAction,
+} from './UserPromptEdit.tsx'
 import css from './MessageItem.module.css'
 
 type UserImage = Extract<UserMessageNode['content'][number], { type: 'image' }>
@@ -155,13 +161,15 @@ function TurnMaxTokensItem({ t }: {
 
 /** Right-aligned bubble shared by user and steering rows. */
 function UserStyleBubble({
-  content, renderMessageImages, actions, pending = false, echo = false, referenceLabels = [], skillNames = [],
+  content, renderMessageImages, actions, editor, pending = false, echo = false, referenceLabels = [], skillNames = [],
   previewAttachments, references, t,
 }: {
   content: readonly unknown[]
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
   /** Optional IconActions (or similar) below the bubble; receives the joined text. */
   actions?: (text: string) => ReactNode
+  /** Optional draft panel below the bubble, replacing nothing until the row opens it. */
+  editor?: ReactNode
   /** Whether this is the Host-authoritative pre-admission steering projection. */
   pending?: boolean
   /** Whether this is a local submission echo (invisible marker; the echo renders exactly like its durable replacement). */
@@ -222,6 +230,7 @@ function UserStyleBubble({
             {t('message.referenceSummary', { labels: referenceLabels.join(t('message.referenceSeparator')) })}
           </div>
         )}
+        {editor}
       </div>
       {actions?.(text)}
     </div>
@@ -313,9 +322,64 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, openFile, openSkill, t,
+  node, renderMessageImages, openFile, openSkill, editablePromptSeq, editPrompt, rewindPrompt, useSession, t,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
+  const running = useSession(snapshot => snapshot.running)
+  // Null while closed; the draft then survives only inside an open editor.
+  const [draft, setDraft] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+  const [failure, setFailure] = useState<ChatPromptEditFailure | null>(null)
+  const [rewinding, setRewinding] = useState(false)
+  const [rewindFailure, setRewindFailure] = useState<ChatPromptRewindFailure | null>(null)
+  /** Bumped by every open, cancel, and settlement so a superseded resend is ignored. */
+  const generation = useRef(0)
+  const editable = !running && editablePromptSeq !== undefined && editablePromptSeq === data.seq
+  const open = useCallback((text: string) => {
+    generation.current += 1
+    setDraft(text)
+    setPending(false)
+    setFailure(null)
+  }, [])
+  const cancel = useCallback(() => {
+    generation.current += 1
+    setDraft(null)
+    setPending(false)
+    setFailure(null)
+  }, [])
+  const resend = useCallback(() => {
+    if (draft === null) return
+    const current = ++generation.current
+    setPending(true)
+    void editPrompt(data.seq, draft).then(
+      (refusal) => {
+        if (current !== generation.current) return
+        setPending(false)
+        setFailure(refusal)
+        if (refusal === null) setDraft(null)
+      },
+      () => {
+        if (current !== generation.current) return
+        setPending(false)
+        setFailure({ code: 'gateway/internal' })
+      },
+    )
+  }, [data.seq, draft, editPrompt])
+  const rewind = useCallback((text: string) => {
+    if (rewinding) return
+    setRewinding(true)
+    setRewindFailure(null)
+    void rewindPrompt(data.seq, text).then(
+      (refusal) => {
+        setRewinding(false)
+        setRewindFailure(refusal)
+      },
+      () => {
+        setRewinding(false)
+        setRewindFailure({ code: 'gateway/internal' })
+      },
+    )
+  }, [data.seq, rewindPrompt, rewinding])
   return (
     <UserStyleBubble
       content={data.content}
@@ -323,6 +387,23 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
       renderMessageImages={renderMessageImages}
       {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
       {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      {...draft !== null
+        ? {
+          editor: (
+            <UserPromptEditor
+              draft={draft}
+              pending={pending}
+              failure={promptEditFailureCopy(failure, t)}
+              onDraft={setDraft}
+              onCancel={cancel}
+              onResend={resend}
+              t={t}
+            />
+          ),
+        }
+        : rewindFailure !== null
+          ? { editor: <PromptActionFailure copy={promptRewindFailureCopy(rewindFailure, t) ?? ''} /> }
+          : {}}
       t={t}
       actions={text => (
         <MessageIconActions
@@ -330,6 +411,21 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           time={data.time}
           clock="start"
           className={css.actions}
+          extraActions={(
+            <>
+              <UserPromptEditAction
+                enabled={editable && draft === null}
+                onOpen={() => { open(text) }}
+                t={t}
+              />
+              <UserPromptRewindAction
+                enabled={editable && draft === null}
+                pending={rewinding}
+                onRewind={() => { rewind(text) }}
+                t={t}
+              />
+            </>
+          )}
           t={t}
         />
       )}

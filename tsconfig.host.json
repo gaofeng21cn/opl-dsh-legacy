@@ -184,6 +184,9 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/api/task-feedback" },
+    { "path": "./packages/session/session-rewind-files" },
+
     { "path": "./packages/experimental/speech-to-text" },
     { "path": "./packages/experimental/speech-to-text-sensevoice" },
     { "path": "./packages/experimental/api-speech-to-text" },

@@ -220,6 +220,50 @@ export function apply(ctx: Context): void {
                 // Fork or child-title failure leaves the source view unchanged.
               })
           },
+          // The edit echo rides the standard submission path, so the row paints
+          // the edited prompt at once and a refusal retires it.
+          editPrompt: async (seq, text) => {
+            const submission = session.beginSubmission({ mode: 'queue', text, attachments: [] })
+            const result = await session.editPrompt(
+              seq,
+              [{ type: 'text', text }],
+              undefined,
+              submission.requestId,
+            )
+            if (result.ok) return null
+            const details: unknown = result.error.details
+            const reason = typeof details === 'object' && details !== null && 'reason' in details
+              && typeof details.reason === 'string'
+              ? details.reason
+              : undefined
+            return { code: result.error.code, ...(reason === undefined ? {} : { reason }) }
+          },
+          // The rewind's own effect is the surface replacement the Host appends;
+          // the row only has to put the rolled-back prompt back where it was
+          // before the send. A draft the user typed since is newer input, so an
+          // occupied composer is left untouched.
+          rewindPrompt: async (seq, text) => {
+            const result = await session.rewind(seq)
+            if (!result.ok) {
+              const details: unknown = result.error.details
+              const field = (name: string): string | undefined => {
+                if (typeof details !== 'object' || details === null || !(name in details)) return undefined
+                const value = (details as Record<string, unknown>)[name]
+                return typeof value === 'string' ? value : undefined
+              }
+              const reason = field('reason')
+              const fileReason = field('fileReason')
+              return {
+                code: result.error.code,
+                ...reason === undefined ? {} : { reason },
+                ...fileReason === undefined ? {} : { fileReason },
+              }
+            }
+            const scope = ctx.sessions.scope(sessionId)
+            const input = scope === undefined ? undefined : ctx.get('conversation')?.input.for(scope)
+            if (input !== undefined && input.state.getSnapshot().draft === '') input.setDraft(text)
+            return null
+          },
         }
       },
     }, ChatView)

@@ -27,9 +27,13 @@ English | [中文](README.zh.md)
 
 Mount this executor when a composition needs Bash command execution on POSIX without confinement. It registers as `ctx.shell`, and the model-facing `bash` tool works over it immediately: an agent calls the tool, and the command runs as a fresh `bash -c` process with the budgets below.
 
+### Windows Native Git Bash
+
+On Windows Native, this executor uses the validated Git for Windows executable described in the [shell settings](../shell/README.md). Its path resolves at first use; editing the non-volatile Git Bash path remounts the executor. Windows subprocesses retain managed cancellation and hidden-console spawning. Git Bash uses MSYS path conversion for Windows programs; it is not a Linux execution environment. This executor does not confine commands on any platform, so a Windows profile that needs file confinement composes `dsh-bash-sandbox`, whose Git Bash broker decides each confined launch.
+
 ### Minimal configuration
 
-Load the executor with the budgets you want; every field has a default, so the smallest composition is the plugin entry alone. The settings provider (when composed) layers a user section over this entry, so budgets can change at runtime without a reload (see [Adjusting budgets at runtime](#adjusting-budgets-at-runtime)).
+Load the executor with the budgets you want; every field has a default, so the smallest composition is the plugin entry alone. The Plugins page edits this profile entry, and volatile budgets change at runtime without a reload (see [Adjusting budgets at runtime](#adjusting-budgets-at-runtime)).
 
 ```yaml
 - id: bash
@@ -67,7 +71,7 @@ Resolve with `onExpiry: 'none'` and await `execute` to run a command in the back
 <a id="adjusting-budgets-at-runtime"></a>
 ### Adjusting budgets at runtime
 
-Execution budgets are volatile Config fields sampled when resolving each command. The Plugins page edits the active executor’s profile entry. Complete Config validation rejects invalid numbers and timer limits before a form write reaches disk.
+Execution budgets are volatile Config fields sampled when resolving each command. The Plugins page edits the active executor’s profile entry. The executor rejects nonpositive budgets and unusable timer limits when the next command resolves.
 
 -----
 
@@ -87,14 +91,14 @@ The executor is a Service Provider for the `ctx.shell` seam built on the subproc
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: `LocalBashExecutor`, `Config`, settings-section wiring |
+| [`src/index.ts`](src/index.ts) | Plugin entry: `LocalBashExecutor`, `Config`, live profile configuration |
 | — | No runtime invariant companion is published; this package exposes no independent event sequence or mutable data relation beyond contracts enforced at its owning seam. |
 | `tests/executor.spec.ts` | Exercised behavior: budgets, classification, background handles, ownership |
-| `tests/settings.spec.ts` | Settings layering over the composition entry |
+| `tests/settings.spec.ts` | Loader updates of volatile budgets |
 
 ### Main flow
 
-A call runs through three steps: `resolve()` fills `workdir`/`timeoutMs`/`onExpiry`/`stdoutMaxBytes` from config and the request (capping per-call overrides); `execute` wires the deadline per expiry policy — `'kill'` fuses the clamped timeout with the caller's abort signal, `'none'` arms nothing — and spawns `['bash', '-c', command]` through `ctx.subprocess` with explicit byte caps and the `graceMs`; the settled outcome is classified first-cause — only the executor's own timeout reports `timedOut`, an upstream cancel reports `aborted`, a self-signaled command reports neither — and `result()` projects it into a `ShellRunResult` with collected output.
+A call runs through three steps: `resolve()` fills `workdir`/`timeoutMs`/`onExpiry`/`stdoutMaxBytes` from config and the request (capping per-call overrides); `execute` wires the deadline per expiry policy — `'kill'` fuses the clamped timeout with the caller's abort signal, `'none'` arms nothing — and spawns `[bashPath, '-c', command]` through `ctx.subprocess` with explicit byte caps and the `graceMs`; the settled outcome is classified first-cause — only the executor's own timeout reports `timedOut`, an upstream cancel reports `aborted`, a self-signaled command reports neither — and `result()` projects it into a `ShellRunResult` with collected output.
 
 The foreground deadline starts before argv preparation and retains the same signal and remaining budget through execution. Preparation timeout returns empty output, `timedOut: true`, and null `exitCode` and `signal`; caller cancellation before process publication still rejects. Late preparation success or failure cannot trigger a spawn.
 

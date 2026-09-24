@@ -7,14 +7,13 @@
  * directory (because that page renders an editable profile card, and this
  * route has no profile to edit — its surface is the account page).
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local'
-import { FileSettingsProvider } from '@deepseek-ai/dsh-settings-file'
 import * as OplGateway from '../src/index.ts'
 import { OplGatewayAccountService, gatewayKeyName } from '../src/account-service.ts'
 import { GatewayControlClient, GatewayControlError } from '../src/gateway-control.ts'
@@ -47,18 +46,14 @@ afterEach(async () => {
 
 /** A context with the seams the account service needs, and no mounted plugin. */
 async function seams(): Promise<Context> {
-  await writeFile(join(home, 'settings.yaml'), '')
   const ctx = new Context()
-  await ctx.plugin(FileSettingsProvider, { path: join(home, 'settings.yaml'), watch: false })
   await ctx.plugin(LocalCredentialProvider, { path: join(home, '.credentials.yaml'), watch: false })
   return ctx
 }
 
 async function mount(): Promise<Context> {
-  await writeFile(join(home, 'settings.yaml'), '')
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
-  await ctx.plugin(FileSettingsProvider, { path: join(home, 'settings.yaml'), watch: false })
   await ctx.plugin(LocalCredentialProvider, { path: join(home, '.credentials.yaml'), watch: false })
   await ctx.plugin(OplGateway, {})
   return ctx
@@ -85,7 +80,7 @@ describe('OPL Gateway composition', () => {
     expect(await account?.status()).toMatchObject({
       phase: 'signed-out',
       keyReady: false,
-      models: [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }],
+      models: [{ id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash' }],
     })
   })
 })
@@ -119,7 +114,7 @@ describe('account flow without any local OPL installation', () => {
         return { userId: '7', displayName: 'Person', email: 'person@example.test', status: 'active', balanceAmount: 12.5, balanceCurrency: 'USD' }
       },
       usage: async () => ({ todayTokens: 1024, totalTokens: 4096, todayCost: 0.25, totalCost: 3, currency: 'USD' }),
-      groups: async () => [{ id: '3', label: 'Codex' }],
+      groups: async () => [{ id: '3', label: 'Codex' }, { id: '22', label: 'DeepSeek' }],
       keys: async () => {
         calls.push('keys')
         return keys
@@ -147,9 +142,9 @@ describe('account flow without any local OPL installation', () => {
     expect(credentials).toBeDefined()
     return {
       account: new OplGatewayAccountService(ctx, {
-        credentialRef: () => (ctx.get('llm'), 'OPL_GATEWAY_API_KEY' as never),
+        credentialRef: () => (ctx.get('llm'), 'OPL_GATEWAY_DEEPSEEK_API_KEY' as never),
         endpoint: () => 'https://gateway.example/v1',
-        models: () => [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }],
+        models: () => [{ id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash' }],
         stateDirectory: () => home,
         control,
       }),
@@ -167,8 +162,8 @@ describe('account flow without any local OPL installation', () => {
     expect(result.createdKey).toBe(true)
     // The key the gateway issued becomes the one the adapter resolves, and the
     // session is kept so a restart does not need another sign-in.
-    expect((await credentials.resolve('OPL_GATEWAY_API_KEY' as never))?.value).toBe('sk-issued')
-    expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ':3')
+    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe('sk-issued')
+    expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · DeepSeek:22')
     expect(await account.status()).toMatchObject({
       phase: 'connected',
       source: 'session',
@@ -180,13 +175,13 @@ describe('account flow without any local OPL installation', () => {
   it('reuses the key a previous sign-in left behind instead of minting another', async () => {
     const name = gatewayKeyName()
     const existing: GatewayManagedKey = {
-      id: '9', name, key: 'sk-existing', status: 'active', groupId: '3', raw: { id: 9, name, status: 'active' },
+      id: '9', name, key: 'sk-existing', status: 'active', groupId: '22', raw: { id: 9, name, status: 'active' },
     }
     const { control, calls } = gateway({ existingKeys: [existing] })
     const { account, credentials } = await service(control, stateRoot)
 
     expect((await account.signIn('person@example.test', 'right')).createdKey).toBe(false)
-    expect((await credentials.resolve('OPL_GATEWAY_API_KEY' as never))?.value).toBe('sk-existing')
+    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe('sk-existing')
     expect(calls.some(call => call.startsWith('createKey'))).toBe(false)
   })
 
@@ -198,7 +193,7 @@ describe('account flow without any local OPL installation', () => {
       code: 'opl-gateway/credentials',
     })
     expect(await account.status()).toMatchObject({ phase: 'unavailable' })
-    expect((await credentials.resolve('OPL_GATEWAY_API_KEY' as never))).toBeUndefined()
+    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))).toBeUndefined()
   })
 
   it('releases the key on sign-out and forgets the session', async () => {
@@ -210,7 +205,7 @@ describe('account flow without any local OPL installation', () => {
     // The key was issued to this client, so ending the session disables it
     // rather than leaving a live credential nobody holds.
     expect(calls).toContain('setKeyStatus:5:disabled')
-    expect(await credentials.resolve('OPL_GATEWAY_API_KEY' as never)).toBeUndefined()
+    expect(await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never)).toBeUndefined()
   })
 
   it('renews a stored session on refresh without another sign-in', async () => {
@@ -222,7 +217,7 @@ describe('account flow without any local OPL installation', () => {
     // case: the session must come back from storage, not from memory.
     const restartedCtx = await seams()
     const restarted = new OplGatewayAccountService(restartedCtx, {
-      credentialRef: () => 'OPL_GATEWAY_API_KEY' as never,
+      credentialRef: () => 'OPL_GATEWAY_DEEPSEEK_API_KEY' as never,
       endpoint: () => 'https://gateway.example/v1',
       models: () => [],
       stateDirectory: () => stateRoot,

@@ -47,7 +47,10 @@ export interface AgentLoopTestHarness {
 /** Configuration forwarded to the prerequisite service plugins. */
 export interface AgentLoopTestDependenciesOptions {
   /** Configuration for the system-prompt registry. */
-  readonly systemPrompt?: SystemPromptConfig
+  readonly systemPrompt?: Omit<SystemPromptConfig, 'outputLanguage'> & {
+    /** Raw startup value; the mounted schema turns it into a volatile reference. */
+    readonly outputLanguage?: 'default' | 'zh' | 'en'
+  }
   /** Configuration for the tool registry. */
   readonly tools?: ToolRuntimeConfig
 }

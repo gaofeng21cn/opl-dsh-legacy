@@ -84,6 +84,8 @@ export interface ISessions {
    * @returns the catalogued identity; retain it before borrowing its binding.
    */
   create(opts?: {
+    agentPreset?: string
+    standalone?: boolean
     workspaceId?: WorkspaceId
     cwd?: string
     sessionId?: SessionId

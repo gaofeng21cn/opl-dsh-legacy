@@ -18,7 +18,7 @@ const ROSTER = webApp.closure([SELF])
 const it = createClientTest({ roster: ROSTER })
 const EVENTS = '$events'
 const CONTROL = 'session/control'
-const BASELINE = { type: 'baseline', value: { projections: {} } }
+const BASELINE = { type: 'baseline', value: { queues: {}, jobs: {}, projections: {} } }
 /** The first client boot pays the cold module transform of the cone. */
 const COLD_BOOT_TIMEOUT_MS = 60_000
 

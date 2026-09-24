@@ -106,6 +106,22 @@ export class FixtureSession implements SessionFace {
   }
 
   /**
+   * Fail-loud stub; supply `editPrompt` on the fixture's session face to exercise it.
+   * @returns never — always throws.
+   */
+  editPrompt(): never {
+    throw new Error(`test session "${this.sessionId}": editPrompt is not stubbed — supply it on the fixture's session face`)
+  }
+
+  /**
+   * Fail-loud stub; supply `rewind` on the fixture's session face to exercise it.
+   * @returns never — always throws.
+   */
+  rewind(): never {
+    throw new Error(`test session "${this.sessionId}": rewind is not stubbed — supply it on the fixture's session face`)
+  }
+
+  /**
    * Minimal local-echo registration: mints an identity without touching the
    * fixture snapshot (submission echoes are client-only presentation state).
    * Supply `beginSubmission` on the fixture's session face to observe echoes.

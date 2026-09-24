@@ -191,6 +191,18 @@ describe('Windows parent runner contract', () => {
     expect(result.stderr).toBe(child.targetStderr)
   })
 
+  it('hides the background runner console without asking for a new one', () => {
+    // The runner must never be the process that shows a console: when it runs
+    // under a console-subsystem image, windowsHide gives it a hidden console
+    // that its descendants inherit. `detached` stays unset and no
+    // console-creation flag may appear, because a restricted-token child with
+    // its own console dies with STATUS_DLL_INIT_FAILED.
+    const { spawn } = launch()
+    const options = spawn.mock.calls[0]?.[2] as { windowsHide?: boolean; detached?: boolean }
+    expect(options.windowsHide).toBe(true)
+    expect(options.detached).toBeUndefined()
+  })
+
   it('carries a null-device fd 4 for ignored stdin and closes the parent descriptor after spawn', () => {
     const child = new FakeChild()
     const ignored = {

@@ -9,7 +9,9 @@ kind: "package-reference"
 
 ## 概述
 
-在侧栏打开**插件**，在官方分组里选择**终端**，即可设置单条命令允许运行多久、每条输出流在内存里保留多少。页面暂存输入、只在保存时写入，标明用户覆盖过的值，并允许把每个值重置回部署默认值。页面只在 Host 服务 `shell` 命名空间期间存在，没有本地终端执行器的部署看不到它。
+在侧栏打开**插件**，在官方分组里选择**终端**，即可设置单条命令允许运行多久、每条输出流在内存里保留多少。页面暂存输入、只在保存时写入，标明用户覆盖过的值，并允许把每个值重置回部署默认值。页面只在 Host 服务 shell 执行器条目期间存在，没有本地终端执行器的部署看不到它。
+
+本页还提供 Windows「Agent shell」（`powershell` 或 `git-bash`）及「Git Bash 路径」。这些加载时字段需要完全退出并重启应用。Git Bash 需要 Git for Windows 和完全访问权限；切换 shell 不会授予权限。命令时限仍立即生效。
 
 ## 目录
 
@@ -64,7 +66,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **页面跟随组合进来的执行器**——POSIX 与 PowerShell 两个执行器家族共用 `shell` 命名空间，因为一台主机只组合其中一个，所以服务出来的 schema 因平台而异（PowerShell 多一个 `pwshPath`），而页面在两个平台上编辑的都是同样两个字段。
+- **页面跟随组合进来的执行器**——POSIX 与 PowerShell 两个执行器家族共用 `shell` 命名空间，因为一台主机只组合其中一个，所以服务出来的 schema 因平台而异（PowerShell 多一个 `pwshPath`），页面在当前执行器条目上编辑命令限制和 Windows shell 选择。
 - **运行时不变量：**不发布伴生。本页没有自己拥有的关系：它显示的内容派生自设置镜像，它写入的内容由 Host 校验。
 
 <a id="dev-note"></a>

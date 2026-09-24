@@ -7,9 +7,11 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
+Explicit session placements override the original directory account. moveSession changes project membership atomically without changing the immutable Session cwd, files, or log. An omitted destination explicitly places the session outside projects; the Session create path records the same placement for a Session it deliberately leaves outside projects, so start-time directory adoption cannot collect it. Deleting a destination leaves these sessions outside; re-registering its path creates a new project identity. The optional sessionPlacements field in workspace domain version 2 preserves legacy records when absent. Older binaries do not understand these placements and are not supported for membership edits after upgrade.
+
 ## Summary
 
-Use this package to keep an ordered, persistent list of project directories and the sessions run in each directory. Hosts can build project sidebars, hide sessions from grouping without deleting their histories, and remove projects without deleting folders, files, or sessions. Re-adding a removed directory creates a fresh project, while sessions whose directories cannot be validated remain ungrouped. Choose it for GUI or host workflows that need durable project grouping; it is invisible to models and adds no prompt or request-context cost, but requires session persistence and storage backends.
+Use this package to keep an ordered, persistent list of project directories and the sessions run in each directory. Hosts can build project sidebars, hide sessions from grouping without deleting their histories, and remove projects without deleting folders, files, or sessions. Re-adding a removed directory creates a fresh project that its directory's sessions refill on the next start, while sessions whose directories cannot be validated remain ungrouped. Choose it for GUI or host workflows that need durable project grouping; it is invisible to models and adds no prompt or request-context cost, but requires session persistence and storage backends.
 
 ## Table of Contents
 
@@ -70,7 +72,7 @@ The first successful registration records its identity durably. Repeated calls r
 
 ### Grouping sessions under a project
 
-A session joins the project of the directory it runs in: create a session in a project's directory and it appears under that project, newest first. A session can only belong to one project. A session whose directory cannot be validated — no recorded directory, or a moved or deleted folder — cannot join and stays ungrouped.
+A session joins the project of the directory it runs in: create a session in a project's directory and it appears under that project, newest first. A session can only belong to one project. A session whose directory cannot be validated — no recorded directory, or a moved or deleted folder — cannot join and stays ungrouped. Directory membership is re-checked on every start, so sessions that ran in a directory before its project existed join as soon as it does. An explicit choice outranks the directory: a session you moved to another project, or out of projects, stays where you put it.
 
 ### Hiding and restoring sessions, and removing projects
 
@@ -113,15 +115,15 @@ Archive admission is a capability seam over two Host events this package declare
 
 ### Durable shape
 
-The registry opens the `workspace` domain (version 2): a `workspaces` table keyed by `WorkspaceId` plus one global state holding `workspaceIds` (the authoritative display order), `archivedSessionIds`, `pinnedSessionIds`, the optional `defaultWorkspaceId` first-use identity, and the optional `pendingMutation` marker. Archive and pin sets contain Session id strings, default to empty, and carry no per-entry objects or timestamps; the pin array keeps the most recently pinned id first. Archiving clears the pin in the same global-state write without changing Workspace membership. Unarchive runs no session-existence probe, because dropping an id from the set cannot introduce an unknown one, while archive verifies the session before adding it.
+The registry opens the `workspace` domain (version 2): a `workspaces` table keyed by `WorkspaceId` plus one global state holding `workspaceIds` (the authoritative display order), `archivedSessionIds`, `pinnedSessionIds`, the optional `sessionPlacements` record, the optional `defaultWorkspaceId` first-use identity, and the optional `pendingMutation` marker. Archive and pin sets contain Session id strings, default to empty, and carry no per-entry objects or timestamps; the pin array keeps the most recently pinned id first. Archiving clears the pin in the same global-state write without changing Workspace membership. Unarchive runs no session-existence probe, because dropping an id from the set cannot introduce an unknown one, while archive verifies the session before adding it.
 
 ### Lifecycle
 
-On start, the registry opens the domain, completes a marked mutation if one is pending, validates stored state — duplicate paths, duplicate session accounts, and order drift all fail loud — and, when not yet initialized, bootstraps history from persisted headers before writing the initialized marker last, so an interrupted bootstrap resumes safely. A fresh empty registry is real once initialized; it never re-bootstraps.
+On start, the registry opens the domain, completes a marked mutation if one is pending, validates stored state — duplicate paths, duplicate session accounts, and order drift all fail loud — and, when not yet initialized, bootstraps history from persisted headers before writing the initialized marker last, so an interrupted bootstrap resumes safely. A fresh empty registry is real once initialized; it never re-bootstraps. Every start then re-applies directory membership: each session whose canonical cwd names a registered workspace path and that no explicit placement covers is attached to it, oldest first so the newest lands at the head. That pass is what joins sessions produced outside this registry's own create-and-attach flow, and it is idempotent — an already-accounted session causes no write.
 
 ### Failure and recovery
 
-A create or delete whose second write fails rolls the cache and the prior order back; when both the operation and its rollback fail, the durable marker still names the interrupted operation and the next startup completes or rolls it back. A committed delete whose marker cleanup fails still reports success, and the next startup clears the marker idempotently.
+A create or delete whose second write fails rolls the cache and the prior order back; when both the operation and its rollback fail, the durable marker still names the interrupted operation and the next startup completes or rolls it back. A committed delete whose marker cleanup fails still reports success, and the next startup clears the marker idempotently. An adoption that fails — its directory disappeared after indexing, or the record write failed — is logged and left outside; each adoption is one atomic record write, so no partial account survives, and the next start retries it.
 
 ### Invariant
 
@@ -173,7 +175,7 @@ These limits define when the project list is a poor fit or needs special operati
 - **External changes are seen late** — if another process deletes or damages a directory, the project reflects it only at the next refresh or restart.
 - **Archive and unarchive enforce different session checks** — a restore only drops an id from the archive set, so an entry whose session is gone still unarchives and leaves no unknown referent; a restore of an id that is not archived resolves without writing, while `archiveSession` rejects a session that is neither live nor persisted.
 - **The activity check and the archive write are not one atomic step** — a turn that starts between the providers' answer and the durable write is hidden while running, and every model step whose `agent/pre-step` precedes the write still runs with its tool calls; the API Session Controller's gate ends the first step proposed after the write as `blocked`, so the exposure is bounded by that write's latency, in practice one model step.
-- **Re-adding a directory starts fresh** — after removal, adding the same directory again creates a new project with an empty session list; the old sessions do not come back automatically.
+- **A re-added directory fills from its sessions only on the next start** — adding a removed directory again creates a new project with an empty session list for the rest of that run; the next start re-adopts every session whose canonical cwd is that directory, so removal followed by re-registration does not permanently discard the directory's session membership ([decision](../../../.agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.md)).
 
 <a id="dev-note"></a>
 ### Dev Note

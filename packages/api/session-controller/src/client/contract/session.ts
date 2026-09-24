@@ -12,8 +12,21 @@ import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { PromptContentPart, QueueAction, SessionRequestId } from '../../types.ts'
+import type { PromptContentPart, QueueAction, SessionRequestId, SessionRewindFileAction } from '../../types.ts'
 import type { PendingSubmissionAttachment, SessionSnapshot } from './snapshot.ts'
+
+/** What one accepted rewind removed, as the host reports it. */
+export interface SessionRewindReceipt {
+  readonly accepted: true
+  /** Event seq of the empty replacement node now holding the rewound prompt's surface position. */
+  readonly seq: number
+  /** Surface node seqs the replacement shadowed, in surface order; all remain in the log. */
+  readonly shadowedSeqs: readonly number[]
+  /** Pending inbox message identities this rewind discarded, in removal order. */
+  readonly discarded: readonly MessageId[]
+  /** Workspace files the rewind put back, in restore order; empty when the turn wrote none. */
+  readonly files: readonly SessionRewindFileAction[]
+}
 
 /**
  * Why a local submission echo left the snapshot: `observed` when its durable
@@ -90,6 +103,41 @@ export interface ISession {
     signal?: AbortSignal,
     requestId?: SessionRequestId,
   ): Promise<RemoteResult<{ accepted: true }>>
+  /**
+   * Rewrite this session's last editable user message and resend it as a new turn.
+   *
+   * The host replaces the model-visible branch the addressed prompt opened with
+   * the edited message and queues that message for its own turn; every original
+   * event stays in the durable log. Any other addressed message is refused.
+   * @param seq - durable event seq of the user message being edited.
+   * @param content - edited text plus browser-owned temporary image uploads.
+   * @param signal - optional caller cancellation for the complete admission round-trip.
+   * @param requestId - identity from {@link beginSubmission}; a failed identified edit retires its echo.
+   * @returns acceptance with the replacement event seq, or the business error
+   *   (also mirrored into snapshot.promptError).
+   */
+  editPrompt(
+    seq: number,
+    content: PromptContentPart[],
+    signal?: AbortSignal,
+    requestId?: SessionRequestId,
+  ): Promise<RemoteResult<{ accepted: true; seq: number }>>
+  /**
+   * Roll this session's conversation back to the state before its last direct
+   * human prompt.
+   *
+   * The host removes that prompt's whole branch from the model-visible surface
+   * and discards pending queue work the turn produced; every durable event stays
+   * in the log. Any other addressed message is refused, and a retry of a landed
+   * rewind is accepted without a second removal.
+   * @param seq - durable event seq of the user message to roll back past.
+   * @param signal - optional caller cancellation for the round-trip.
+   * @returns the committed replacement and what it removed, or the business error.
+   */
+  rewind(
+    seq: number,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<SessionRewindReceipt>>
   /**
    * Resolve one durable image referenced by this session.
    * @param attachmentId - opaque id found in the folded session log.

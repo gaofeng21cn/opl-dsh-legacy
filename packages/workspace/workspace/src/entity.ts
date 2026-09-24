@@ -38,6 +38,9 @@ export interface WorkspaceEntityHost {
    */
   table(): KvTable<WorkspaceId, WorkspaceRecord>
 
+  /** Project explicit placements over the original directory-based account. */
+  members(id: WorkspaceId, sessions: readonly SessionId[]): readonly SessionId[]
+
   /**
    * Read a session's canonical directory from the registry's header index.
    * @param id - Session whose indexed path is requested.
@@ -99,7 +102,7 @@ export class WorkspaceEntity implements Workspace {
   }
 
   get sessionIds(): readonly SessionId[] {
-    return this.record.sessionIds.filter(id => this.host.sessionPath(id) === this.record.path)
+    return this.host.members(this.id, this.record.sessionIds.filter(id => this.host.sessionPath(id) === this.record.path))
   }
 
   async setTitle(title: string): Promise<void> {

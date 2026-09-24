@@ -20,7 +20,8 @@
     "src/media-references.ts",
     "src/model-selection-projection.ts",
     "src/archived-session-gate.ts",
-    "src/skill-catalog.ts"
+    "src/skill-catalog.ts",
+    "src/wait.ts"
   ],
   "references": [
     { "path": "../../../vendor/cordis" },
@@ -43,6 +44,7 @@
     { "path": "../../session/session-persistence" },
     { "path": "../../session/session-projection" },
     { "path": "../../session/session-projection-cache" },
+    { "path": "../../session/session-rewind-files" },
     { "path": "../../session/session-title" },
     { "path": "../../session-query/session-query" },
     { "path": "../../skill/skill" },

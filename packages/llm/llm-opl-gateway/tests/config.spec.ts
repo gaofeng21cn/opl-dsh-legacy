@@ -5,7 +5,7 @@ describe('gateway catalog', () => {
   it('advertises the one gateway model under its deployment name', () => {
     expect(DEFAULT_MODELS).toHaveLength(1)
     expect(DEFAULT_MODELS[0]).toMatchObject({
-      id: 'deepseek-flash',
+      id: 'deepseek-v4.1-flash',
       name: 'DeepSeek-V4.1-Flash',
       systemPromptUpdate: 'in-history',
     })
@@ -32,7 +32,6 @@ describe('gateway settings section', () => {
   it('carries only the fields the DeepSeek adapter accepts', () => {
     const adapter = toAdapterConfig({ apiKeyEnv: ' CUSTOM_REF ', baseURL: ' https://example.test/v1 ' })
     expect(adapter).toMatchObject({
-      protocol: 'chat-completions',
       apiKeyEnv: 'CUSTOM_REF',
       baseURL: 'https://example.test/v1',
     })

@@ -230,10 +230,17 @@ type StreamChunk =
 
 ## `LlmFailure`
 
-每个抛出的失败或最终适配器的带内失败都会规范化为一种可序列化、提供方无关的 payload。`providerRetryAfterMs` 是经校验、由提供方请求的正数延迟，而不是重试决策；`ProviderRequestId` 是用于诊断的不透明品牌字符串。
+每个抛出的失败或最终适配器的带内失败都会规范化为一种可序列化、提供方无关的 payload。`providerRetryAfterMs` 是经校验、由提供方请求的正数延迟，而不是重试决策；`ProviderRequestId` 是用于诊断的不透明品牌字符串。`TRANSPORT` 失败还会携带它结束时所处的请求阶段，以及底层平台错误的 `name` 与 errno 风格 `code`，因此连接被拒、DNS 失败、TLS 拒绝与读取被放弃在持久化的 `llm/retry` 与 `turn/end` 记录中可以区分；这三个字段只保存固定词表而不保存渲染后的消息，避免凭据、请求正文与思考文本进入日志。
 
 ```ts type-equiv
-/** Serializable provider or transport failure facts; policy decides whether they are retryable. */
+/**
+ * Serializable provider or transport failure facts; policy decides whether they are retryable.
+ *
+ * Everything here reaches durable session events, so it must stay free of
+ * credentials, request bodies, and provider reasoning text: a transport
+ * diagnostic is a class name, an errno-style code, and a stage — never a
+ * rendered request.
+ */
 interface LlmFailure {
   /** Human-readable provider or transport failure. */
   readonly message: string
@@ -252,6 +259,23 @@ interface LlmFailure {
    * selected occurrences in an `image/offload` event and retries the step.
    */
   readonly offloadImages?: number
+  /**
+   * With code `TRANSPORT`: which phase of the request failed. Absent when the
+   * adapter cannot attribute the failure to one phase.
+   */
+  readonly transportStage?: LlmTransportStage
+  /**
+   * With code `TRANSPORT`: the underlying platform error's `name` (for example
+   * `TypeError` from a failed fetch) — a fixed vocabulary rather than a
+   * rendered message, so it carries no endpoint, header, or credential.
+   */
+  readonly causeName?: string
+  /**
+   * With code `TRANSPORT`: the underlying platform error's `code` when it has
+   * one (`ECONNREFUSED`, `UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND`, …). This is
+   * what separates "the network refused us" from "the gateway answered badly".
+   */
+  readonly causeCode?: string
 }
 ```
 

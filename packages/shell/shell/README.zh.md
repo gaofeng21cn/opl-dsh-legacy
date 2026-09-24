@@ -62,6 +62,10 @@ seam 本身不是执行器：每个组合只挂载一个提供方，工具即可
     cwd: /path/to/workspace
 ```
 
+### Windows Agent shell 与受限 Git Bash
+
+Windows Native profile 在当前 shell 执行器条目中选择 `agentShell: powershell`（默认）或 `git-bash`。`gitBashPath` 可指定 Git for Windows 可执行文件的绝对路径；留空时搜索标准安装目录和 PATH。WSL 启动器及非 Git 安装会被拒绝。切换 shell 方言需要完全退出并重启应用；修改非 volatile 的 Git Bash 路径会重新挂载执行器；普通命令预算仍实时生效。受限的 Git Bash 启动经由 broker 处理：启动目录必须在模式的授权根内解析（MSYS 与 Windows 写法、`..` 穿越、盘符切换与重解析点统一为同一比较），继承的环境被收束到边界内，能力探针会用真实后端运行真实可执行文件，并对任何无法证明的维度予以拒绝。探针的第二个维度就是模式的写入边界本身：工作区内的写入必须符合模式语义（`workspace-write` 下创建成功，`read-only` 下被拒），而每个可写根之外的写入必须被拒。路径按 Git for Windows 定义的挂载点归一化——`/c/…` 为盘符、`/tmp/…` 为用户临时目录、`//server/share/…` 为 UNC 共享，其余绝对 MSYS 路径位于 `/` 背后的安装根目录下——而 `/mnt/…` 与 `/cygdrive/…` 作为 Git Bash 未挂载的 WSL/Cygwin 盘符写法被拒绝。因此在 Windows 下 Git Bash 仍仅支持明确授权的完全访问执行：受限令牌后端无法初始化 MSYS 运行时，拒绝信息会报告实际观测到的诊断。持久 PTY 终端保留等价的静态拒绝，因为会话 shell 无法用探针授权。选择 shell 不会更改权限策略、会话目录或 WSL 环境。
+
 ### 共享的退出状态约定
 
 工具结果以机器可读的退出标记结尾——`[exit code: N]` 或 `[killed by signal: X]`——模型因此总能知道命令如何结束。seam 拥有该标记格式，以及把渲染结果拆回输出正文与结构化退出状态的 `parseExitStatus` 辅助函数，使 `bash` 与 `pwsh` 两个工具永远不会在此漂移。
@@ -87,18 +91,20 @@ seam 本身不是执行器：每个组合只挂载一个提供方，工具即可
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：抽象 `ShellExecutor` 服务与共享设置命名空间 |
+| [`src/index.ts`](src/index.ts) | 插件入口：抽象 `ShellExecutor` 服务与 shell 配置导出 |
 | [`src/types.ts`](src/types.ts) | 请求/spec 词汇、`ShellExecution`、`ShellRunResult` 与沙箱事实 |
 | [`src/render.ts`](src/render.ts) | `parseExitStatus`：shell 工具共享的退出状态标记约定 |
+| [`src/agent-shell.ts`](src/agent-shell.ts) | Windows Agent shell 选择：Git for Windows 解析与识别，以及 PTY 的静态受限拒绝 |
+| [`src/git-bash-broker.ts`](src/git-bash-broker.ts) | Git Bash broker：由探针能力决定的受限启动决策、MSYS/Windows 路径统一与启动参数守卫 |
 | — | 不发布运行时不变式伴生入口；该无状态 Service Definition 负责请求／结果类型，执行器与策略负责观察。 |
 
-### 设置命名空间
+### 共享配置字段
 
-`SHELL_SETTINGS_NAMESPACE` 由此处导出而非由某个提供方导出，因为它命名的是能力而不是实现：一个宿主只组装一个 `ctx.shell` 提供方，因此各提供方共享同一个命名空间而永不冲突，在平台间携带的设置文档也能在两边继续解析。
+`AGENT_SHELL_SETTINGS_FIELDS` 为两种执行器声明相同的 shell 选择字段。当前 profile 条目拥有持久化配置，插件页面编辑其表单。volatile 预算原位更新；可执行文件与组合选择使用非 volatile 配置。
 
 ### 后台生命周期与归属
 
-已 spawn 的进程属于 subprocess 服务而非执行器：它能在仅重载执行器后存活，并在组合拆解时被终止并 join。实现必须遵守 seam 的语义——`result()` 只在基础设施失败时 reject；句柄在准备完成后发布且其 `done` 绝不 reject（无论同步还是异步的 provider rejection 都把句柄结算为 `killed`、把不声明阶段的提示写入 stderr，同时 `result()` 以同一失败 reject；活句柄在本次执行自己的 `kill()` 或 abort 之后才到来的 rejection 则结算为其终态）；`readOutput` 是消费式的，有损读取会报告 spill 文件。
+已 spawn 的进程属于 subprocess 服务而非执行器：它能在仅重载执行器后存活，并在组合拆解时被终止并 join。实现必须遵守 seam 的语义——`result()` 只在基础设施失败时 reject；句柄在准备完成后发布且其 `done` 绝不 reject（无论同步还是异步的 provider rejection 都把句柄结算为 `killed`、把不声明阶段的提示写入 stderr，同时 `result()` 以同一失败 reject；活句柄在自身 `kill()` 后被拒绝，或以已中止信号的确切 reason 被拒绝时，结算为其终态）；`readOutput` 是消费式的，有损读取会报告 spill 文件。
 
 </details>
 

@@ -130,6 +130,7 @@ function mount(
     overlayTakeover?: boolean
     /** The session list summary's `blank` flag — independent of the snapshot's. */
     summaryBlank?: boolean
+    plainChat?: boolean
     /** Drop the session's summary row entirely (a session the list has not caught up with). */
     omitSummaryRow?: boolean
     /** Classify the selected child as a subagent instead of an ordinary fork. */
@@ -154,6 +155,7 @@ function mount(
     id: SID, displayTitle: 'Child', parentId: options.nestedSubagent === true ? parent : root,
     cwd: '/projects/one', running: false, retainedBy: { mainView: 1 }, blank: options.summaryBlank ?? false, updatedAt: 3,
     ...(options.summaryOrigin === undefined ? {} : { origin: options.summaryOrigin }),
+    ...(options.plainChat ? { projectionValues: { agentPreset: 'chat' } } : {}),
   }
   const listed = options.omitSummaryRow !== true
   const sessions = createSnapshotStore<SessionListState>({
@@ -342,6 +344,7 @@ function mount(
       renderSlot,
       renderSlotChain,
       renderFactorySlot,
+      openWorkingDirectory: async () => {},
       selectWorkspace: retargetWorkspace,
       t,
     }
@@ -445,20 +448,14 @@ describe('ConversationRoot resident composer', () => {
     expect(seat('conversation.input.plan')).toEqual({ locked: true })
   })
 
-  it('lets the no-workspace posture win over a block', () => {
-    // Picking a workspace is the earlier prerequisite; naming a model first
-    // would send the user somewhere they cannot act yet.
+  it('honors model blockers for an independent session without a project', () => {
     const b = mount(sessionSnapshotOf({ blank: true }), [], undefined, {
-      summaryBlank: true,
-      composerBlock: { reason: 'select a model first' },
+      summaryBlank: true, composerBlock: { reason: 'select a model first' },
     })
     const box = b.view.getByRole('textbox')
-    expect(box.getAttribute('aria-disabled')).not.toBe('true')
+    expect(box.getAttribute('aria-disabled')).toBe('true')
     expect(box.getAttribute('contenteditable')).not.toBe('true')
-    expect(box.getAttribute('aria-haspopup')).toBe('menu')
-    expect(box.getAttribute('data-placeholder')).not.toBe('select a model first')
-    const modelSeat = b.seatOwners.filter(call => call.key === 'conversation.input.model').at(-1)?.owner
-    expect(modelSeat).toEqual({ locked: true })
+    expect(box.getAttribute('data-placeholder')).toBe('select a model first')
   })
 
   it('keeps composer text in the machine, mirrors to the Conversation store, and submits through the sink', () => {
@@ -706,137 +703,29 @@ describe('ConversationRoot resident composer', () => {
     expect(root.style.getPropertyValue('--dsh-chat-user-width')).toBe('')
   })
 
-  it('drag → persist → window clamp round-trip on a width handle', () => {
+  it('does not render draggable width handles and ignores the former persisted width', () => {
+    localStorage.setItem('dsh.conversation.contentWidth', '970')
     const b = mount(sessionSnapshotOf())
     const content = b.view.container.querySelector('[data-conversation-content]') as HTMLElement
     const root = content.parentElement as HTMLElement
     Object.defineProperty(content, 'offsetWidth', { value: 1600, configurable: true })
     act(() => { fireResize(content) })
-    const handle = b.view.container.querySelector('[data-width-handle="right"]') as HTMLElement
-    expect(handle).not.toBeNull()
-    // jsdom lacks pointer capture: emulate per-element so hasPointerCapture
-    // gates pass; the finally block restores the original descriptors so the
-    // stubs cannot leak into later tests.
-    const names = ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const
-    const originals = names.map(name =>
-      [name, Object.getOwnPropertyDescriptor(Element.prototype, name)] as const)
-    const captured = new Set<Element>()
-    Element.prototype.setPointerCapture = function () { captured.add(this) }
-    Element.prototype.releasePointerCapture = function () { captured.delete(this) }
-    Element.prototype.hasPointerCapture = function () { return captured.has(this) }
-    try {
-      // Base resolves from the adaptive clamp: min(1600*0.64, 920) = 920.
-      // Dragging the right handle outward by 25px widens by 2×25 = 50 → 970,
-      // inside both bounds (max = 1600 − 176 = 1424 keeps the handles on-column).
-      fireEvent.pointerDown(handle, { pointerId: 1, clientX: 800, clientY: 300 })
-      fireEvent.pointerMove(handle, { pointerId: 1, clientX: 825, clientY: 300 })
-      expect(handle.style.getPropertyValue('--dsh-width-handle-pointer-y')).toBe('300px')
-      fireEvent.pointerUp(handle, { pointerId: 1, clientX: 825, clientY: 300 })
-      expect(handle.hasAttribute('data-dragging')).toBe(false)
-      expect(root.style.getPropertyValue('--dsh-chat-user-width')).toBe('970px')
-      expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('970')
-      // Window shrinks: the displayed width re-clamps (900 − 176 = 724) but the
-      // preference stays.
-      Object.defineProperty(content, 'offsetWidth', { value: 900, configurable: true })
-      act(() => { fireResize(content) })
-      expect(root.style.getPropertyValue('--dsh-chat-user-width')).toBe('724px')
-      expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('970')
-      // A press without travel (a real double-click delivers two such
-      // press/release rounds) must not commit the clamped display value over
-      // the stored preference.
-      fireEvent.pointerDown(handle, { pointerId: 1, clientX: 800, clientY: 300 })
-      fireEvent.pointerUp(handle, { pointerId: 1, clientX: 800, clientY: 300 })
-      expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('970')
-      expect(root.style.getPropertyValue('--dsh-chat-user-width')).toBe('724px')
-      // No reset affordance on the handle: double-click leaves the preference alone.
-      fireEvent.doubleClick(handle)
-      expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('970')
-    } finally {
-      for (const [name, descriptor] of originals) {
-        if (descriptor === undefined) Reflect.deleteProperty(Element.prototype, name)
-        else Object.defineProperty(Element.prototype, name, descriptor)
-      }
-    }
-  })
-
-  it('forwards wheel scrolling from a width handle to the transcript', () => {
-    const b = mount(sessionSnapshotOf())
-    const scrollport = b.view.container.querySelector('[data-conversation-scroll]') as HTMLElement
-    const handle = b.view.container.querySelector('[data-width-handle="right"]') as HTMLElement
-    const scrollBy = vi.fn()
-    Object.defineProperty(scrollport, 'clientHeight', { value: 480, configurable: true })
-    Object.defineProperty(scrollport, 'scrollBy', { value: scrollBy, configurable: true })
-    scrollport.style.lineHeight = '20px'
-
-    fireEvent.wheel(handle, { deltaY: 120, deltaMode: 0 })
-    expect(scrollBy).toHaveBeenLastCalledWith({ top: 120 })
-
-    fireEvent.wheel(handle, { deltaY: 3, deltaMode: 1 })
-    expect(scrollBy).toHaveBeenLastCalledWith({ top: 60 })
-    scrollport.style.lineHeight = 'normal'
-    fireEvent.wheel(handle, { deltaY: 3, deltaMode: 1 })
-    expect(scrollBy).toHaveBeenLastCalledWith({ top: 48 })
-    fireEvent.wheel(handle, { deltaY: -1, deltaMode: 2 })
-    expect(scrollBy).toHaveBeenLastCalledWith({ top: -480 })
-    const calls = scrollBy.mock.calls.length
-    fireEvent.wheel(handle, { deltaY: 0, deltaMode: 0 })
-    fireEvent.wheel(handle, { ctrlKey: true, deltaY: 120, deltaMode: 0 })
-    expect(scrollBy).toHaveBeenCalledTimes(calls)
-
-    scrollport.removeAttribute('data-conversation-scroll')
-    const nestedScrollport = document.createElement('div')
-    nestedScrollport.setAttribute('data-conversation-scroll', '')
-    const nestedScrollBy = vi.fn()
-    Object.defineProperty(nestedScrollport, 'scrollBy', { value: nestedScrollBy, configurable: true })
-    scrollport.append(nestedScrollport)
-    fireEvent.wheel(handle, { deltaY: 120, deltaMode: 0 })
-    expect(scrollBy).toHaveBeenCalledTimes(calls)
-    expect(nestedScrollBy).not.toHaveBeenCalled()
-  })
-
-  it('does not check capture, measure, style, or schedule width-handle moves before dragging', () => {
-    const b = mount(sessionSnapshotOf())
-    const handle = b.view.container.querySelector('[data-width-handle="right"]') as HTMLElement
-    const capture = vi.fn(() => false)
-    Object.defineProperty(handle, 'hasPointerCapture', { value: capture })
-    const measure = vi.spyOn(handle, 'getBoundingClientRect')
-    const style = vi.spyOn(handle.style, 'setProperty')
-    const schedule = vi.spyOn(globalThis, 'requestAnimationFrame')
-    try {
-      fireEvent.pointerMove(handle, { pointerId: 1, clientX: 800, clientY: 300 })
-      fireEvent.pointerMove(handle, { pointerId: 1, clientX: 802, clientY: 302 })
-      expect(capture).not.toHaveBeenCalled()
-      expect(measure).not.toHaveBeenCalled()
-      expect(style).not.toHaveBeenCalled()
-      expect(schedule).not.toHaveBeenCalled()
-    } finally {
-      schedule.mockRestore()
-      style.mockRestore()
-      measure.mockRestore()
-    }
-  })
-
-  it('starts width dragging only from the primary pointer button', () => {
-    const b = mount(sessionSnapshotOf())
-    const handle = b.view.container.querySelector('[data-width-handle="right"]') as HTMLElement
-    const captured = new Set<number>()
-    Object.defineProperties(handle, {
-      setPointerCapture: { configurable: true, value: (pointerId: number) => { captured.add(pointerId) } },
-      releasePointerCapture: { configurable: true, value: (pointerId: number) => { captured.delete(pointerId) } },
-      hasPointerCapture: { configurable: true, value: (pointerId: number) => captured.has(pointerId) },
-    })
-    fireEvent.pointerDown(handle, { pointerId: 1, button: 1, clientX: 800, clientY: 300 })
-    expect(handle.hasAttribute('data-dragging')).toBe(false)
-    fireEvent.pointerDown(handle, { pointerId: 2, button: 0, clientX: 800, clientY: 300 })
-    expect(handle.hasAttribute('data-dragging')).toBe(true)
-    fireEvent.pointerCancel(handle, { pointerId: 2 })
-    expect(handle.hasAttribute('data-dragging')).toBe(false)
-    fireEvent.pointerMove(handle, { pointerId: 2, clientX: 825, clientY: 300 })
-    expect(handle.style.getPropertyValue('--dsh-width-handle-pointer-y')).toBe('')
+    expect(b.view.container.querySelector('[data-width-handle]')).toBeNull()
+    expect(root.style.getPropertyValue('--dsh-conversation-column-width')).toBe('1600px')
+    expect(root.style.getPropertyValue('--dsh-chat-user-width')).toBe('')
   })
 
   it('hero phase renders no width handles (no transcript to size)', () => {
     const b = mount(sessionSnapshotOf({ blank: true }))
     expect(b.view.container.querySelector('[data-width-handle]')).toBeNull()
   })
+})
+
+
+it('enables plain chat without a workspace and hides the project mode picker', () => {
+  const b = mount(sessionSnapshotOf({ blank: true }), [], undefined, { plainChat: true, summaryBlank: true })
+  expect(b.view.queryByText('普通聊天')).toBeNull()
+  const input = b.view.container.querySelector('[contenteditable]')
+  expect(input?.getAttribute('contenteditable')).toBe('true')
+  expect(b.slotCalls.some(call => call === 'conversation.hero.agentPreset')).toBe(true)
 })

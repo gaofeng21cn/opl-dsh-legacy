@@ -13,7 +13,7 @@
  */
 
 import { release as osRelease } from 'node:os'
-import { dirname, extname } from 'node:path'
+import { dirname, extname, win32 } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { runNativeCommand, type NativeCommandRunner } from './runner.ts'
 
@@ -151,7 +151,35 @@ async function runExplorer(args: readonly string[], signal: AbortSignal, run: Pa
  * @param run - shell-free command runner.
  */
 async function openWindowsPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
-  await runExplorer([explorerTarget(path)], signal, run)
+  await runExplorer([explorerTarget(windowsPathFromMsys(path))], signal, run)
+}
+
+/**
+ * Translate the MSYS spellings that name a Windows location.
+ *
+ * A Git Bash Agent shell reports POSIX paths, so a tool result names a Windows
+ * file `/c/Users/…` or `/cygdrive/c/Users/…` and a network share
+ * `//server/share/…`. PowerShell reads a leading `/c` as a directory under the
+ * current drive's root, and `pathToFileURL` keeps that wrong drive, so every
+ * spelling that does name a Windows location is translated. Any other absolute
+ * path is passed through unchanged: `/usr/bin` and `/tmp` name locations in the
+ * shell's own filesystem, and rewriting them would open an unrelated file
+ * instead of failing.
+ * @param path - a resolved absolute path that may use an MSYS spelling.
+ * @returns the Windows spelling when the path is one, else the input.
+ */
+function windowsPathFromMsys(path: string): string {
+  // Cygwin's drive prefix is rewritten to the one the drive branch below reads.
+  const normalized = path.replace(/^\/cygdrive\/([A-Za-z])(?=\/|$)/u, '/$1')
+  const unc = /^\/\/([^/]+)\/([^/]+)((?:\/.*)?)$/u.exec(normalized)
+  if (unc !== null) {
+    return win32.resolve(`\\\\${unc[1]}\\${unc[2]}${(unc[3] ?? '').replace(/\//gu, '\\')}`)
+  }
+  const drive = /^\/([A-Za-z])(?=\/|$)(.*)$/u.exec(normalized)
+  if (drive === null) return path
+  const rest = (drive[2] ?? '').replace(/\//gu, '\\')
+  const letter = (drive[1] ?? '').toUpperCase()
+  return win32.resolve(`${letter}:\\${rest.startsWith('\\') ? rest.slice(1) : rest}`)
 }
 
 /** Translate a WSL path before handing it to the Windows desktop. */
@@ -302,6 +330,9 @@ export async function revealNativePath(
       signal.throwIfAborted()
       windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
       if (windowsPath === '') throw new Error('wslpath returned no Windows path')
+    } else {
+      // A Windows Host whose Agent shell was Git Bash is handed MSYS spellings.
+      windowsPath = windowsPathFromMsys(path)
     }
     await runExplorer(['/select,', explorerTarget(windowsPath)], signal, run)
     return

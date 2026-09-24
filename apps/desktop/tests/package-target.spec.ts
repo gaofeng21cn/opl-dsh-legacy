@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_DESKTOP_BUILDER_CONFIG,
   desktopElectronBuilderArguments,
   desktopElectronBuilderEnvironment,
   parseDesktopPackageInvocation,
+  resolveDesktopBuilderConfig,
   resolveDesktopPackageTarget,
   withoutDesktopUploadCredentials,
   withoutWindowsSigningEnvironment,
@@ -138,5 +140,49 @@ describe('desktop package target', () => {
       DOWNLOAD_PROD_COS_BUCKET: 'production-download-bucket',
       DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
     })
+  })
+})
+
+describe('downstream builder configuration', () => {
+  it('defaults to the upstream configuration when nothing selects one', () => {
+    expect(DEFAULT_DESKTOP_BUILDER_CONFIG).toBe('electron-builder.config.mjs')
+    expect(resolveDesktopBuilderConfig(undefined, {})).toBe(DEFAULT_DESKTOP_BUILDER_CONFIG)
+    expect(resolveDesktopBuilderConfig('   ', { DSH_DESKTOP_BUILDER_CONFIG: '  ' })).toBe(DEFAULT_DESKTOP_BUILDER_CONFIG)
+  })
+
+  it('lets a downstream distribution package with its own configuration', () => {
+    expect(resolveDesktopBuilderConfig('electron-builder.opl.mjs', {})).toBe('electron-builder.opl.mjs')
+    expect(resolveDesktopBuilderConfig(undefined, { DSH_DESKTOP_BUILDER_CONFIG: 'electron-builder.opl.mjs' }))
+      .toBe('electron-builder.opl.mjs')
+    // An explicit flag wins over the environment, so one shell can override a
+    // variable an earlier command exported.
+    expect(resolveDesktopBuilderConfig('electron-builder.opl.mjs', { DSH_DESKTOP_BUILDER_CONFIG: 'electron-builder.config.mjs' }))
+      .toBe('electron-builder.opl.mjs')
+  })
+
+  it('keeps the configuration inside the desktop package', () => {
+    for (const rejected of ['../package.json', 'nested/electron-builder.opl.mjs', 'C:\\evil.mjs', 'electron-builder.opl.js']) {
+      expect(() => resolveDesktopBuilderConfig(rejected, {})).toThrow(/must be a file name in apps\/desktop/u)
+    }
+  })
+
+  it('carries the selected configuration into the electron-builder command line', () => {
+    const target = resolveDesktopPackageTarget('win-x64', 'win32', 'x64')
+    expect(desktopElectronBuilderArguments(target, false, undefined, 'electron-builder.opl.mjs')).toEqual([
+      'exec',
+      'electron-builder',
+      '--config',
+      'electron-builder.opl.mjs',
+      '--win',
+      '--x64',
+      '--publish',
+      'never',
+    ])
+  })
+
+  it('parses the configuration from the packaging command line', () => {
+    expect(parseDesktopPackageInvocation(['win-x64', '--unsigned', '--config', 'electron-builder.opl.mjs'], 'win32', 'x64').config)
+      .toBe('electron-builder.opl.mjs')
+    expect(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64').config).toBe(DEFAULT_DESKTOP_BUILDER_CONFIG)
   })
 })

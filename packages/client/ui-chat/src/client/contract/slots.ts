@@ -57,6 +57,28 @@ export interface AssistantActionOwnerProps {
   messageId: MessageId
 }
 
+/** Refusal of one edit-and-resend; the row decides how to present it. */
+export interface ChatPromptEditFailure {
+  /** Stable Remote error code. */
+  readonly code: string
+  /** `session/edit-unavailable` reason, when the Host named one. */
+  readonly reason?: string
+}
+
+/** Refusal of one conversation rewind; the row decides how to present it. */
+export interface ChatPromptRewindFailure {
+  /** Stable Remote error code. */
+  readonly code: string
+  /** `session/rewind-unavailable` reason, when the Host named one. */
+  readonly reason?: string
+  /**
+   * Specific file-restoration condition, present when the Host refused because
+   * a recorded workspace write could not be put back. The workspace is
+   * unchanged in that case, so the copy says so rather than implying a retry.
+   */
+  readonly fileReason?: string
+}
+
 /** Optional prose file-mention provider consumed by Chat. */
 export interface ChatFileMentions {
   /**
@@ -127,6 +149,27 @@ export interface ChatNodeOwnerProps {
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
+  /**
+   * Durable seq of the Session's editable user message — its last direct human
+   * prompt. Absent while no message is editable, so a renderer compares its own
+   * node seq and offers the affordance only for that message.
+   */
+  editablePromptSeq?: number | undefined
+  /**
+   * Rewrite the Session's last editable user message and resend it as a new turn.
+   * @param seq - durable event seq of the message the row shows.
+   * @param text - edited prompt text.
+   * @returns null when the Host accepted the edit; its refusal otherwise.
+   */
+  editPrompt: (seq: number, text: string) => Promise<ChatPromptEditFailure | null>
+  /**
+   * Roll the Session's conversation back to the state before its last direct
+   * human prompt.
+   * @param seq - durable event seq of the message the row shows.
+   * @param text - that message's text, restored to the composer on acceptance.
+   * @returns null when the Host accepted the rewind; its refusal otherwise.
+   */
+  rewindPrompt: (seq: number, text: string) => Promise<ChatPromptRewindFailure | null>
 }
 
 /** Shared presentation state for one Turn-process answer generation. */
@@ -207,6 +250,23 @@ export interface ChatViewInjected {
   }
   forkAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /**
+   * Rewrite the viewed Session's last editable user message and resend it. The
+   * row reports the Host's refusal verbatim; presenting it is the row's job.
+   * @param seq - durable event seq of the message being edited.
+   * @param text - edited prompt text.
+   * @returns null when accepted; the refusal otherwise.
+   */
+  editPrompt: (seq: number, text: string) => Promise<ChatPromptEditFailure | null>
+  /**
+   * Roll the viewed Session's conversation back to the state before its last
+   * direct human prompt. The row reports the Host's refusal verbatim;
+   * presenting it is the row's job.
+   * @param seq - durable event seq of the message being rolled back past.
+   * @param text - that message's text, restored to the composer on acceptance.
+   * @returns null when accepted; the refusal otherwise.
+   */
+  rewindPrompt: (seq: number, text: string) => Promise<ChatPromptRewindFailure | null>
 }
 
 /** Full Chat view props. */

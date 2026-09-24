@@ -1,7 +1,8 @@
 /**
- * LLM-backed authorization gate for the current-session-only Auto permission
- * preset. Every native call and every started PTC inner call is reviewed once
- * before its body; the outer `run_code` transport is deliberately excluded.
+ * Authorization gate for the current-session-only Auto permission preset. Every
+ * native call and every started PTC inner call passes the deterministic rules
+ * first, then the configured fast reviewer, then the deployment's approval
+ * answerers; the outer `run_code` transport is deliberately excluded.
  *
  * @module @deepseek-ai/dsh-experimental-auto-review
  */
@@ -20,13 +21,16 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import z from '@deepseek-ai/schemastery'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-subagent'
 import {
   RUN_CODE_NAME,
   type PreToolDecision,
   type ToolExecution,
 } from '@deepseek-ai/dsh-tools'
+import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
+import { ruleDecision, type RuleId } from './rules.ts'
 
 /** Structured error name persisted for every reviewer denial or failure. */
 const AUTO_REVIEW_DENIED_ERROR_NAME = 'AutoReviewDeniedError'
@@ -99,9 +103,42 @@ interface ReviewSnapshot {
   readonly provider: string
   readonly model: string
   readonly cwd: string
+  readonly step: StepIdentity
   readonly projectInstructions: readonly HistoricalUserMessage[]
   readonly history: readonly HistoricalEntry[]
   readonly action: PendingAction
+}
+
+/**
+ * Which stage decided one pending action. `dedupe` replays a denial this step
+ * already decided; `unavailable` is the fail-closed end of the reviewer and
+ * approval routes.
+ */
+type ReviewSource = 'rules' | 'model' | 'human' | 'dedupe' | 'unavailable'
+
+/** One decided review, carrying the identity a trace and a denial reason need. */
+type ReviewVerdict =
+  | { readonly kind: 'allow'; readonly source: ReviewSource; readonly rule?: RuleId }
+  | {
+    readonly kind: 'deny'
+    readonly source: ReviewSource
+    readonly rule?: RuleId
+    readonly reason?: string
+  }
+  | { readonly kind: 'cancel'; readonly source: ReviewSource }
+
+/**
+ * Build one denial that carries a reason only when its stage produced one.
+ * @param source - stage that produced the denial.
+ * @param reason - reason the stage recorded, absent when it recorded none.
+ * @returns the denial verdict.
+ */
+function denyVerdict(source: ReviewSource, reason?: string): ReviewVerdict {
+  return {
+    kind: 'deny',
+    source,
+    ...reason === undefined ? {} : { reason },
+  }
 }
 
 type NativeCallEvent = Extract<SessionEvent, { type: 'tool/call' }>
@@ -121,6 +158,60 @@ interface ScopedPtcStart {
 export const name = 'experimental-auto-review'
 /** Complete host services required before Auto may be advertised. */
 export const inject = ['llm', 'permissionPresets', 'sessions', 'tools']
+
+/**
+ * Deployment configuration for the review gate. Every field is a deployment
+ * choice, so none is a package default the Loader cannot change.
+ */
+export interface Config {
+  /**
+   * Explicit switch for the whole gate. `false` passes every call through even
+   * when the Session selects Auto, which removes review without removing the
+   * installed layer.
+   */
+  readonly enabled?: boolean
+  /**
+   * Deterministic first-pass rules. `false` sends every pending action to the
+   * reviewer, including the session-local and catastrophic ends the rules
+   * decide without one.
+   */
+  readonly rules?: boolean
+  /**
+   * Fast reviewer route. Both halves absent uses the Session's own current
+   * provider and model; a route no live adapter publishes, or half a route,
+   * fails closed instead of silently reviewing with the Session route.
+   */
+  readonly reviewProvider?: string
+  /** Model half of {@link Config.reviewProvider}. */
+  readonly reviewModel?: string
+  /**
+   * What an undecided call does. `'human'` asks the deployment's approval
+   * answerers once; `'deny'` rejects without asking. Both fail closed, and
+   * `'human'` still resolves to a denial wherever no answerer can decide.
+   */
+  readonly unresolved?: 'human' | 'deny'
+  /**
+   * Milliseconds one reviewer request may run before it is abandoned and fails
+   * closed. Defaults to 30000.
+   */
+  readonly reviewTimeoutMs?: number
+}
+
+/** Validated {@link Config} schema; unknown keys and wrong types fail at load. */
+export const Config: z<Config> = z.object({
+  enabled: z.boolean().default(true),
+  rules: z.boolean().default(true),
+  reviewProvider: z.string(),
+  reviewModel: z.string(),
+  unresolved: z.union(['human', 'deny'] as const).default('human'),
+  reviewTimeoutMs: z.number().step(1).min(1),
+})
+
+/** Fixed asker reason for one call the reviewer could not classify. */
+const HUMAN_REVIEW_REASON = 'Auto review could not classify this call; decide it once here.'
+
+/** Milliseconds one reviewer request runs before it is abandoned, absent a configured value. */
+const DEFAULT_REVIEW_TIMEOUT_MS = 30_000
 
 /** Return JSON text for one immutable logged value. */
 function json(value: unknown): string {
@@ -513,6 +604,7 @@ function snapshotAutoReview(agent: Agent, exec: ToolExecution): ReviewSnapshot {
     provider: header.config.provider,
     model: header.config.model,
     cwd,
+    step: currentStep,
     projectInstructions,
     history,
     action,
@@ -607,18 +699,16 @@ async function readDecision(stream: AsyncIterable<StreamChunk>): Promise<AutoRev
   return parseDecision(final.text)
 }
 
-/** Review one frozen pending action with the fixed policy and current LLM route. */
+/** Review one frozen pending action with the fixed policy and one explicit route. */
 async function classifyRisk(
   ctx: Context,
-  agent: Agent,
-  exec: ToolExecution,
+  route: { readonly provider: string; readonly model: string },
+  snapshot: ReviewSnapshot,
   signal: AbortSignal,
 ): Promise<AutoReviewDecision> {
-  const snapshot = snapshotAutoReview(agent, exec)
-  // This review prompt is sent only through ctx.llm.stream and never enters a Session log.
   const options: GenerateOptions = deepFreeze({
-    provider: snapshot.provider,
-    model: snapshot.model,
+    provider: route.provider,
+    model: route.model,
     system: REVIEW_POLICY,
     messages: [{
       role: 'user',
@@ -628,6 +718,267 @@ async function classifyRisk(
     signal,
   })
   return readDecision(ctx.llm.stream(options))
+}
+
+/**
+ * Resolve the reviewer route for one pending action.
+ * @param ctx - integration context owning the live adapter roster.
+ * @param config - deployment configuration naming the optional fast route.
+ * @param snapshot - frozen action whose Session route is the default.
+ * @returns the exact provider and model to review with, or the reason no route is usable.
+ */
+function reviewerRoute(
+  ctx: Context,
+  config: Config,
+  snapshot: ReviewSnapshot,
+): { readonly provider: string; readonly model: string } | { readonly unusable: string } {
+  const { reviewProvider, reviewModel } = config
+  if (reviewProvider === undefined && reviewModel === undefined) {
+    return { provider: snapshot.provider, model: snapshot.model }
+  }
+  if (reviewProvider === undefined || reviewModel === undefined) {
+    return { unusable: 'reviewProvider and reviewModel must be configured together' }
+  }
+  return ctx.llm.listProviders().some(provider => provider.id === reviewProvider)
+    ? { provider: reviewProvider, model: reviewModel }
+    : { unusable: `reviewProvider "${reviewProvider}" is not published by a live adapter` }
+}
+
+/**
+ * Identity of one pending action inside its owning step. Reused call ids and
+ * arguments are distinct actions in different steps and identical within one.
+ * @param session - Session whose action identity is being keyed.
+ * @param snapshot - frozen pending action and its step.
+ * @returns the opaque dedup key.
+ */
+function actionKey(session: Session, snapshot: ReviewSnapshot): string {
+  return [
+    session.id,
+    snapshot.step.turn,
+    snapshot.step.step,
+    snapshot.action.mode,
+    snapshot.action.name,
+    JSON.stringify(snapshot.action.arguments),
+  ].join('\0')
+}
+
+/** Step-scoped identity string shared by both review memories. */
+function stepKey(snapshot: ReviewSnapshot): string {
+  return `${snapshot.step.turn}\0${snapshot.step.step}`
+}
+
+/**
+ * The reviews this integration already ran. Concurrent identical pending
+ * actions share one reviewer request, and a denial already decided in the open
+ * step is replayed instead of re-asked. An allowance is never replayed: a
+ * second execution is a second effect the first verdict did not cover. The
+ * denial window holds one step, so the next step reviews the action again.
+ */
+class ReviewMemory {
+  private readonly inflight = new Map<string, Promise<AutoReviewDecision | undefined>>()
+  private window: { readonly step: string; readonly denials: Map<string, string | undefined> } | undefined
+
+  /**
+   * Join or start the review of one action identity.
+   * @param key - dedup key of the pending action.
+   * @param start - starts the reviewer request; must resolve undefined on failure.
+   * @returns the shared review outcome.
+   */
+  review(key: string, start: () => Promise<AutoReviewDecision | undefined>): Promise<AutoReviewDecision | undefined> {
+    const running = this.inflight.get(key)
+    if (running !== undefined) return running
+    const started = start().catch(() => undefined).finally(() => { this.inflight.delete(key) })
+    this.inflight.set(key, started)
+    return started
+  }
+
+  /**
+   * Read the denial recorded for one action identity in the open step.
+   * @param key - dedup key of the pending action.
+   * @param step - step that must own the recorded denial.
+   * @returns the recorded denial, or undefined outside its step.
+   */
+  denial(key: string, step: string): { readonly reason: string | undefined } | undefined {
+    if (this.window?.step !== step || !this.window.denials.has(key)) return undefined
+    return { reason: this.window.denials.get(key) }
+  }
+
+  /**
+   * Record one denial for the open step, replacing the window when the step changes.
+   * @param key - dedup key of the pending action.
+   * @param step - step that owns the denial.
+   * @param reason - the denial reason, absent when the deciding stage recorded none.
+   */
+  rememberDenial(key: string, step: string, reason: string | undefined): void {
+    if (this.window?.step !== step) this.window = { step, denials: new Map() }
+    this.window.denials.set(key, reason)
+  }
+}
+
+/**
+ * Ask the deployment's approval answerers to decide one call the reviewer could not classify.
+ * @param ctx - integration context; the approval service is optional.
+ * @param agent - agent whose Session supplies the policy and the audit log.
+ * @param exec - immutable pending execution presented to the answerers.
+ * @param signal - caller and integration cancellation lifetime.
+ * @param cause - why the reviewer produced no decision, retained in every deny reason.
+ * @returns the approval verdict; only `allowed-once` allows the call to run.
+ */
+async function reviewWithHuman(
+  ctx: Context,
+  agent: Agent,
+  exec: ToolExecution,
+  signal: AbortSignal,
+  cause: string,
+): Promise<ReviewVerdict> {
+  const approval = ctx.get('approval')
+  if (approval === undefined || typeof approval.request !== 'function') {
+    return denyVerdict('unavailable', `${cause}; this deployment composes no approval answerer`)
+  }
+  let outcome: ApprovalOutcome
+  try {
+    outcome = await approval.request({
+      agent,
+      toolName: exec.name,
+      callId: exec.callId,
+      reason: HUMAN_REVIEW_REASON,
+      signal,
+    })
+  } catch (error) {
+    // No open turn, or an audit append that could not commit: either way the
+    // question was never put to anyone, so the call stays undecided.
+    ctx.logger.warn('%s', `auto-review approval request failed: ${String(error)}`)
+    return denyVerdict(
+      'unavailable',
+      `${cause}; the approval request could not be recorded, so no decision was taken`,
+    )
+  }
+  switch (outcome) {
+    case 'allowed-once':
+      return { kind: 'allow', source: 'human' }
+    case 'cancelled':
+      return { kind: 'cancel', source: 'human' }
+    case 'rejected':
+      return denyVerdict('human', `${cause}; the approval request was rejected or left unanswered`)
+    case 'unavailable':
+      return denyVerdict('human', `${cause}; no approval answerer could decide it`)
+    default:
+      return assertNever(outcome)
+  }
+}
+
+/** Exhaustiveness guard for the closed outcome and risk vocabularies. */
+function assertNever(value: never): never {
+  throw new Error(`auto-review: unexpected closed value ${String(value)}`)
+}
+
+/**
+ * Decide one pending action through the rules, the reviewer, and the approval route.
+ * @param ctx - integration context.
+ * @param config - validated deployment configuration.
+ * @param agent - agent whose Session is being reviewed.
+ * @param exec - immutable pending execution.
+ * @param signal - caller and integration cancellation lifetime.
+ * @param memory - per-integration review memory.
+ * @returns the verdict this call runs under.
+ */
+async function reviewPendingCall(
+  ctx: Context,
+  config: Config,
+  agent: Agent,
+  exec: ToolExecution,
+  signal: AbortSignal,
+  memory: ReviewMemory,
+): Promise<ReviewVerdict> {
+  const snapshot = snapshotAutoReview(agent, exec)
+  if (config.rules !== false) {
+    const ruled = ruleDecision(snapshot.action.name, snapshot.action.arguments)
+    if (ruled.kind !== 'escalate') return { ...ruled, source: 'rules' }
+  }
+
+  const key = actionKey(agent.session, snapshot)
+  const step = stepKey(snapshot)
+  const remembered = memory.denial(key, step)
+  if (remembered !== undefined) {
+    return denyVerdict('dedupe', remembered.reason)
+  }
+
+  const route = reviewerRoute(ctx, config, snapshot)
+  if ('unusable' in route) return unresolvedVerdict(ctx, config, agent, exec, signal, route.unusable)
+  const timeout = AbortSignal.timeout(config.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS)
+  const reviewSignal = AbortSignal.any([signal, timeout])
+  const decision = await Promise.race([
+    memory.review(key, () => classifyRisk(ctx, route, snapshot, reviewSignal)),
+    // Only the timeout ends the wait early, so disposal still drains a review
+    // it aborted while a reviewer that ignores its signal cannot hold the call open.
+    abortedAsUndecided(timeout),
+  ])
+  if (decision === undefined) {
+    return unresolvedVerdict(ctx, config, agent, exec, signal, 'the reviewer returned no usable decision')
+  }
+  if (decision.decision === 'deny') {
+    memory.rememberDenial(key, step, decision.reason)
+    return denyVerdict('model', decision.reason)
+  }
+  return { kind: 'allow', source: 'model' }
+}
+
+/**
+ * Resolve with no decision once one reviewer timeout signal aborts.
+ * @param signal - the timeout bounding one reviewer request; it always aborts.
+ * @returns a promise that settles with undefined when that timeout fires.
+ */
+function abortedAsUndecided(signal: AbortSignal): Promise<undefined> {
+  return new Promise((resolve) => {
+    signal.addEventListener('abort', () => { resolve(undefined) }, { once: true })
+  })
+}
+
+/**
+ * Apply the configured response to a call no reviewer request decided.
+ * @param ctx - integration context.
+ * @param config - validated deployment configuration.
+ * @param agent - agent whose Session is being reviewed.
+ * @param exec - immutable pending execution.
+ * @param signal - caller and integration cancellation lifetime.
+ * @param cause - why the reviewer produced no decision.
+ * @returns the human or fail-closed verdict.
+ */
+async function unresolvedVerdict(
+  ctx: Context,
+  config: Config,
+  agent: Agent,
+  exec: ToolExecution,
+  signal: AbortSignal,
+  cause: string,
+): Promise<ReviewVerdict> {
+  if (config.unresolved === 'deny') {
+    return denyVerdict(
+      'unavailable',
+      `${cause}; this deployment does not escalate to an approval answerer`,
+    )
+  }
+  return reviewWithHuman(ctx, agent, exec, signal, cause)
+}
+
+/**
+ * Record one decided review on the integration log. The line names the stage
+ * that decided, which is what the durable records cannot: a denial carries its
+ * reason in the tool error and an escalated call carries the approval audit
+ * pair, while an allowance leaves no other trace. The reason stays out of the
+ * line because a reviewer reason has no length bound.
+ * @param ctx - integration context owning the logger.
+ * @param agent - agent whose Session is being reviewed.
+ * @param exec - reviewed execution.
+ * @param verdict - the decision this call runs under.
+ */
+function traceReview(ctx: Context, agent: Agent, exec: ToolExecution, verdict: ReviewVerdict): void {
+  const ruleId = verdict.kind === 'cancel' ? undefined : verdict.rule
+  const rule = ruleId === undefined ? '' : ` rule=${ruleId}`
+  ctx.logger.info(
+    '%s',
+    `auto-review ${verdict.kind} source=${verdict.source}${rule} tool=${exec.name} call=${exec.callId} session=${agent.session.id}`,
+  )
 }
 
 /** Materialize the fixed model-facing Auto denial plus optional UI detail. */
@@ -643,10 +994,15 @@ function denied(exec: ToolExecution, reason?: string): PreToolDecision {
   }
 }
 
-/** Install the Auto preset and its prepended per-call review gate. */
-export function apply(ctx: Context): void {
+/**
+ * Install the Auto preset and its prepended per-call review gate.
+ * @param ctx - host context providing the LLM, permission, Session, and tool services.
+ * @param config - validated deployment configuration.
+ */
+export function apply(ctx: Context, config: Config = {}): void {
   // Retain the injected service while this context drains on disposal.
   const permissionPresets = ctx.permissionPresets
+  const memory = new ReviewMemory()
   let accepting = true
   const active = new Set<Promise<void>>()
   const lifecycle = new AbortController()
@@ -660,6 +1016,9 @@ export function apply(ctx: Context): void {
       if (permissionPresets.current(agent.session) !== AUTO_PRESET) {
         return next()
       }
+      if (config.enabled === false) {
+        return next()
+      }
       if (!accepting || lifecycle.signal.aborted) {
         return { kind: 'cancel' }
       }
@@ -668,10 +1027,17 @@ export function apply(ctx: Context): void {
       active.add(completed.promise)
       try {
         const signal = AbortSignal.any([exec.signal, lifecycle.signal])
-        const decision = await classifyRisk(ctx, agent, exec, signal).catch(() => undefined)
+        const verdict = await reviewPendingCall(ctx, config, agent, exec, signal, memory)
+          .catch((error: unknown): ReviewVerdict => {
+            // The reviewer, the rules, and the approval route are all
+            // fail-closed: an unexpected throw denies instead of executing.
+            ctx.logger.warn('%s', `auto-review review failed: ${String(error)}`)
+            return denyVerdict('unavailable', 'the review failed before it could decide this call')
+          })
         if (isAborted(lifecycle.signal)) return { kind: 'cancel' }
-        if (decision === undefined) return denied(exec)
-        if (decision.decision === 'deny') return denied(exec, decision.reason)
+        traceReview(ctx, agent, exec, verdict)
+        if (verdict.kind === 'cancel') return { kind: 'cancel' }
+        if (verdict.kind === 'deny') return denied(exec, verdict.reason)
         const downstream = await next()
         if (isAborted(lifecycle.signal)) return { kind: 'cancel' }
         return downstream

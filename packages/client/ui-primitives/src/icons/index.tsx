@@ -1629,3 +1629,32 @@ export const IconMicrophoneOutlineRegular = (props: IconProps) => (
 export const IconMicrophoneOutlineMedium = (props: IconProps) => (
   <IconMicrophoneOutlineArtwork {...props} strokeWidth={ICON_MEDIUM_STROKE} />
 )
+/** Undo glyph: the arrow head turns the history line back to the left. */
+const IconUndoOutlineArtwork = ({ size = 16, className, strokeWidth }: WeightedIconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M5.9 3.2 2.5 6.6l3.4 3.4"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M3.2 6.6h6.1a3.6 3.6 0 0 1 0 7.2H6.2"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+/** Regular undo glyph. */
+export const IconUndoOutlineRegular = (props: IconProps) => (
+  <IconUndoOutlineArtwork {...props} strokeWidth={ICON_REGULAR_STROKE} />
+)
+
+/** Medium undo glyph. */
+export const IconUndoOutlineMedium = (props: IconProps) => (
+  <IconUndoOutlineArtwork {...props} strokeWidth={ICON_MEDIUM_STROKE} />
+)

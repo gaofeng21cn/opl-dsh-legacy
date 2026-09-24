@@ -102,6 +102,9 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
+    - id: task-feedback
+      name: '@deepseek-ai/dsh-api-task-feedback'
+
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
     - id: job-controller
@@ -288,6 +291,10 @@
     # The OPL Gateway route talks to the account the page signs in to.
     - id: llm-opl-gateway
       name: '@one-person-lab/dsh-llm-opl-gateway'
+      config:
+        search:
+          model: gpt-5.6-sol
+          timeoutMs: 120000
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'

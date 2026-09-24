@@ -16,6 +16,8 @@ export const WAIT_TIMEOUT = 258
 export const CREATE_SUSPENDED = 0x4
 /** CreateProcess flag selecting a UTF-16 environment block. */
 export const CREATE_UNICODE_ENVIRONMENT = 0x400
+/** CreateProcess flag giving a console application its own console with no window. */
+export const CREATE_NO_WINDOW = 0x08000000
 /** GetStdHandle selector for standard input. */
 export const STD_INPUT_HANDLE = -10
 /** GetStdHandle selector for standard output. */

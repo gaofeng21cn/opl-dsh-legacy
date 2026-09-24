@@ -25,7 +25,7 @@ import {
   type GatewayUsage,
 } from './gateway-control.ts'
 import { keyFingerprint, readAdoptedFingerprint, writeAdoptedFingerprint } from './adoption.ts'
-import { importOplGatewayKey, oplGatewayStateDirectory, readOplGatewayAccount } from './opl-credentials.ts'
+import { importOplGatewayKey, oplGatewayStateDirectories, readOplGatewayAccount } from './opl-credentials.ts'
 import type { OplGatewayAccount } from './opl-credentials.ts'
 import { clearFacts, clearSession, readFacts, readSession, writeFacts, writeSession } from './session-store.ts'
 
@@ -75,14 +75,18 @@ function describe(error: unknown): { code: string; message: string } {
  * @returns the canonical key name.
  */
 export function gatewayKeyName(): string {
-  return `OPL DSH · ${hostname()}`
+  return `OPL DSH · ${hostname()} · DeepSeek`
 }
 
-/** Whether a key group is the one a coding client should use. */
-function preferredGroup(groups: readonly { id: string; label: string }[]): string | null {
-  const coding = groups.filter(group => group.label.trim().toLowerCase().startsWith('codex'))
-  const only = coding[0] ?? (groups.length === 1 ? groups[0] : undefined)
-  return only === undefined ? null : only.id
+/** Resolve the explicit DeepSeek group before issuing an inference key. */
+function preferredGroup(groups: readonly { id: string; label: string }[]): string {
+  const matches = groups.filter(group => group.label.trim().toLowerCase() === 'deepseek')
+  if (matches.length !== 1) {
+    throw new GatewayControlError('group_selection_required', 'This account needs one available DeepSeek key group')
+  }
+  const match = matches[0]
+  if (match === undefined) throw new GatewayControlError('group_selection_required', 'This account needs one available DeepSeek key group')
+  return match.id
 }
 
 /** One account whose status the page reads and whose sign-in the page starts. */
@@ -104,7 +108,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
       /** Models this route advertises. */
       readonly models: () => readonly GatewayAccountModel[]
       /** OPL state directory consulted as a convenience, never a requirement. */
-      readonly stateDirectory?: () => string
+      readonly stateDirectory?: () => string | readonly string[]
       /** Control transport override, for tests. */
       readonly control?: GatewayControlClient
     },
@@ -170,7 +174,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
   /** OPL's recorded account, read straight from its state directory. */
   private oplAccount(): OplGatewayAccount | undefined {
     try {
-      return readOplGatewayAccount(this.options.stateDirectory?.() ?? oplGatewayStateDirectory())
+      return readOplGatewayAccount(this.options.stateDirectory?.() ?? oplGatewayStateDirectories())
     }
     catch {
       return undefined
@@ -217,7 +221,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
     }
   }
 
-  /** Current account status: what the account page renders. */
+  /**
+   * Current account status: what the account page renders.
+   * @returns the phase, endpoint, credential state, served models, and account facts the page presents.
+   */
   @Remote
   async status(): Promise<GatewayAccountStatus> {
     const base = {
@@ -248,13 +255,13 @@ export class OplGatewayAccountService extends TypertRemoteService {
     // application needs no second sign-in here.
     const opl = this.oplAccount()
     if (opl !== undefined) {
-      const attention = !CONNECTED_OPL_STATUSES.has(opl.status)
+      const attention = !CONNECTED_OPL_STATUSES.has(opl.status) || !base.keyReady
       return {
         ...base,
         phase: attention ? 'unavailable' : 'connected',
         source: 'opl',
         account: this.factsFromOpl(opl),
-        ...attention ? { error: { code: opl.status, message: this.attentionMessage(opl.status) } } : {},
+        ...attention ? { error: { code: base.keyReady ? opl.status : 'group_selection_required', message: this.attentionMessage(base.keyReady ? opl.status : 'group_selection_required') } } : {},
       }
     }
     if (this.failure !== undefined) return { ...base, phase: 'unavailable', error: this.failure }
@@ -303,7 +310,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
       const [profile, usage, groups] = await Promise.all([
         this.control().profile(accessToken),
         this.control().usage(accessToken).catch(() => undefined),
-        this.control().groups(accessToken).catch(() => [] as Array<{ id: string; label: string }>),
+        this.control().groups(accessToken),
       ])
       const { key, created } = await this.ensureKey(accessToken, groups)
       await credentials.set(this.options.credentialRef(), key.key)
@@ -339,14 +346,17 @@ export class OplGatewayAccountService extends TypertRemoteService {
     groups: readonly { id: string; label: string }[],
   ): Promise<{ key: GatewayManagedKey; created: boolean }> {
     const name = gatewayKeyName()
+    const groupId = preferredGroup(groups)
     const existing = await this.control().keys(accessToken, name)
-    const match = existing.find(entry => entry.name === name && entry.status === 'active')
-      ?? existing.find(entry => entry.name === name)
+    const match = existing.find(entry => entry.name === name && entry.groupId === groupId && entry.status === 'active')
     if (match !== undefined) return { key: match, created: false }
-    return { key: await this.control().createKey(accessToken, name, preferredGroup(groups)), created: true }
+    return { key: await this.control().createKey(accessToken, name, groupId), created: true }
   }
 
-  /** Re-read the account from the gateway. */
+  /**
+   * Re-read the account from the gateway.
+   * @returns the refreshed status, or the current status when this machine holds no session.
+   */
   @Remote
   async refresh(): Promise<GatewayAccountStatus> {
     if (this.session === undefined) {
@@ -396,6 +406,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
    * The gateway-side key is disabled rather than left active: it was issued to
    * this client, and a credential nobody holds is a loose end. A key the
    * operator typed on the Models page is theirs and is left alone.
+   * @returns the signed-out status after this machine's session and key are released.
    */
   @Remote
   async signOut(): Promise<GatewayAccountStatus> {

@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 `dsh-app-boot` is the shared Loader boot library behind `dsh` profiles, including the CLI packaged by the Python runtime wheel. It loads environment layers, composes profile bundles and patches, boots every plugin, and returns the running app or identifies the failed plugin and cause. Product applications use the `dsh` launcher instead of publishing separate bins; direct-config helpers remain only for lower-level embedders and tests. You can preview the effective configuration before booting, configure HMR through profile YAML, and let a terminal-owning app restore its terminal before a fatal exit.
 
+Before mounting the shipped profile, boot reads the `shell` section of `<DSH_HOME>/settings.yaml` once and exposes immutable `dshAgentShell()` and `dshGitBashPath()` values to Loader expressions. Later preset mounts use the same startup values even after settings are saved. A missing choice defaults to PowerShell; an invalid choice fails startup. Profiles that replace the settings-file location must also own their shell composition; the shipped selection accessor reads only the standard home document.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

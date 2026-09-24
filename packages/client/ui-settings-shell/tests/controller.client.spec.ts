@@ -67,6 +67,25 @@ describe('ShellCardController', () => {
     expect(face.hooks.shellCard.getSnapshot().dirty).toBe(false)
   })
 
+  it('saves shell selection and Git Bash path atomically with the command limits', async () => {
+    const host = stubConfigForm<ShellSettings>()
+    acceptWrites(host)
+    host.publish({ status: 'ready', writable: true, revision: 7,
+      value: { agentShell: 'powershell', gitBashPath: '', timeoutMs: 60000 }, user: {} })
+    const face = new ShellCardController(host.scope).inject()
+    face.edit('agentShell', 'git-bash')
+    face.edit('gitBashPath', 'C:/Git/bin/bash.exe')
+    face.edit('timeoutMs', '9000')
+    face.save()
+    await vi.waitFor(() => { expect(face.hooks.shellCard.getSnapshot().saving).toBe(false) })
+    expect(host.mutate).toHaveBeenCalledWith([
+      { op: 'set', path: ['agentShell'], value: 'git-bash' },
+      { op: 'set', path: ['gitBashPath'], value: 'C:/Git/bin/bash.exe' },
+      { op: 'set', path: ['timeoutMs'], value: 9000 },
+    ], 7)
+    expect(face.hooks.shellCard.getSnapshot()).toMatchObject({ dirty: false, failed: false })
+  })
+
   it('stages a reset and applies it on save', async () => {
     const host = stubConfigForm<ShellSettings>()
     acceptWrites(host)

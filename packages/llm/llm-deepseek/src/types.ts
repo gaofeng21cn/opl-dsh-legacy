@@ -86,6 +86,13 @@ export interface DeepSeekConnectionOptions {
 export interface DeepSeekAdapterOptions {
   /** Report unusable native Messages replay metadata without exposing content or signatures. */
   onReplayDegrade?: (detail: { provider: string; model: string; reason: string }) => void
+  /**
+   * Report a settled attempt whose control syntax arrived as visible text, or
+   * whose announced tool calls never assembled. The detail holds marker family
+   * names, block lengths, the finish reason, and any provider request id — never
+   * matched text, prompts, or reasoning content.
+   */
+  onProtocolAnomaly?: (detail: { provider: string; model: string; report: string }) => void
   /** Current validated connection facts; called once per operation. */
   options: () => DeepSeekConnectionOptions
   /**

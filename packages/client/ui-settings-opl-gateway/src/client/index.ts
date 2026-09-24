@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@one-person-lab/dsh-llm-opl-gateway/remote'
 import { OplGatewaySection, type OplGatewaySectionInjected } from './OplGatewaySection.tsx'
 import { en, zh, type OplGatewayLocaleKey } from './locales.ts'
+import { SearchSection, type SearchSectionInjected } from './SearchSection.tsx'
 
 export type { OplGatewaySectionInjected, OplGatewaySectionProps } from './OplGatewaySection.tsx'
 export type { OplGatewayLocaleKey } from './locales.ts'
@@ -33,7 +34,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'settings.oplGateway'
 
 /** Services this plugin needs: the slot ledger, dictionaries, and the account Remote. */
-export const inject = ['slots', 'locale', 'remote', 'remote.oplGatewayAccount']
+export const inject = ['slots', 'locale', 'remote', 'remote.oplGatewayAccount', 'remote.oplSearch']
 
 /** Contribute the OPL Gateway page to Settings. */
 export function apply(ctx: ClientContext): void {
@@ -60,4 +61,13 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: injected,
   }, OplGatewaySection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'opl-search', order: 31, label: () => t('search.nav'), locale: NS,
+    inject: (): SearchSectionInjected => ({
+      searchStatus: async () => unwrap(await ctx.remote.oplSearch.status()),
+      searchConfigure: async preferences => unwrap(await ctx.remote.oplSearch.configure(preferences)),
+      searchModels: async () => unwrap(await ctx.remote.oplSearch.models()),
+      searchTest: async (preferences, query) => unwrap(await ctx.remote.oplSearch.test(preferences, query)),
+    }),
+  }, SearchSection))
 }

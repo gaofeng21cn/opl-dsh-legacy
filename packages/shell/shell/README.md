@@ -62,6 +62,10 @@ The seam is not an executor: mount exactly one provider per composition, and the
     cwd: /path/to/workspace
 ```
 
+### Windows Agent shell and confined Git Bash
+
+Windows Native profiles select `agentShell: powershell` (default) or `git-bash` in the active shell executor entry. `gitBashPath` optionally pins an absolute Git for Windows executable; otherwise standard installations and PATH are searched. WSL launchers and non-Git installations are rejected. Switching shell dialect requires a complete application restart; changing the non-volatile Git Bash path remounts the executor; ordinary command budgets remain live. Confined Git Bash launches are brokered: the launch directory must resolve inside the mode's granted roots with MSYS and Windows spellings, `..` traversal, drive switches, and reparse points unified into one comparison, the inherited environment is pinned to the boundary, and a capability probe runs the real backend against the real executable and refuses every dimension it cannot prove. The probe's second dimension is the mode's write boundary itself: an in-workspace write must follow the mode (created under `workspace-write`, denied under `read-only`) and a write outside every writable root must be denied. Paths are normalized by the mounts Git for Windows defines — `/c/…` is a drive, `/tmp/…` the user temp directory, `//server/share/…` a UNC share, and every other absolute MSYS path sits under the installation root behind `/` — while `/mnt/…` and `/cygdrive/…` are refused as Windows Subsystem for Linux and Cygwin drive spellings Git Bash does not mount. Git Bash therefore still supports only explicitly authorized full-access execution on Windows: the restricted-token backend cannot initialize the MSYS runtime, and the refusal reports the observed diagnostic. The persistent PTY terminal keeps the equivalent static refusal, because no probe can authorize a session shell. No shell selection changes permission policy, session directories, or the WSL environment.
+
 ### The shared exit-status contract
 
 Tool results end with a machine-readable exit marker — `[exit code: N]` or `[killed by signal: X]` — so the model can always tell how a command ended. The seam owns that marker format and the `parseExitStatus` helper that splits a rendered result back into its output body and structured exit status, keeping the `bash` and `pwsh` tools from drifting on it.
@@ -87,18 +91,20 @@ The package is one role of a standard capability seam: the Service Definition th
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: abstract `ShellExecutor` service and the shared settings namespace |
+| [`src/index.ts`](src/index.ts) | Plugin entry: abstract `ShellExecutor` service and shell configuration exports |
 | [`src/types.ts`](src/types.ts) | Request/spec vocabulary, `ShellExecution`, `ShellRunResult`, and sandbox facts |
 | [`src/render.ts`](src/render.ts) | `parseExitStatus`: the exit-status marker contract the shell tools share |
+| [`src/agent-shell.ts`](src/agent-shell.ts) | Windows Agent-shell selection: Git for Windows resolution, identification, and the PTY's static confinement refusal |
+| [`src/git-bash-broker.ts`](src/git-bash-broker.ts) | Git Bash broker: the confined-launch decision from probed capability, MSYS/Windows path unification, and the launch-parameter guard |
 | — | No runtime invariant companion is published; this stateless Service Definition owns request/result types, while executors and policy own observations. |
 
-### Settings namespace
+### Shared configuration fields
 
-`SHELL_SETTINGS_NAMESPACE` is exported here rather than by a provider because it names the capability, not an implementation: a host composes exactly one provider of `ctx.shell`, so the providers share one namespace without colliding, and a settings document carried between platforms keeps resolving on both.
+`AGENT_SHELL_SETTINGS_FIELDS` declares the same shell selection fields for both executors. The active profile entry owns persistence, and the Plugins page edits its form. Volatile budgets update in place; executable and composition choices use non-volatile configuration.
 
 ### Background lifecycle and ownership
 
-A spawned process belongs to the subprocess service, not to the executor: it survives an executor-only reload and is killed and joined when the composition tears down. Implementations must honor the seam's semantics — `result()` rejects only for infrastructure failures; the handle is published after preparation and its `done` never rejects (provider rejections, synchronous or asynchronous, settle the handle as `killed` with a stage-neutral note on stderr while `result()` carries the same failure as its rejection; a live handle whose rejection follows the execution's own `kill()` or abort settles as its terminal outcome instead); `readOutput` is consuming and lossy reads report spill files.
+A spawned process belongs to the subprocess service, not to the executor: it survives an executor-only reload and is killed and joined when the composition tears down. Implementations must honor the seam's semantics — `result()` rejects only for infrastructure failures; the handle is published after preparation and its `done` never rejects (provider rejections, synchronous or asynchronous, settle the handle as `killed` with a stage-neutral note on stderr while `result()` carries the same failure as its rejection; a live handle rejected after its own `kill()`, or with the exact reason of its aborted signal, settles as its terminal outcome instead); `readOutput` is consuming and lossy reads report spill files.
 
 </details>
 

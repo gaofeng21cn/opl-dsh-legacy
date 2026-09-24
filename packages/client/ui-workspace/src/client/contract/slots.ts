@@ -185,12 +185,18 @@ export type WorkspaceBrowserInjected = {
      * saw. Select the field the surface needs (`info => info.home`).
      */
     hostInfo: HostObservable<RemoteHostFacts>
+    /** Session awaiting a project destination; null closes the move flow. */
+    sessionMoveRequest: HostObservable<SessionId | null>
   }
   /**
-   * Start a New Session in a Workspace: reuse-or-create its blank session and
-   * open it; without an explicit workspace, inherit the current Session
-   * Workspace, then the recent Workspace, or clear into the New Session view.
+   * Move only project ownership, preserving the working directory and log.
    */
+  moveSession: (sessionId: SessionId, workspaceId?: WorkspaceId) => Promise<void>
+  /** Dismiss the project destination dialog. */
+  settleSessionMove: () => void
+  /** Start a blank independent Session. */
+  openChat: () => Promise<void>
+  /** Create or reuse a project Session; absent workspace starts an independent one. */
   startSession: (workspaceId?: WorkspaceId) => void
   /** Open a real Session. */
   open: (sessionId: SessionId) => void
@@ -429,3 +435,9 @@ export type WorkspacePickerProps =
   & Omit<WorkspacePickerInjected, 'hooks'>
   & PropsHooks<WorkspacePickerInjected['hooks']>
   & PropsLocale<'workspace'>
+
+/** Command share for the project-membership row action. */
+export interface MoveSessionInjected {
+  /** Open the destination chooser for one Session. */
+  requestSessionMove: (sessionId: SessionId) => void
+}

@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use the **Built-in plugins** settings section to inspect the plugins this deployment ships. The section is a shell: it owns the navigation entry and the tab row, and every tab in it is registered by another plugin — the read-only inventory ships one. Configuring a built-in plugin happens on the sidebar's Plugins page, where each official plugin's own companion package registers its page.
 
+This fork also contributes **Output language** to Plugins while the Host serves `system-prompt`; its three choices update `outputLanguage` through the shared configuration form and affect the next request. In the desktop app, **Desktop** settings call the Electron preload bridge to persist notifications, window-close behavior, and the Windows Native or WSL2 execution environment. Environment changes require a restart.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

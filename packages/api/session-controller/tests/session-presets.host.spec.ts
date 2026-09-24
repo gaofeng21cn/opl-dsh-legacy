@@ -54,6 +54,9 @@ async function harness(presets?: readonly string[]) {
   contexts.push(ctx)
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
+  // Membership is out of scope here; the create path still records the
+  // outside-project placement through this seam.
+  ctx.provide('workspaceRegistry', { moveSession: () => Promise.resolve() } as never)
   if (presets !== undefined) {
     ctx.provide('agentPresets', roster(presets) as never)
   }

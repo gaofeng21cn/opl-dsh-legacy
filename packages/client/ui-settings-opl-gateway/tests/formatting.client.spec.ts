@@ -1,24 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import { observedAge, observedLabel } from '../src/client/OplGatewaySection.tsx'
+import { en, zh, type OplGatewayLocaleKey } from '../src/client/locales.ts'
 
 const OBSERVED = '2026-09-17T05:15:35.533Z'
 const OBSERVED_MS = Date.parse(OBSERVED)
 
+/** Bind one dictionary the way the locale seat does, placeholders included. */
+const translate = (dictionary: Record<string, string>) =>
+  (key: OplGatewayLocaleKey, params?: Record<string, string | number>): string =>
+    Object.entries(params ?? {}).reduce(
+      (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),
+      dictionary[key] as string,
+    )
+
+const enT = translate(en)
+const zhT = translate(zh)
+
 describe('observation age', () => {
-  it('reports the age, which is the fact a reader actually needs', () => {
-    expect(observedAge(OBSERVED, OBSERVED_MS)).toBe('刚刚')
-    expect(observedAge(OBSERVED, OBSERVED_MS + 60_000)).toBe('1 分钟前')
-    expect(observedAge(OBSERVED, OBSERVED_MS + 20 * 60_000)).toBe('20 分钟前')
-    expect(observedAge(OBSERVED, OBSERVED_MS + 3 * 3_600_000)).toBe('3 小时前')
-    expect(observedAge(OBSERVED, OBSERVED_MS + 2 * 86_400_000)).toBe('2 天前')
+  it('reports the age in the active language, which is the fact a reader needs', () => {
+    expect(observedAge(OBSERVED, enT, OBSERVED_MS)).toBe(en['age.now'])
+    expect(observedAge(OBSERVED, enT, OBSERVED_MS + 60_000)).toBe('1min ago')
+    expect(observedAge(OBSERVED, enT, OBSERVED_MS + 20 * 60_000)).toBe('20min ago')
+    expect(observedAge(OBSERVED, enT, OBSERVED_MS + 3 * 3_600_000)).toBe('3h ago')
+    expect(observedAge(OBSERVED, enT, OBSERVED_MS + 2 * 86_400_000)).toBe('2d ago')
+    // The same buckets read in Chinese through the same code path.
+    expect(observedAge(OBSERVED, zhT, OBSERVED_MS)).toBe('刚刚')
+    expect(observedAge(OBSERVED, zhT, OBSERVED_MS + 20 * 60_000)).toBe('20分钟前')
+    expect(observedAge(OBSERVED, zhT, OBSERVED_MS + 2 * 86_400_000)).toBe('2天前')
   })
 
   it('never reports a negative age for a clock that runs slightly ahead', () => {
-    expect(observedAge(OBSERVED, OBSERVED_MS - 30_000)).toBe('刚刚')
+    expect(observedAge(OBSERVED, enT, OBSERVED_MS - 30_000)).toBe(en['age.now'])
   })
 
   it('keeps unparsable text rather than inventing an age', () => {
-    expect(observedAge('not a timestamp')).toBe('not a timestamp')
+    expect(observedAge('not a timestamp', enT)).toBe('not a timestamp')
   })
 })
 

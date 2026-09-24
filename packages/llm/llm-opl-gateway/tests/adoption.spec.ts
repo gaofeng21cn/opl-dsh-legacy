@@ -28,6 +28,8 @@ function gatewayState(key: string): string {
   writeFileSync(config, `[model_providers.gflab]\nexperimental_bearer_token = "${key}"\n`, { mode: 0o600 })
   writeFileSync(join(root, 'account.json'), JSON.stringify({
     surface_kind: 'opl_gateway_account_state.v1',
+    key_group_id: '22',
+    available_groups: [{ group_id: '22', label: 'DeepSeek' }],
     codex_binding: { config_path: config, provider_id: 'gflab' },
   }), { mode: 0o600 })
   return root
@@ -53,7 +55,7 @@ function credentials(stored?: string): CredentialProvider & {
   return seam as unknown as CredentialProvider & { readonly writes: string[]; stored?: string; rejectWrites?: boolean }
 }
 
-const REF = 'OPL_GATEWAY_API_KEY' as CredentialRef
+const REF = 'OPL_GATEWAY_DEEPSEEK_API_KEY' as CredentialRef
 
 afterEach(() => {
   while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true })

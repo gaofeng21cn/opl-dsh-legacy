@@ -1,8 +1,8 @@
 /**
  * Register the OPL Gateway as one provider route.
  *
- * The route speaks the gateway's OpenAI-compatible Chat Completions protocol
- * through the DeepSeek adapter, advertises the gateway's `deepseek-flash` as
+ * The route speaks the gateway's native Messages protocol
+ * through the DeepSeek adapter, advertises the gateway's `deepseek-v4.1-flash` as
  * `DeepSeek-V4.1-Flash`, and authenticates with the key OPL provisioned for
  * this account. A deployment that mounts the plugin therefore reaches the
  * model with no model, endpoint, protocol, or key entered by hand; the Models
@@ -22,13 +22,34 @@ import type {} from '@deepseek-ai/dsh-settings'
 import { adoptOplGatewayKey } from './adoption.ts'
 import { OplGatewayAccountService } from './account-service.ts'
 import { Config, toAdapterConfig } from './config.ts'
-import { OPL_GATEWAY_INFERENCE_BASE_URL, importOplGatewayKey, oplGatewayStateDirectory } from './opl-credentials.ts'
+import { OPL_GATEWAY_INFERENCE_BASE_URL, importOplGatewayKey, oplGatewayStateDirectories } from './opl-credentials.ts'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+import {
+  OPL_GATEWAY_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS,
+  OPL_GATEWAY_SEARCH_DEFAULT_MAX_SEARCHES,
+  OPL_GATEWAY_SEARCH_DEFAULT_MODEL,
+  OPL_GATEWAY_SEARCH_DEFAULT_TIMEOUT_MS,
+} from './search.ts'
+import type { OplGatewaySearchProviderOptions } from './search.ts'
+import { OplSearchService } from './search-service.ts'
+export { OplSearchService } from './search-service.ts'
 
 export const name = 'llm-opl-gateway'
 export const inject = ['llm']
 
 export { Config, DEFAULT_API_KEY_REF, DEFAULT_MODELS } from './config.ts'
 export type { Config as OplGatewayConfig } from './config.ts'
+export { OplGatewaySearchProvider } from './search.ts'
+export type { OplGatewaySearchProviderOptions, OplSearchCitation, OplSearchStream } from './search.ts'
+export type { OplGatewaySearchLlmRequest } from './search-types.ts'
+export {
+  OPL_GATEWAY_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS,
+  OPL_GATEWAY_SEARCH_DEFAULT_MAX_SEARCHES,
+  OPL_GATEWAY_SEARCH_DEFAULT_MODEL,
+  OPL_GATEWAY_SEARCH_DEFAULT_TIMEOUT_MS,
+  OPL_GATEWAY_SEARCH_PROVIDER_ID,
+} from './search.ts'
 export { ADOPTION_RECORD_FILENAME, adoptOplGatewayKey, keyFingerprint, readAdoptedFingerprint, writeAdoptedFingerprint } from './adoption.ts'
 export type { AdoptionOutcome } from './adoption.ts'
 export {
@@ -58,6 +79,7 @@ export {
   OPL_GATEWAY_LEGACY_INFERENCE_BASE_URLS,
   importOplGatewayKey,
   readOplGatewayAccount,
+  oplGatewayStateDirectories,
   oplGatewayStateDirectory,
   readBoundGatewayKey,
   resolveInferenceBaseURL,
@@ -65,7 +87,6 @@ export {
 } from './opl-credentials.ts'
 export type { OplGatewayAccount, OplGatewayKey } from './opl-credentials.ts'
 
-const NS = 'llm-opl-gateway'
 const PROVIDER = 'opl-gateway'
 const DISPLAY_NAME = 'OPL Gateway'
 
@@ -82,7 +103,7 @@ class OplGatewayAdapter extends DeepSeekAdapter {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  let current: () => Config = () => config
+  const current = (): Config => config
   let lastRaw: Config | undefined
   let lastGood: ResolvedDeepSeekOptions | undefined
 
@@ -105,7 +126,7 @@ export function apply(ctx: Context, config: Config): void {
     const raw = current()
     if (raw === lastRaw && lastGood !== undefined) return lastGood
     try {
-      const next = resolveAdapterOptions(toAdapterConfig(raw, boundBaseURL()) as never, launchEnvironmentOf(ctx))
+      const next = resolveAdapterOptions(toAdapterConfig(raw, boundBaseURL()), launchEnvironmentOf(ctx))
       lastRaw = raw
       lastGood = next
       return next
@@ -173,6 +194,11 @@ export function apply(ctx: Context, config: Config): void {
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(`llm-opl-gateway: unusable Messages replay state on assistant history for route "${provider}/${model}"; sending provider-neutral content (${reason})`)
     },
+    onProtocolAnomaly: ({ provider, model, report }) => {
+      // Control syntax that arrived as visible text is never executed; this
+      // record is what makes the next occurrence diagnosable without raw SSE.
+      ctx.logger.warn(`llm-opl-gateway: control-marker anomaly on route "${provider}/${model}"; ${report}`)
+    },
     prepareExtensions: (request) => {
       const extensions = ctx.get('deepseekLlmApiExtensions')
       return extensions?.prepare(request)
@@ -187,8 +213,7 @@ export function apply(ctx: Context, config: Config): void {
   // reads as a broken twin of the official DeepSeek card. An undeclared live
   // route still reaches the model picker and still counts as a usable provider
   // for first-run readiness, so the surfaces that matter keep working.
-  const registration = ctx.llm.registerAdapter([PROVIDER], adapter)
-  let registeredPolicy = JSON.stringify(options().retryPolicy)
+  ctx.llm.registerAdapter([PROVIDER], adapter)
 
   /**
    * Adoption runs once the credentials seam exists, which the loader may order
@@ -206,7 +231,7 @@ export function apply(ctx: Context, config: Config): void {
       credentialRef: () => options().apiKeyEnv,
       endpoint: () => options().baseURL,
       models: () => options().models.map(model => ({ id: model.id, name: model.name ?? model.id })),
-      stateDirectory: () => oplGatewayStateDirectory(),
+      stateDirectory: () => oplGatewayStateDirectories(),
     })
     adoptAccountKey = (): void => {
       // Let the Models page show this route as ready for an operator who
@@ -223,21 +248,62 @@ export function apply(ctx: Context, config: Config): void {
     adoptAccountKey()
   })
 
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: (source) => {
-        current = source
-      },
-      onChange: () => {
-        // The registry captures the retry policy at registration, so a policy
-        // change re-reads it in one synchronous registry section instead of
-        // republishing an empty route set between dispose and register.
-        const policy = JSON.stringify(options().retryPolicy)
-        if (policy === registeredPolicy) return
-        registration.replace([PROVIDER])
-        registeredPolicy = policy
-        adoptAccountKey()
-      },
+  // Non-volatile Config is remounted by the Loader when its profile patch changes.
+  ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
+
+  /**
+   * The gateway key, resolved the way the adapter resolves it: the credentials
+   * seam for the search reference first, then the token OPL recorded for its own
+   * client. One sign-in therefore serves both the conversation and the search.
+   * @param ref - reference to resolve.
+   * @returns the key, or undefined when this machine holds none.
+   */
+  const resolveSearchApiKey = async (ref: CredentialRef): Promise<string | undefined> => {
+    const credentials = ctx.get('credentials')
+    const stored = credentials === undefined
+      ? launchEnvironmentOf(ctx).get(ref)?.value
+      : (await credentials.resolve(ref))?.value
+    if (stored !== undefined && stored.length > 0) return stored
+    try {
+      return undefined
+    } catch (error) {
+      ctx.logger.warn('llm-opl-gateway: could not read the OPL Gateway binding for search')
+      ctx.logger.warn(error)
+      return undefined
+    }
+  }
+
+  /** Search options for the NEXT operation, projected from the current section. */
+  const searchOptions = (): OplGatewaySearchProviderOptions => {
+    const route = options()
+    const search = current().search
+    const apiKeyEnv = credentialRef(search?.apiKeyEnv ?? 'OPL_GATEWAY_SEARCH_API_KEY')
+    return {
+      resolveApiKey: () => resolveSearchApiKey(apiKeyEnv),
+      apiKeyEnv,
+      baseURL: search?.baseURL ?? route.baseURL,
+      model: search?.model ?? OPL_GATEWAY_SEARCH_DEFAULT_MODEL,
+      maxOutputTokens: search?.maxOutputTokens ?? OPL_GATEWAY_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS,
+      timeoutMs: search?.timeoutMs ?? OPL_GATEWAY_SEARCH_DEFAULT_TIMEOUT_MS,
+      maxSearches: search?.maxSearches ?? OPL_GATEWAY_SEARCH_DEFAULT_MAX_SEARCHES,
+    }
+  }
+
+  // Web search is a second capability of the same account: the responses route
+  // names its own model and the same key. Registered only where a web seam
+  // exists, so a composition without one still mounts the conversation route.
+  ctx.inject(['web'], (webCtx) => {
+    const web = webCtx.get('web')
+    if (web === undefined) return
+    const service = new OplSearchService(webCtx, {
+      path: dshHomePath('opl-search.json'),
+      cloud: searchOptions,
+      fetchPage: (url, signal) => web.fetch({ url }, signal),
+      sessionId: () => webCtx.get('agents')?.currentInitiator()?.session.id ?? null,
     })
+    webCtx.effect(
+      () => web.registerSearchProvider({ id: 'opl-gateway', available: () => true, search: (request, signal) => service.search(request, signal) }),
+      'llm-opl-gateway: OPL Gateway web search provider',
+    )
   })
 }

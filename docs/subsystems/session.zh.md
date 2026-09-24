@@ -906,6 +906,18 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('cancel') cancel(request: SessionCancelRequest): SessionCancelValue
 
 /**
+ * Await one Session's next terminal outcome without polling.
+ *
+ * Resolves as soon as the awaited turn ends (completed, failed, or
+ * cancelled) or the Session stops for human input; an already-settled
+ * Session resolves from its recorded state. Caller cancellation rejects.
+ * @param request - Session identity and optional exact turn number.
+ * @param signal - caller lifetime owned by the Remote carrier.
+ * @returns the outcome and the turn it belongs to.
+ */
+@Remote('wait') wait(request: SessionWaitRequest, signal: AbortSignal): Promise<SessionWaitValue>
+
+/**
  * Read one cold-safe, message-aligned Session history page.
  * @param request - durable address, backward cursor, and page budget.
  * @param signal - cancellation for persistence reads.

@@ -16,6 +16,7 @@ const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn<ExecFileMock>()
 vi.mock('node:child_process', () => ({ execFile: execFileMock }))
 
 import { release as osRelease } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { canOpenNativePath, nativeFileManager, revealNativePath, openNativeAssociatedPath, openNativePath, openNativeTextFile, type PathOpenerRunner } from '../src/index.ts'
 
@@ -139,6 +140,46 @@ describe('native path opener', () => {
     expect(run).toHaveBeenCalledWith(
       'explorer.exe',
       ['file:///C:/work/settings.yaml'],
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('opens the Windows location an MSYS spelling names', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    // A Git Bash Agent shell reports POSIX paths, and PowerShell would read a
+    // leading /c as a directory under the current drive's root.
+    await openNativePath('/c/Users/test/my report.txt', signal(), { platform: 'win32', run })
+    expect(run).toHaveBeenLastCalledWith(
+      'explorer.exe',
+      ['file:///C:/Users/test/my%20report.txt'],
+      expect.any(AbortSignal),
+    )
+
+    // Cygwin spells the same drive with its own prefix.
+    await openNativePath('/cygdrive/d/work/报告.txt', signal(), { platform: 'win32', run })
+    expect(run).toHaveBeenLastCalledWith(
+      'explorer.exe',
+      ['file:///D:/work/报告.txt'],
+      expect.any(AbortSignal),
+    )
+
+    // A network share keeps its server and share.
+    await openNativePath('//server/share/report.txt', signal(), { platform: 'win32', run })
+    expect(run).toHaveBeenLastCalledWith(
+      'explorer.exe',
+      ['file://server/share/report.txt'],
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('leaves an absolute path that names no Windows location alone', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    // /usr and /tmp name locations in the shell's own filesystem; inventing a
+    // drive for them would open an unrelated file instead of failing.
+    await openNativePath('/usr/share/doc/readme.txt', signal(), { platform: 'win32', run })
+    expect(run).toHaveBeenLastCalledWith(
+      'explorer.exe',
+      [pathToFileURL('/usr/share/doc/readme.txt', { windows: true }).href],
       expect.any(AbortSignal),
     )
   })
@@ -369,6 +410,18 @@ describe('native file manager', () => {
     expect(nativeFileManager(internals)).toBe(manager)
     await revealNativePath(path, signal(), internals)
     expect(run).toHaveBeenCalledExactlyOnceWith(command, args, expect.any(AbortSignal))
+  })
+
+  it('selects the Windows file an MSYS spelling names', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await revealNativePath('/c/work/my report.txt', signal(), {
+      platform: 'win32', env: {}, osRelease: 'generic', run,
+    })
+    expect(run).toHaveBeenCalledExactlyOnceWith(
+      'explorer.exe',
+      ['/select,', 'file:///C:/work/my%20report.txt'],
+      expect.any(AbortSignal),
+    )
   })
 
   it('selects a translated WSL path in Explorer and never starts a Linux file manager', async () => {

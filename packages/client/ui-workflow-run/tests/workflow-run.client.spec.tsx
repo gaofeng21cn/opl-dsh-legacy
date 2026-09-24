@@ -340,6 +340,10 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
     openFile: () => {},
     inspectCall: () => {},
     forkAt: () => {},
+    // The workflow panel registers no user prompt row; the seat is present
+    // because every keyed Chat renderer shares the owner currency.
+    editPrompt: () => Promise.resolve(null),
+    rewindPrompt: () => Promise.resolve(null),
     loadImage: () => Promise.reject(new Error('not used')),
     renderMessageImages: () => null,
     fileMentions: () => undefined,

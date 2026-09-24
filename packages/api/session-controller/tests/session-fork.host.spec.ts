@@ -13,7 +13,7 @@ import SessionStore, { TOOL_OUTCOME_UNKNOWN, SESSION_FORMAT_VERSION, SessionLogO
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
-import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import {
   createSessionTestRemote, installSessionReadTestServices, testSessionPersistence,
 } from './test-remote.ts'
@@ -27,13 +27,28 @@ function request<P>(payload: P): P {
   return payload
 }
 
-async function composed(workspaces: readonly Workspace[] = []): Promise<Context> {
+/** One recorded project placement: the write that makes a child a project member. */
+type Placement = { readonly sessionId: SessionId; readonly workspaceId: WorkspaceId | undefined }
+
+async function composed(
+  workspaces: readonly Workspace[] = [],
+  placements: Placement[] = [],
+): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(AgentRegistry)
   installSessionReadTestServices(ctx)
-  ctx.provide('workspaceRegistry', { list: () => workspaces, archivedSessionIds: [] } as never)
+  ctx.provide('workspaceRegistry', {
+    list: () => workspaces,
+    archivedSessionIds: [],
+    // Project membership is the registry's explicit placement; the workspace's
+    // own directory account stays the fallback for sessions never placed.
+    moveSession: (sessionId: SessionId, workspaceId?: WorkspaceId) => {
+      placements.push({ sessionId, workspaceId })
+      return Promise.resolve()
+    },
+  } as never)
   ctx.agents.setFactory({
     createAgent: async (ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle> => {
       const session = ctx.sessions.create(options.sessionId, {
@@ -195,13 +210,12 @@ describe('sessions.fork', () => {
 
   it('attaches a subagent fork to its nearest workspace-owning ancestor', async () => {
     const accounted: SessionId[] = []
-    const attachSession = vi.fn<(sessionId: SessionId) => Promise<void>>()
-      .mockResolvedValue(undefined)
+    const placements: Placement[] = []
     const workspace = {
+      id: 'workspace-owner' as WorkspaceId,
       sessionIds: accounted,
-      attachSession,
     } as unknown as Workspace
-    const ctx = await composed([workspace])
+    const ctx = await composed([workspace], placements)
     const owner = await liveAgent(ctx, 'session-owner', 1)
     accounted.push(owner.id)
     const child = await liveAgent(ctx, 'session-child', 1, 'none', {
@@ -227,7 +241,12 @@ describe('sessions.fork', () => {
 
     expect(response.ok ? undefined : response.error).toBeUndefined()
     if (!response.ok) return
-    expect(attachSession).toHaveBeenCalledWith(response.value.sessionId)
+    // The child inherits the nearest owning project's membership, recorded as
+    // the registry's explicit placement rather than its directory account.
+    expect(placements).toEqual([{
+      sessionId: response.value.sessionId,
+      workspaceId: workspace.id,
+    }])
     expect(ctx.sessions.get(response.value.sessionId)?.header).toMatchObject({
       parentSession: grandchild.id,
       cwd: '/proj',

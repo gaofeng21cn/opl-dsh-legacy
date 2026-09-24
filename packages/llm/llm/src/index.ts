@@ -21,6 +21,7 @@ import type {
   LlmModelInfo,
   LlmResolvedModelInfo,
   LlmProviderInfo,
+  LlmTransportStage,
   ModelModality,
   StreamChunk,
   SystemPromptUpdate,
@@ -85,6 +86,12 @@ export interface LlmErrorOptions extends ErrorOptions {
   requestId?: ProviderRequestId
   /** Positive count of additional oldest retained image occurrences to offload; only with `IMAGE_OFFLOAD_REQUIRED`. */
   offloadImages?: number
+  /** Which request phase a `TRANSPORT` failure ended in. */
+  transportStage?: LlmTransportStage
+  /** Underlying platform error's `name`, for a `TRANSPORT` failure. */
+  causeName?: string
+  /** Underlying platform error's `code` (errno or SDK code), for a `TRANSPORT` failure. */
+  causeCode?: string
 }
 
 /**
@@ -115,6 +122,12 @@ export class LlmError extends HarnessError {
       && (typeof options.requestId !== 'string' || options.requestId.length === 0)) {
       throw new Error('LlmError requestId must be a non-empty string')
     }
+    if (options?.causeName !== undefined && options.causeName.length === 0) {
+      throw new Error('LlmError causeName must be a non-empty string')
+    }
+    if (options?.causeCode !== undefined && options.causeCode.length === 0) {
+      throw new Error('LlmError causeCode must be a non-empty string')
+    }
     super(message, code, options)
     this.name = 'LlmError'
     this.failure = Object.freeze({
@@ -124,6 +137,9 @@ export class LlmError extends HarnessError {
       ...options?.providerRetryAfterMs === undefined ? {} : { providerRetryAfterMs: options.providerRetryAfterMs },
       ...options?.requestId === undefined ? {} : { requestId: options.requestId },
       ...options?.offloadImages === undefined ? {} : { offloadImages: options.offloadImages },
+      ...options?.transportStage === undefined ? {} : { transportStage: options.transportStage },
+      ...options?.causeName === undefined ? {} : { causeName: options.causeName },
+      ...options?.causeCode === undefined ? {} : { causeCode: options.causeCode },
     })
   }
 }

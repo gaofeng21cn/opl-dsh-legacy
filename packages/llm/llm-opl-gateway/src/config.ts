@@ -7,24 +7,27 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
 } from '@deepseek-ai/dsh-llm-deepseek'
-import type { DeepSeekCatalogModel } from '@deepseek-ai/dsh-llm-deepseek'
+import type { DeepSeekCatalogModel, Options } from '@deepseek-ai/dsh-llm-deepseek'
 import { OPL_GATEWAY_INFERENCE_BASE_URL } from './opl-credentials.ts'
+import {
+  OPL_GATEWAY_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS,
+  OPL_GATEWAY_SEARCH_DEFAULT_MAX_SEARCHES,
+  OPL_GATEWAY_SEARCH_DEFAULT_MODEL,
+  OPL_GATEWAY_SEARCH_DEFAULT_TIMEOUT_MS,
+} from './search.ts'
 
 /** Credential reference the Models page writes when a gateway key is typed in. */
-export const DEFAULT_API_KEY_REF = 'OPL_GATEWAY_API_KEY'
-
-/** Wire protocol the gateway speaks; the route never negotiates another one. */
-export const OPL_GATEWAY_PROTOCOL = 'chat-completions' as const
+export const DEFAULT_API_KEY_REF = 'OPL_GATEWAY_DEEPSEEK_API_KEY'
 
 /**
  * The one model this route advertises. The gateway serves the id
- * `deepseek-flash`, which this deployment presents as `DeepSeek-V4.1-Flash`;
+ * `deepseek-v4.1-flash`, which this deployment presents as `DeepSeek-V4.1-Flash`;
  * requests stay unrestricted, so a session that names any other id the
  * gateway enables still reaches it.
  */
 export const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
   {
-    id: 'deepseek-flash',
+    id: 'deepseek-v4.1-flash',
     name: 'DeepSeek-V4.1-Flash',
     description: 'DeepSeek Flash served by the OPL Gateway.',
     contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -34,6 +37,28 @@ export const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
 ]
 
 const MODEL_MODALITIES = ['text', 'image'] as const
+
+/**
+ * Auxiliary web search served from this gateway's Responses route.
+ *
+ * Search runs on a model that serves the gateway's `web_search` tool, which the
+ * account's DeepSeek routes are not; the conversation model stays a separate
+ * choice. Every field falls back to this route's own endpoint and credential.
+ */
+export interface SearchConfig {
+  /** Model that runs the auxiliary search turn. */
+  model?: string
+  /** Credential reference; defaults to this route's `apiKeyEnv`. */
+  apiKeyEnv?: string
+  /** Inference root; `/responses` is appended. Defaults to this route's endpoint. */
+  baseURL?: string
+  /** Upper bound on generated tokens for the search turn. */
+  maxOutputTokens?: number
+  /** Budget for one search, covering connection, search, and answer. */
+  timeoutMs?: number
+  /** Upper bound on server-side searches one request may run. */
+  maxSearches?: number
+}
 
 /**
  * Plugin config, validated by the same-named schema and doubling as the
@@ -65,6 +90,8 @@ export interface Config {
   streamIdleTimeoutMs?: number
   /** Provider-owned model-request retry policy; omission uses normal mode with five retries. */
   retryPolicy?: RetryPolicyConfig
+  /** Auxiliary web search; omitted mounts the route's own search provider with these defaults. */
+  search?: SearchConfig
 }
 
 const catalogModel: z<DeepSeekCatalogModel> = z.object({
@@ -89,6 +116,14 @@ export const Config: z<Config> = z.object({
   defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
   streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
   retryPolicy: RetryPolicySchema,
+  search: z.object({
+    model: z.string().default(OPL_GATEWAY_SEARCH_DEFAULT_MODEL),
+    apiKeyEnv: z.string(),
+    baseURL: z.string(),
+    maxOutputTokens: z.number().step(1).min(1).default(OPL_GATEWAY_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS),
+    timeoutMs: z.number().step(1).min(1).default(OPL_GATEWAY_SEARCH_DEFAULT_TIMEOUT_MS),
+    maxSearches: z.number().step(1).min(1).default(OPL_GATEWAY_SEARCH_DEFAULT_MAX_SEARCHES),
+  }),
 })
 
 /**
@@ -102,11 +137,10 @@ export const Config: z<Config> = z.object({
 export function toAdapterConfig(
   config: Config,
   fallbackBaseURL: string = OPL_GATEWAY_INFERENCE_BASE_URL,
-): Record<string, unknown> {
+): Options {
   const apiKeyEnv = config.apiKeyEnv?.trim()
   const baseURL = config.baseURL?.trim()
   return {
-    protocol: OPL_GATEWAY_PROTOCOL,
     ...apiKeyEnv === undefined || apiKeyEnv === '' ? {} : { apiKeyEnv },
     baseURL: baseURL === undefined || baseURL === '' ? fallbackBaseURL : baseURL,
     ...config.models === undefined || config.models.length === 0 ? {} : { models: config.models },

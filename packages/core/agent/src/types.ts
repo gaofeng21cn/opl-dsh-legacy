@@ -7,6 +7,7 @@
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
 // Type-only: the Workspace registry's archive-admission family map this registry merges `turn` into.
 import type {} from '@deepseek-ai/dsh-workspace/types'
+import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { OptionalSessionSeq, SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { TypertContext, TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -59,11 +60,51 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
     /** Pending agent input reconstructed from durable inbox splices. */
     inbox: InboxState
+    /** Current model-visible prompt ledger, folded from surface operations. */
+    promptSurface: PromptSurfaceProjection
   }
   interface SessionProjectionMap {
     /** Pending agent input reconstructed from durable inbox splices. */
     inbox: InboxWireState
   }
+}
+
+/** One direct human prompt among the current model-visible surface nodes. */
+export interface PromptSurfaceEntry {
+  /** Event seq of the prompt's own surface node. */
+  readonly seq: SessionSeq
+  /** Identity the prompt's `user/message` payload carries. */
+  readonly messageId: MessageId
+  /**
+   * Durable request identity the prompt's source carries, when its producer
+   * minted one. Rewriting uses it to acknowledge a retried edit with the
+   * replacement that already committed instead of appending a second one.
+   */
+  readonly rpcId?: string | undefined
+  /**
+   * Whether the prompt entered the surface as a branch replacement rather than
+   * an append. A claimed inbox message matching such an entry is already
+   * logged: admitting it again would duplicate the prompt in history.
+   */
+  readonly replaced: boolean
+}
+
+/**
+ * Current model-visible surface plus its direct human prompts, folded from
+ * committed surface operations.
+ *
+ * Prompt rewriting needs three facts no other projection carries: which surface
+ * node is the last direct human prompt, which nodes its branch currently
+ * occupies, and whether a prompt already entered the surface as a replacement.
+ * The fold mirrors the canonical surface transitions, so an operation the
+ * surface fold rejects never reaches it, and a resumed Session rebuilds the
+ * same ledger without reading historical events.
+ */
+export interface PromptSurfaceProjection {
+  /** Current surface nodes in model-visible order. */
+  readonly nodes: readonly SessionSeq[]
+  /** Direct human prompts among those nodes, in surface order. */
+  readonly prompts: readonly PromptSurfaceEntry[]
 }
 
 /**

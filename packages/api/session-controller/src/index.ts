@@ -25,6 +25,7 @@ import { SessionFileReferences } from './file-references.ts'
 import { ApiSessionList } from './list.ts'
 import { buildModelCatalog } from './catalog.ts'
 import { installModelSelectionProjection } from './model-selection-projection.ts'
+import { installSessionWaitProjection, waitForSession } from './wait.ts'
 import { SessionSkillCatalog } from './skill-catalog.ts'
 import { SessionMediaReferences } from './media-references.ts'
 import { ArchivedSessionGate } from './archived-session-gate.ts'
@@ -38,6 +39,8 @@ import type {
   SessionControlFrame,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionEditPromptRequest,
+  SessionEditPromptValue,
   SessionFollowFrame,
   SessionFollowRequest,
   SessionForkRequest,
@@ -48,10 +51,14 @@ import type {
   SessionOpenWorkspacePathValue,
   SessionPage,
   SessionPageRequest,
+  SessionPermissionsRequest,
+  SessionPermissionsValue,
   SessionPromptRequest,
   SessionPromptValue,
   SessionRenameRequest,
   SessionRenameValue,
+  SessionRewindRequest,
+  SessionRewindValue,
   SessionSearchRequest,
   SessionSearchValue,
   SessionSelectModelRequest,
@@ -59,11 +66,18 @@ import type {
   SessionProjectionsRequest,
   SessionProjectionsValue,
   SessionProjectionValues,
+  SessionSelectPermissionsRequest,
+  SessionSelectPermissionsValue,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
+  SessionWaitRequest,
+  SessionWaitValue,
 } from './types.ts'
 
 export type * from './types.ts'
+// The wait fold's state is public: a Host that recovers from durable state
+// reads the same closed-turn and pending-approval facts `session.wait` settles on.
+export type { SessionWaitState } from './wait.ts'
 export { ApiSessionNotFound } from './agent.ts'
 export { SessionFileReferences } from './file-references.ts'
 export { SessionSkillCatalog } from './skill-catalog.ts'
@@ -79,6 +93,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Parent directory for independent task workspaces. */
+  readonly standaloneRoot?: string
 }
 
 /** Host integrations replaceable by direct unit tests. */
@@ -113,6 +129,7 @@ export class SessionController extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     nativeOpen: z.boolean(),
+    standaloneRoot: z.string(),
   })
 
   private readonly agents: ApiSessionAgentController
@@ -136,13 +153,14 @@ export class SessionController extends TypertRemoteService {
     super(ctx, 'sessionController', { namespace: 'session' })
     installModelSelectionProjection(ctx)
     this.agents = new ApiSessionAgentController(ctx)
-    this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
+    this.commands = new SessionCommandController(ctx, this.agents, process.cwd(), config.standaloneRoot)
     ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
       const result = await this.agents.resolveAgent(sessionId)
       if ('error' in result) throw result.error
       return result.agent
     }), 'session-controller: file-upload Agent resolver')
     this.controlState = new SessionControlController(ctx)
+    installSessionWaitProjection(ctx)
     // Registered before history so reverse-order teardown closes every
     // follower before waiting for already-admitted promotions.
     ctx.effect(() => async () => {
@@ -266,8 +284,8 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * Create or idempotently adopt one ordinary Session.
-   * @param request - requested identity, location, and Agent preset.
-   * @returns the Session identity and resolved preset when configured.
+   * @param request - requested identity, location, Agent preset, and permission preset.
+   * @returns the Session identity, resolved preset when configured, and effective permission.
    */
   @Remote('create')
   create(request: SessionCreateRequest): Promise<SessionCreateValue> {
@@ -282,6 +300,27 @@ export class SessionController extends TypertRemoteService {
   @Remote('selectModel')
   selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
     return this.commands.selectModel(request)
+  }
+
+  /**
+   * Read one attached Session's effective permission and the offered presets.
+   * @param request - Session whose permission is read.
+   * @returns the effective permission, the catalog, and the driver's activity.
+   */
+  @Remote('permissions')
+  permissions(request: SessionPermissionsRequest): SessionPermissionsValue {
+    return this.commands.permissions(request)
+  }
+
+  /**
+   * Install one permission preset on an attached Session, refusing a widening
+   * switch while the Session is running.
+   * @param request - Session identity and the preset to install.
+   * @returns the permission now effective and when it reaches execution.
+   */
+  @Remote('selectPermissions')
+  selectPermissions(request: SessionSelectPermissionsRequest): SessionSelectPermissionsValue {
+    return this.commands.selectPermissions(request)
   }
 
   /**
@@ -411,6 +450,30 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
+   * Rewrite the last editable user message and resend it as a new turn.
+   * @param request - Session identity, addressed user message, edited content, and source metadata.
+   * @param signal - caller cancellation before edit admission begins.
+   * @returns acknowledgement with the replacement message's durable event seq.
+   */
+  @Remote('editPrompt')
+  editPrompt(request: SessionEditPromptRequest, signal: AbortSignal): Promise<SessionEditPromptValue> {
+    signal.throwIfAborted()
+    return this.commands.editPrompt(request)
+  }
+
+  /**
+   * Roll the conversation back to the state before its last direct human prompt.
+   * @param request - Session identity and the addressed prompt's event seq.
+   * @param signal - caller cancellation before the rewind appends anything.
+   * @returns the committed replacement, the shadowed surface range, and the discarded queue identities.
+   */
+  @Remote('rewind')
+  rewind(request: SessionRewindRequest, signal: AbortSignal): Promise<SessionRewindValue> {
+    signal.throwIfAborted()
+    return this.commands.rewind(request)
+  }
+
+  /**
    * Read one image proven reachable from the addressed Session log.
    * @param request - Session and attachment identities used for authorization.
    * @returns the durable attachment reference and base64-encoded bytes.
@@ -438,6 +501,21 @@ export class SessionController extends TypertRemoteService {
   @Remote('cancel')
   cancel(request: SessionCancelRequest): SessionCancelValue {
     return this.commands.cancel(request)
+  }
+
+  /**
+   * Await one Session's next terminal outcome without polling.
+   *
+   * Resolves as soon as the awaited turn ends (completed, failed, or
+   * cancelled) or the Session stops for human input; an already-settled
+   * Session resolves from its recorded state. Caller cancellation rejects.
+   * @param request - Session identity and optional exact turn number.
+   * @param signal - caller lifetime owned by the Remote carrier.
+   * @returns the outcome and the turn it belongs to.
+   */
+  @Remote('wait')
+  wait(request: SessionWaitRequest, signal: AbortSignal): Promise<SessionWaitValue> {
+    return waitForSession(this.ctx, request, signal)
   }
 
   /**

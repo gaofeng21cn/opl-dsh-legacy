@@ -236,7 +236,10 @@ export class GatewayControlClient {
     )
   }
 
-  /** Whether the deployment requires an interactive challenge before login. */
+  /**
+   * Whether the deployment requires an interactive challenge before login.
+   * @returns whether sign-in presents a Turnstile challenge and whether the account needs an interactive verification step.
+   */
   async publicSettings(): Promise<{ turnstile: boolean; totp: boolean }> {
     const value = record(await this.request('/settings/public'))
     return {
@@ -279,7 +282,11 @@ export class GatewayControlClient {
     return { accessToken, refreshToken: nextRefreshToken }
   }
 
-  /** Read the account behind an access token. */
+  /**
+   * Read the account behind an access token.
+   * @param accessToken - session token from {@link login} or {@link refreshSession}.
+   * @returns the identity, status, and balance fields the account page presents.
+   */
   async profile(accessToken: string): Promise<GatewayProfile> {
     const value = record(await this.request('/user/profile', { accessToken }))
     const user = isRecord(value.user) ? value.user : value
@@ -293,7 +300,11 @@ export class GatewayControlClient {
     }
   }
 
-  /** Read token and cost totals for the account. */
+  /**
+   * Read token and cost totals for the account.
+   * @param accessToken - session token from {@link login} or {@link refreshSession}.
+   * @returns today's and all-time token counts and costs, with their currency.
+   */
   async usage(accessToken: string): Promise<GatewayUsage> {
     const value = record(await this.request('/usage/dashboard/stats', { accessToken }))
     return {
@@ -305,7 +316,11 @@ export class GatewayControlClient {
     }
   }
 
-  /** List the key groups this account may issue keys in. */
+  /**
+   * List the key groups this account may issue keys in.
+   * @param accessToken - session token from {@link login} or {@link refreshSession}.
+   * @returns the available groups as ids with display labels.
+   */
   async groups(accessToken: string): Promise<Array<{ id: string; label: string }>> {
     const values = list(await this.request('/groups/available', { accessToken }), ['groups', 'items'])
     return values.flatMap((entry) => {
@@ -316,7 +331,12 @@ export class GatewayControlClient {
     })
   }
 
-  /** List the keys this account owns. */
+  /**
+   * List the keys this account owns.
+   * @param accessToken - session token from {@link login} or {@link refreshSession}.
+   * @param search - name substring the gateway matches; an empty string lists every key, up to the gateway's page size.
+   * @returns the account's keys, each retaining the object the gateway returned.
+   */
   async keys(accessToken: string, search = ''): Promise<GatewayManagedKey[]> {
     const value = await this.request(`/keys?search=${encodeURIComponent(search)}&page_size=100`, { accessToken })
     return list(value, ['keys', 'items']).flatMap((entry): GatewayManagedKey[] => {

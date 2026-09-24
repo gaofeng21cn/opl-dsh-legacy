@@ -1,7 +1,24 @@
-import type { ConversationSlotProps } from '../contract/slots.ts'
+import { useLayoutEffect } from 'react'
+import type { ConversationSlotProps, ConversationWidthControlsProps } from '../contract/slots.ts'
 import { conversationPhase } from '../contract/snapshot.ts'
-import { ConversationWidthControls } from './ConversationWidthControls.tsx'
 import css from './ConversationRoot.module.css'
+
+/** Publish the measured layout width without introducing transcript drag controls. */
+function ConversationLayoutWidth({ container }: ConversationWidthControlsProps) {
+  useLayoutEffect(() => {
+    if (container === null) return
+    const target = container.parentElement ?? container
+    const publish = (): void => {
+      target.style.setProperty('--dsh-conversation-column-width', `${container.offsetWidth}px`)
+      target.style.removeProperty('--dsh-chat-user-width')
+    }
+    const observer = new ResizeObserver(publish)
+    observer.observe(container)
+    publish()
+    return () => { observer.disconnect() }
+  }, [container])
+  return null
+}
 
 /**
  * Render the existing main Conversation frame around the extracted content.
@@ -48,7 +65,7 @@ export function ConversationMainPanel(props: ConversationSlotProps) {
         phase,
         hero,
       }, {
-        slots: { widthControls: ConversationWidthControls },
+        slots: { widthControls: ConversationLayoutWidth },
       })}
     </div>
   )

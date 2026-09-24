@@ -327,6 +327,10 @@ export type ConvViewProps = PropsRuntime<'conversation.view'>
 
 /** Business callbacks injected into the resident Conversation shell. */
 export interface ConversationInjected {
+  /** Start a plain chat without selecting a Workspace. */
+  openChat: () => Promise<void>
+  /** Open the immutable working directory in the system file manager. */
+  openWorkingDirectory: (path: string) => Promise<void>
   /** Connect and open a blank Session in the selected Workspace. */
   selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
   /** Session-addressed composer block source, or the stable absent source. */

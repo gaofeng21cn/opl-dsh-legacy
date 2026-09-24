@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../packages/api/gateway/tsconfig.host.json" },
     { "path": "../../vendor/cordis" },
     { "path": "../../packages/core/agent" },
     { "path": "../../packages/jobs/jobs" },

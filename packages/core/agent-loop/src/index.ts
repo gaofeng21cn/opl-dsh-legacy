@@ -18,13 +18,16 @@ import type {
   AgentOptions,
   AgentSetup,
   CreateAgentOptions,
+  PromptSurfaceProjection,
   ResumeAgentOptions,
   SessionStartSource,
   TurnBoundaryProjection,
 } from '@deepseek-ai/dsh-agent'
 import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from '@deepseek-ai/dsh-session'
-import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import { isSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -93,6 +96,80 @@ export const turnBoundaryProjectionDefinition = {
     }
   },
 } satisfies ProjectionDefinition<'turnBoundary', TurnBoundaryProjection>
+
+const promptSurfaceProjectionSchema: zod.ZodType<PromptSurfaceProjection> = zod.object({
+  nodes: zod.array(zod.number().int().nonnegative().transform(SessionSeq)).readonly(),
+  prompts: zod.array(zod.object({
+    seq: zod.number().int().nonnegative().transform(SessionSeq),
+    messageId: zod.string().transform(value => brandString<MessageId>(value)),
+    rpcId: zod.string().optional(),
+    replaced: zod.boolean(),
+  })).readonly(),
+})
+
+/** Whether one event is a direct human prompt on the model-visible surface. */
+function isHumanPromptEvent(event: SessionEvent): event is SessionEvent<'user/message'> {
+  return event.type === 'user/message' && event.data.source.kind === 'user'
+}
+
+/** Durable request identity one prompt's source carries, when it minted one. */
+function promptRequestId(event: SessionEvent<'user/message'>): string | undefined {
+  const source: unknown = event.data.source
+  if (typeof source !== 'object' || source === null || !('rpcId' in source)) return undefined
+  const rpcId: unknown = source.rpcId
+  return typeof rpcId === 'string' ? rpcId : undefined
+}
+
+/** Fold one direct human prompt into the ledger's prompt list. */
+function promptEntry(
+  event: SessionEvent<'user/message'>,
+  replaced: boolean,
+): PromptSurfaceProjection['prompts'][number] {
+  const rpcId = promptRequestId(event)
+  return {
+    seq: event.seq,
+    messageId: event.data.id,
+    ...rpcId === undefined ? {} : { rpcId },
+    replaced,
+  }
+}
+
+/**
+ * Host projection of the model-visible surface and its direct human prompts.
+ *
+ * It mirrors the canonical surface transitions (`append` or a validated range
+ * replacement) so prompt rewriting can locate the editable prompt, name the
+ * branch nodes its replacement must shadow, and recognize a claimed message
+ * that already entered the surface as a replacement.
+ */
+export const promptSurfaceProjectionDefinition = {
+  key: 'promptSurface',
+  stateVersion: 1,
+  stateSchema: promptSurfaceProjectionSchema,
+  init: (): PromptSurfaceProjection => ({ nodes: [], prompts: [] }),
+  apply: (state, event): PromptSurfaceProjection => {
+    if (!isSurfaceEvent(event)) return state
+    if (event.surfaceOp === 'append') {
+      return {
+        nodes: [...state.nodes, event.seq],
+        prompts: isHumanPromptEvent(event)
+          ? [...state.prompts, promptEntry(event, false)]
+          : state.prompts,
+      }
+    }
+    // The surface fold validated both endpoints before this event committed.
+    const startIdx = state.nodes.indexOf(event.surfaceOp.startSeq)
+    const endIdx = state.nodes.indexOf(event.surfaceOp.endSeq)
+    const shadowed = new Set(state.nodes.slice(startIdx, endIdx + 1))
+    return {
+      nodes: [...state.nodes.slice(0, startIdx), event.seq, ...state.nodes.slice(endIdx + 1)],
+      prompts: [
+        ...state.prompts.filter(entry => !shadowed.has(entry.seq)),
+        ...isHumanPromptEvent(event) ? [promptEntry(event, true)] : [],
+      ],
+    }
+  },
+} satisfies ProjectionDefinition<'promptSurface', PromptSurfaceProjection>
 
 /** Factory-level ownership: live agent teardowns plus config startup work. */
 class FactoryOwnership {
@@ -363,6 +440,7 @@ export class AgentLoop extends Service implements AgentFactory {
     // rejected constructor leaves no projection unit behind.
     ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
     ctx.sessionProjections.register(inboxProjectionDefinition)
+    ctx.sessionProjections.register(promptSurfaceProjectionDefinition)
     this.ownership = new FactoryOwnership(ctx.fiber)
     this.runtime = { ctx }
     ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()')

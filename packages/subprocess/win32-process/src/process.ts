@@ -550,6 +550,12 @@ export function spawnInheritedJobProcess(
  * @param api - active binding table.
  * @param options - command, cwd, argv, and target carrier descriptors.
  * @returns caller-owned process and Job handles after successful resume.
+ * @remarks The target is a background child of the runner, whose own image may
+ * be a GUI-subsystem executable that has no console to pass on. Without
+ * `CREATE_NO_WINDOW` Windows allocates a fresh console for a console-subsystem
+ * target, and the default terminal application renders that allocation as a
+ * window over the user's foreground. The flag gives the target its own hidden
+ * console instead, which its descendants inherit.
  */
 export function spawnCurrentTokenJobProcess(
   api: CurrentTokenProcessBindings,
@@ -564,7 +570,7 @@ export function spawnCurrentTokenJobProcess(
       null,
       null,
       1,
-      abi.CREATE_SUSPENDED | abi.CREATE_UNICODE_ENVIRONMENT,
+      abi.CREATE_SUSPENDED | abi.CREATE_UNICODE_ENVIRONMENT | abi.CREATE_NO_WINDOW,
       environment,
       options.cwd,
       startupInfo,

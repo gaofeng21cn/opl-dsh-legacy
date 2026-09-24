@@ -36,8 +36,12 @@ kind: "package-reference"
 | 模式 | 文件影响 |
 |---|---|
 | `read-only`（默认） | 任何位置都不可写；在 `/dev` 中只有 `/dev/null` 节点可写，因此 `>/dev/null` 仍可正常工作 |
-| `workspace-write` | 只能写入策略的工作区根目录加 `/tmp`（bwrap 下为临时目录，Landlock 下为宿主 `/tmp`，Seatbelt 下为 `/private/tmp` 加每用户临时目录） |
+| `workspace-write` | 只能写入策略的工作区根目录加 `/tmp`（bwrap 下为临时目录，Landlock 下为宿主 `/tmp`，Seatbelt 下为 `/private/tmp` 加每用户临时目录；Windows ACL 运行器下为工作区加每会话私有临时目录） |
 | `danger-full-access` | 不作限制；绝不咨询提供方，结果携带 `sandbox: { mode, denied: false }` |
+
+### Windows 上的受限 Git Bash
+
+在 Windows 上，受限的 Git Bash 启动经由 broker 处理：启动目录必须在模式的授权根内解析（MSYS 与 Windows 写法、`..` 穿越、盘符切换与重解析点统一为同一比较），继承的环境被收束到边界内，能力探针则用真实后端运行真实可执行文件。探针证明两个维度：MSYS 运行时能在受限令牌下启动，以及模式的写入边界成立——工作区内的写入符合模式语义（`workspace-write` 下创建成功，`read-only` 下被拒），而每个可写根之外的写入被拒。任一维度无法证明时，前台与后台的受限调用都在启动前以 `SANDBOX_UNAVAILABLE` 失败，拒绝信息携带实际观测到的诊断；当前主机上的受限令牌运行器无法初始化 MSYS 运行时，因此 Git Bash 只能通过明确批准的 `danger-full-access` 使用，且不会自动以不受限方式重试。broker 只翻译 Git for Windows 定义的挂载点——`/c/…`（盘符）、`/tmp/…`（用户临时目录）、`//server/share/…`，以及 `/` 背后的安装根目录——并把 `/mnt/…` 与 `/cygdrive/…` 作为 Git Bash 未挂载的 WSL/Cygwin 写法拒绝。只读或工作区内修改模式请使用 PowerShell，或明确批准完全访问——后者沿用 bash-local 解析的可执行文件与进程生命周期。
 
 ### 最小配置
 
@@ -169,6 +173,7 @@ kind: "package-reference"
 这些限制说明本执行器何时不是通用安全边界。它们是当前包约束，不是路线图。
 
 - **限制只覆盖文件影响**——不提供网络限制和统一的进程可见性保证，因此这些模式不是通用安全沙箱。
+- **Windows Git Bash 边界是被探针证明的能力**——主机必须先证明 MSYS 能在受限令牌下启动、且模式的写入边界成立，受限 Git Bash 才会运行；当前主机在第一个维度即失败，因此 `read-only`/`workspace-write` 的 Git Bash 以 `SANDBOX_UNAVAILABLE` 拒绝，只有明确批准的 `danger-full-access` 才会运行它。
 - **拒绝从失败命令的 stderr 推断**——后端特征使该推断可跨平台使用，但包含相同特征的应用错误可能被分类为拒绝，也可能遗漏未出现在保留尾部中的拒绝。
 - **异步观测到的后台 runner 失败没有即时错误通道**——它记录在已结算进程上，并在调用方用 `job_output` 读取通用任务时呈现；同步的子进程抛错被收容为同样的已结算 killed 句柄，可归因于 runner 的失败由 `result()` 的 rejection 携带。
 - **`danger-full-access` 有意绕过 `ctx.sandbox`**——它是显式无约束模式，不是更宽的沙箱 profile。

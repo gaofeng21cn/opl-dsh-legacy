@@ -19,10 +19,10 @@
               maxBytes: 65536
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'
-            disabled: !!js process.platform === 'win32'
+            disabled: !!js process.platform === 'win32' && dshAgentShell() !== 'git-bash'
           - id: tool-pwsh
             name: '@deepseek-ai/dsh-tool-pwsh'
-            disabled: !!js process.platform !== 'win32'
+            disabled: !!js process.platform !== 'win32' || dshAgentShell() !== 'powershell'
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
           - id: tool-fs-search
@@ -69,6 +69,12 @@
             config:
               - id: compaction-basic
                 name: '@deepseek-ai/dsh-compaction-basic'
+                config:
+                  modelPolicies:
+                    - provider: opl-gateway
+                      model: deepseek-v4.1-flash
+                      inputBudget: 258400
+                      thresholdTokens: 244800
               - id: command-compact
                 name: '@deepseek-ai/dsh-command-compact'
               - id: tool-result-pruner

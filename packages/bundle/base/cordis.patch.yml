@@ -231,15 +231,21 @@
         mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
         workspaceRoot: !!js process.cwd()
 
+    # Exactly one shell stack mounts. On POSIX that is always bash; on Windows
+    # Native the Agent shell selection read by the boot accessor picks bash (Git
+    # for Windows) or pwsh, so the executor, the model-facing tool, and the
+    # prompt text all describe the same shell. The selection is read while this
+    # tree loads, which is why the settings surface reports it as taking effect
+    # on the next load rather than live.
     - id: bash-sandbox
       name: '@deepseek-ai/dsh-bash-sandbox'
-      disabled: !!js process.platform === 'win32'
+      disabled: !!js process.platform === 'win32' && dshAgentShell() !== 'git-bash'
       config:
         timeoutMs: 60000
 
     - id: pwsh-sandbox
       name: '@deepseek-ai/dsh-pwsh-sandbox'
-      disabled: !!js process.platform !== 'win32'
+      disabled: !!js process.platform !== 'win32' || dshAgentShell() !== 'powershell'
 
     - id: approval
       name: '@deepseek-ai/dsh-user-approval'
@@ -263,19 +269,30 @@
     - id: shell-env
       name: '@deepseek-ai/dsh-shell-env'
 
+    # One model-facing shell tool, matching the executor above: `bash` describes
+    # the bash dialect (Git for Windows on Windows Native), `pwsh` the
+    # PowerShell one. Advertising both would let the model write commands for a
+    # shell that is not mounted.
     - id: tool-bash
       name: '@deepseek-ai/dsh-tool-bash'
-      disabled: !!js process.platform === 'win32'
+      disabled: !!js process.platform === 'win32' && dshAgentShell() !== 'git-bash'
 
     - id: tool-pwsh
       name: '@deepseek-ai/dsh-tool-pwsh'
-      disabled: !!js process.platform !== 'win32'
+      disabled: !!js process.platform !== 'win32' || dshAgentShell() !== 'powershell'
 
     - id: tool-jobs
       name: '@deepseek-ai/dsh-tool-jobs'
 
     - id: fs-observation-policy
       name: '@deepseek-ai/dsh-fs-observation-policy'
+
+    # Records what each tool execution writes inside the session workspace, so
+    # `session.rewind` can put those files back. Its wrapper runs before a
+    # possibly-writing tool and diffs the workspace after it, which is the only
+    # way an opaque `ctx.shell` command's writes become recoverable.
+    - id: session-rewind-files
+      name: '@deepseek-ai/dsh-session-rewind-files'
 
     - id: tool-fs
       name: '@deepseek-ai/dsh-tool-fs'

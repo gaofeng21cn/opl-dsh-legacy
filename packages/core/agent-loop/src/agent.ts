@@ -291,6 +291,28 @@ export class ReactLoopAgent implements Agent {
     return !headerEquals(baseline, canonicalHeader({ ...baseline, tools: [...tools] }))
   }
 
+  /**
+   * Whether an already committed surface replacement carries this exact message.
+   *
+   * A producer may place a prompt on the surface before its claim:
+   * `session.editPrompt` rewrites the last user message's branch by appending
+   * the replacement message the inbox then claims, so admitting the claim as an
+   * append would duplicate the prompt in history. Every other claimed message is
+   * absent from the surface, because a claim consumes its inbox occurrence.
+   * @param message - one message this step is about to admit to the surface.
+   * @returns true when the `promptSurface` projection records a replacement
+   *   entry for this message identity.
+   */
+  private alreadyReplacedOnSurface(message: UserMessage): boolean {
+    const ledger = this.loopCtx.sessionProjections.stateOf(this.session, 'promptSurface')
+    if (ledger === undefined) {
+      throw new Error(
+        `agent "${this.id}" cannot read the prompt surface: the agent-loop projection is not registered`,
+      )
+    }
+    return ledger.prompts.some(entry => entry.replaced && entry.messageId === message.id)
+  }
+
   /** Open one turn before claiming its first proposed step. */
   private async turn(): Promise<boolean> {
     if (this.phase.kind !== 'running') {
@@ -400,6 +422,7 @@ export class ReactLoopAgent implements Agent {
       }
       if (firstAttempt) {
         for (const message of decision.messages) {
+          if (this.alreadyReplacedOnSurface(message)) continue
           this.session.append('user/message', message, { surfaceOp: 'append' })
         }
       }

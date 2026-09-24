@@ -9,6 +9,14 @@ import z from '@deepseek-ai/schemastery'
 import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { ScopeKey, ScopeLayer, Scoped } from '@deepseek-ai/dsh-scope'
 import type { ContextSnapshotSection, ToolSchema } from '@deepseek-ai/dsh-llm'
+import type { Volatile } from '@deepseek-ai/cosmokit'
+import {
+  DEFAULT_OUTPUT_LANGUAGE,
+  OUTPUT_LANGUAGE_SECTION,
+  OUTPUT_LANGUAGES,
+  outputLanguageDirective,
+} from './output-language.ts'
+import type { OutputLanguage } from './output-language.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -125,6 +133,7 @@ export interface PromptAssembly {
 const SECTION_ORDERS = {
   HARNESS_IDENTITY: -1000,
   DEPLOYMENT_PERSONA_PREFIX: 0,
+  OUTPUT_LANGUAGE: 100,
   PLAN_POLICY: 500,
   TEAM_POLICY: 600,
   PTC_ONLY: 800,
@@ -180,6 +189,15 @@ export const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'
 
 /** Deployment persona suffix section name shared by global and scoped contributions. */
 export const PERSONA_SUFFIX_SECTION = 'deployment:persona-suffix'
+
+export {
+  DEFAULT_OUTPUT_LANGUAGE,
+  OUTPUT_LANGUAGE_SECTION,
+  OUTPUT_LANGUAGE_SETTINGS_NAMESPACE,
+  OUTPUT_LANGUAGES,
+  OutputLanguageSettingsSchema,
+} from './output-language.ts'
+export type { OutputLanguage, OutputLanguageSettings } from './output-language.ts'
 
 /** Valid variable names: how they are written between the braces. */
 const VARIABLE_NAME = /^[a-z][a-z0-9_]*$/
@@ -247,6 +265,8 @@ function compareToolNames(a: ToolSchema, b: ToolSchema): number {
 export interface Config {
   /** Include the fixed DeepSeek Harness identity before the deployment persona (default true). */
   includeHarnessIdentity?: boolean
+  /** Language of model-authored prose; changes apply to the next prompt assembly. */
+  outputLanguage?: Volatile<OutputLanguage>
   /** Include dynamic runtime-context snapshots in model history (default true). */
   includeRuntimeContext?: boolean
   /**
@@ -403,8 +423,9 @@ class PromptLayer implements ScopeLayer {
 
 /** Registry service for the prompt inputs assembled before each model step. */
 export class SystemPrompt extends Service {
-  static Config: z<Config> = z.object({
+  static Config = z.object({
     includeHarnessIdentity: z.boolean().default(true),
+    outputLanguage: z.union([...OUTPUT_LANGUAGES]).default(DEFAULT_OUTPUT_LANGUAGE).volatile(),
     includeRuntimeContext: z.boolean().default(true),
     personaPrefix: z.string().default(''),
     personaSuffix: z.string().default(''),
@@ -439,6 +460,13 @@ export class SystemPrompt extends Service {
       name: PERSONA_SUFFIX_SECTION,
       order: this.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX'),
       text: config.personaSuffix ?? '',
+    })
+    // The provider re-reads the setting at every assembly, so a committed
+    // change lands on the next request without re-registering the section.
+    this.section({
+      name: OUTPUT_LANGUAGE_SECTION,
+      order: this.getSectionOrder('OUTPUT_LANGUAGE'),
+      text: () => outputLanguageDirective(config.outputLanguage?.get() ?? DEFAULT_OUTPUT_LANGUAGE),
     })
     if (!(config.includeRuntimeContext ?? true)) this.suppressRuntimeContext()
   }

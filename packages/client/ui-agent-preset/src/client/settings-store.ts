@@ -129,7 +129,7 @@ export async function beginRosterRead<S extends { status: string; error: string 
 export function presetOptions(
   presets: readonly { id: string; name?: string; description?: string; broken?: string }[],
 ): AgentPresetOption[] {
-  return presets.filter(preset => preset.broken === undefined).map(preset => ({
+  return presets.filter(preset => preset.broken === undefined && preset.id !== 'chat').map(preset => ({
     id: preset.id,
     ...preset.name === undefined ? {} : { name: preset.name },
     ...preset.description === undefined ? {} : { description: preset.description },

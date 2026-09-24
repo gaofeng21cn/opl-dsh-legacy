@@ -148,3 +148,41 @@ export function SettingsSecretField(props: Pick<SettingsFieldProps, 'id' | 'labe
     </div>
   )
 }
+
+/**
+ * A fixed-choice setting with the same draft and reset behavior as a value field.
+ * @param props - localized labels, choices, draft, and staging actions.
+ * @returns the labelled selection control.
+ */
+export function SettingsChoiceField(props: SettingsFieldProps & {
+  /** Allowed stored values and their localized names. */
+  options: ReadonlyArray<{ value: string; label: string }>
+}) {
+  const messageId = `${props.id}-message`
+  return (
+    <div className={css.field}>
+      <div className={css.head}>
+        <label className={css.label} htmlFor={props.id}>{props.label}</label>
+        {props.overridden ? <span className={css.badges}>
+          <Tag tone="neutral">{props.overriddenLabel}</Tag>
+          <button type="button" className={css.reset} disabled={props.disabled} onClick={props.onReset}>{props.resetLabel}</button>
+        </span> : null}
+      </div>
+      <select id={props.id} className={css.input} value={props.text} disabled={props.disabled}
+        aria-invalid={props.invalid || undefined} aria-describedby={messageId}
+        onChange={(event) => { props.onEdit(event.target.value) }}>
+        {props.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+      <p id={messageId} className={props.invalid ? css.invalid : css.hint}>{props.invalid ? props.invalidLabel : props.hint}</p>
+    </div>
+  )
+}
+
+/**
+ * Explain when a stored configuration change takes effect.
+ * @param props - localized restart guidance.
+ * @returns the notice.
+ */
+export function SettingsRestartNotice(props: { text: string }) {
+  return <p className={css.restart}>{props.text}</p>
+}

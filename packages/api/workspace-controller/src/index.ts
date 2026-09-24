@@ -8,6 +8,7 @@ import { DirectoryPickerController } from './directory-picker.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
 import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
 import type {
+  WorkspaceMoveSessionRequest,
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceCreateRequest,
@@ -149,6 +150,16 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('insertSessionBefore')
   insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue> {
     return this.commands.insertSessionBefore(request)
+  }
+
+  /**
+   * Change project membership while retaining the Session working directory.
+   * @param request - Session identity and optional destination project.
+   * @returns acknowledgement after durable placement.
+   */
+  @Remote('moveSession')
+  moveSession(request: WorkspaceMoveSessionRequest): Promise<{ moved: true }> {
+    return this.commands.moveSession(request)
   }
 
   /**

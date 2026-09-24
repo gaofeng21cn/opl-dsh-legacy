@@ -1,0 +1,151 @@
+# Package OPL DSH for Windows x64 on a real Windows runner.
+#
+# The macOS release lane cannot prove anything about Windows: the outputs are
+# different platform binaries, the runtime preparation downloads a different
+# Node.js archive, and the installer is NSIS rather than a disk image. This
+# workflow is therefore the Windows half of a release — it type-checks, runs the
+# unit tests, packages, and uploads the installable artifacts.
+#
+# The package is deliberately unsigned. No code-signing certificate exists for
+# this distribution, and a build must not pretend otherwise: electron-builder
+# refuses to emit a Windows artifact unless the caller either supplies the
+# signing inputs or explicitly asks for an unsigned build, which is what
+# `--unsigned` does here. Windows SmartScreen warns about an unsigned installer
+# on first launch, and that is the honest outcome until a certificate is
+# configured.
+
+name: Windows desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/llm/llm-opl-gateway/**'
+      - 'packages/client/ui-settings-opl-gateway/**'
+      - 'packages/util/home-paths/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/windows-desktop.yml'
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/llm/llm-opl-gateway/**'
+      - 'packages/client/ui-settings-opl-gateway/**'
+      - 'packages/util/home-paths/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/windows-desktop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The upstream configuration requires a release identity; the OPL
+  # configuration overrides it with its own, so one value serves both lanes.
+  DSH_DESKTOP_APP_ID: com.onepersonlab.dsh
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  package:
+    name: windows x64 / package
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      # The profile links shared packages as directory symlinks; without
+      # Developer Mode a Windows runner cannot create them.
+      - name: Enable Developer Mode (symlink support)
+        shell: pwsh
+        run: >-
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+      # The repository's own gate rather than a hand-picked `tsc -b` list: the
+      # workspace projects are a graph, and type-checking four entry points on
+      # their own reports every intermediate project as "cannot find module".
+      # `typecheck` is `build:lib:host` plus the client project build, which is
+      # what the client half reads its host declarations out of.
+      - name: Type-check the workspace
+        shell: pwsh
+        run: pnpm run typecheck
+      # The upstream `test` script runs the whole suite after building the
+      # native system addon. This lane starts at the desktop shell instead, so
+      # it runs the packages a Windows package can actually change: the shell,
+      # the OPL gateway plugin and its settings page, and the home-path helper
+      # the shell resolves its data directory with.
+      #
+      # `apps/desktop/tests/profile-mcp.spec.ts` creates its own throwaway
+      # profile in a temp directory, so no profile is installed here and none
+      # needs to be. What it does need is the desktop profile's two bundles
+      # (`@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-web-app`) resolvable through
+      # the `dsh` installation anchor, exactly as the shipped application
+      # resolves them. Prove that first: without this step a missing workspace
+      # link would surface as an unexplained "cannot resolve profile bundle"
+      # test failure instead of the install problem it is.
+      - name: Verify the desktop profile bundles resolve
+        shell: pwsh
+        run: |
+          node -e "const fs=require('node:fs'),path=require('node:path'),{createRequire}=require('node:module');const anchor=path.resolve('apps/cli/package.json'),req=createRequire(anchor),missing=[];for(const name of ['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app']){const found=(req.resolve.paths(name)??[]).map(dir=>path.join(dir,name)).find(dir=>fs.existsSync(path.join(dir,'package.json')));if(found===undefined)missing.push(name);else console.log(name+' -> '+found)}if(missing.length>0){console.error('desktop profile bundles are not installed for the dsh anchor: '+missing.join(', '));process.exit(1)}"
+      - name: Unit tests for the desktop and OPL packages
+        shell: pwsh
+        run: >-
+          pnpm exec vitest run
+          apps/desktop
+          packages/llm/llm-opl-gateway
+          packages/client/ui-settings-opl-gateway
+          packages/util/home-paths
+      # Packages the whole repository plus the win-x64 runtime, then emits the
+      # NSIS installer and the portable executable as unsigned artifacts.
+      - name: Prepare WSL2 packaging distribution
+        shell: pwsh
+        run: |
+          wsl --install --distribution Ubuntu --no-launch
+          wsl --distribution Ubuntu --user root --exec sh -lc "apt-get update && apt-get install -y nodejs npm build-essential python3"
+          wsl --distribution Ubuntu --user root --exec node --version
+      - name: Package OPL DSH for Windows x64 (unsigned)
+        shell: pwsh
+        run: pnpm run package:opl:desktop:win:x64:unsigned
+      # `afterPack` already ran this during packaging; repeating it over the
+      # artifacts in the log makes the packaged contents reviewable in the
+      # build output instead of only in a failed build.
+      - name: Verify the packaged application and artifacts
+        shell: pwsh
+        run: |
+          node apps/desktop/opl/verify-opl-package.mjs apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked
+          Get-ChildItem apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts -Filter *.exe | ForEach-Object {
+            node apps/desktop/opl/verify-opl-package.mjs $_.FullName
+          }
+      - name: List produced artifacts
+        shell: pwsh
+        run: Get-ChildItem -Recurse apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts | Select-Object FullName, Length
+      - name: Upload the installer and the portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: opl-dsh-win-x64-unsigned
+          if-no-files-found: error
+          path: |
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.blockmap
+      # The unpacked tree is the fastest way for a reviewer to launch the build
+      # without installing it, and the only way to inspect what the installer
+      # would place on disk.
+      - name: Upload the unpacked application
+        uses: actions/upload-artifact@v4
+        with:
+          name: opl-dsh-win-x64-unpacked
+          if-no-files-found: error
+          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked

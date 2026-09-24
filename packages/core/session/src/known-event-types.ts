@@ -38,6 +38,8 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'feedback/message-delete',
   'feedback/message-put',
   'feedback/record',
+  'file/change',
+  'file/checkpoint',
   'goal/change',
   'hook/invoked',
   'hook/result',

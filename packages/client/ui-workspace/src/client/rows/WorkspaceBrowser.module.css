@@ -443,6 +443,21 @@
   margin-top: 4px;
 }
 
+/* Section heading above a run of rows: "Sessions in projects" over the project
+   groups, "Sessions outside projects" over the headerless flat run. */
+.sectionTitle {
+  padding: 8px 4px 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The outside run follows the project groups, so it keeps the heading gap
+   even when no project row precedes it. */
+.sectionTitle + .groupSection {
+  margin-top: 0;
+}
+
 .listTopDropIndicator,
 .workspaceDropBefore::before,
 .workspaceDropAfter::after {

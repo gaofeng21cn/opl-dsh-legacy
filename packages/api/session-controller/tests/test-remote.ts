@@ -41,6 +41,8 @@ import type {
   SessionControlFrame,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionEditPromptRequest,
+  SessionEditPromptValue,
   SessionForkRequest,
   SessionForkValue,
   SessionFollowFrame,
@@ -56,13 +58,21 @@ import type {
   SessionPromptValue,
   SessionRenameRequest,
   SessionRenameValue,
+  SessionRewindRequest,
+  SessionRewindValue,
   SessionSearchRequest,
   SessionSearchValue,
   SessionSelectModelRequest,
   SessionSelectModelValue,
   SessionProjectionsRequest,
+  SessionPermissionsRequest,
+  SessionPermissionsValue,
+  SessionSelectPermissionsRequest,
+  SessionSelectPermissionsValue,
   SessionUpdateQueueRequest,
   SessionUpdateQueueValue,
+  SessionWaitRequest,
+  SessionWaitValue,
 } from '../src/types.ts'
 
 /** Direct test face matching the generated `ctx.remote.session` unary methods. */
@@ -75,13 +85,21 @@ export interface TestSessionRemote {
   search(request: SessionSearchRequest, signal?: AbortSignal): Promise<RemoteResult<SessionSearchValue>>
   create(request: SessionCreateRequest): Promise<RemoteResult<SessionCreateValue>>
   selectModel(request: SessionSelectModelRequest): Promise<RemoteResult<SessionSelectModelValue>>
+  permissions(request: SessionPermissionsRequest): Promise<RemoteResult<SessionPermissionsValue>>
+  selectPermissions(request: SessionSelectPermissionsRequest): Promise<RemoteResult<SessionSelectPermissionsValue>>
   modelCatalog(): Promise<RemoteResult<ModelCatalog>>
   rename(request: SessionRenameRequest): Promise<RemoteResult<SessionRenameValue>>
   fork(request: SessionForkRequest): Promise<RemoteResult<SessionForkValue>>
   prompt(request: SessionPromptRequest, signal?: AbortSignal): Promise<RemoteResult<SessionPromptValue>>
+  editPrompt(
+    request: SessionEditPromptRequest,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<SessionEditPromptValue>>
+  rewind(request: SessionRewindRequest, signal?: AbortSignal): Promise<RemoteResult<SessionRewindValue>>
   attachment(request: SessionAttachmentRequest): Promise<RemoteResult<SessionAttachmentValue>>
   updateQueue(request: SessionUpdateQueueRequest): Promise<RemoteResult<SessionUpdateQueueValue>>
   cancel(request: SessionCancelRequest): Promise<RemoteResult<SessionCancelValue>>
+  wait(request: SessionWaitRequest, signal?: AbortSignal): Promise<RemoteResult<SessionWaitValue>>
   openWorkspacePath(
     request: SessionOpenWorkspacePathRequest,
     signal?: AbortSignal,
@@ -357,6 +375,8 @@ export function createSessionTestRemote(
     ),
     create: request => remoteResult(() => direct.create(request)),
     selectModel: request => remoteResult(() => direct.selectModel(request)),
+    permissions: request => remoteResult(() => direct.permissions(request)),
+    selectPermissions: request => remoteResult(() => direct.selectPermissions(request)),
     modelCatalog: () => remoteResult(() => direct.modelCatalog()),
     rename: request => remoteResult(() => direct.rename(request)),
     fork: request => remoteResult(() => direct.fork(request)),
@@ -364,9 +384,21 @@ export function createSessionTestRemote(
       () => direct.prompt(request, signal),
       signal,
     ),
+    editPrompt: (request, signal = new AbortController().signal) => remoteResult(
+      () => direct.editPrompt(request, signal),
+      signal,
+    ),
+    rewind: (request, signal = new AbortController().signal) => remoteResult(
+      () => direct.rewind(request, signal),
+      signal,
+    ),
     attachment: request => remoteResult(() => direct.attachment(request)),
     updateQueue: request => remoteResult(() => direct.updateQueue(request)),
     cancel: request => remoteResult(() => direct.cancel(request)),
+    wait: (request, signal = new AbortController().signal) => remoteResult(
+      () => direct.wait(request, signal),
+      signal,
+    ),
     openWorkspacePath: (request, signal = new AbortController().signal) => remoteResult(
       () => direct.openWorkspacePath(request, signal),
       signal,

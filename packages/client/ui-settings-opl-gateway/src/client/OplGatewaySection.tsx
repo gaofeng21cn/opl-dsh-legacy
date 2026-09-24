@@ -30,6 +30,9 @@ export type OplGatewaySectionProps =
   & PropsLocale<'settings.oplGateway'>
   & InjectFace<OplGatewaySectionInjected>
 
+/** The page's locale seat, threaded into the formatters so every label stays dictionary-owned. */
+type Translate = OplGatewaySectionProps['t']
+
 /** Render a currency amount with its own currency and grouping, or a dash. */
 function money(amount: number | null | undefined, currency: string): string {
   if (amount === null || amount === undefined) return '—'
@@ -48,18 +51,19 @@ function tokens(amount: number | null | undefined): string {
  * clock time makes them compute it. The exact instant stays available as the
  * element's title for anyone who needs it.
  * @param observedAt - ISO timestamp OPL recorded.
+ * @param t - the page's locale seat, so the age reads in the active language.
  * @param now - current time in ms, injectable for tests.
  * @returns a short age label, or the original text if unparsable.
  */
-export function observedAge(observedAt: string, now: number = Date.now()): string {
+export function observedAge(observedAt: string, t: Translate, now: number = Date.now()): string {
   const parsed = new Date(observedAt)
   if (Number.isNaN(parsed.getTime())) return observedAt
   const minutes = Math.max(0, Math.round((now - parsed.getTime()) / 60_000))
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
+  if (minutes < 1) return t('age.now')
+  if (minutes < 60) return t('age.ago', { t: t('age.minutes', { n: minutes }) })
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  return `${Math.round(hours / 24)} 天前`
+  if (hours < 24) return t('age.ago', { t: t('age.hours', { n: hours }) })
+  return t('age.ago', { t: t('age.days', { n: Math.round(hours / 24) }) })
 }
 
 /**
@@ -223,7 +227,7 @@ export function OplGatewaySection(props: OplGatewaySectionProps) {
                     ? null
                     : (
                       <p className={css.muted} title={observedLabel(account.observedAt)}>
-                        {t('observedAt', { time: observedAge(account.observedAt) })}
+                        {t('observedAt', { time: observedAge(account.observedAt, t) })}
                         {account.stale === true ? ` · ${t('observedStale')}` : ''}
                       </p>
                     )}

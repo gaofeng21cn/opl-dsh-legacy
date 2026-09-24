@@ -119,6 +119,12 @@ export interface WorkspaceInsertSessionBeforeRequest {
   readonly beforeSessionId?: SessionId
 }
 
+/** Move sidebar ownership while preserving the Session working directory. */
+export interface WorkspaceMoveSessionRequest {
+  readonly sessionId: SessionId
+  readonly workspaceId?: WorkspaceId
+}
+
 /** Session requested for archival from Workspace grouping surfaces. */
 export interface WorkspaceArchiveSessionRequest {
   readonly sessionId: SessionId

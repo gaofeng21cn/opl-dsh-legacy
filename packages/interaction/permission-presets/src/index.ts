@@ -72,6 +72,16 @@ export interface PresetSpec {
   description?: string
 }
 
+/** One Session's effective permission: resolved preset name and both knob values. */
+export interface EffectivePermission {
+  /** The effective preset key, or {@link CUSTOM_PRESET} when no preset matches. */
+  preset: string
+  /** The sandbox mode the next confined call resolves. */
+  sandbox: SandboxMode
+  /** The approval policy the next approval request resolves. */
+  approval: ApprovalPolicy
+}
+
 /**
  * Returned when effective knob values match no available preset. Clients may
  * show it as the current value, but it is never a switch target or event payload.
@@ -337,6 +347,23 @@ export class PermissionPresetService extends TypertRemoteService {
    */
   current(session: Session): string {
     return this.derive(this.permissionState(session))
+  }
+
+  /**
+   * Read the effective permission of one Session: the preset name plus the
+   * sandbox mode and approval policy that execution and approval actually
+   * resolve. A knob with no recorded override reports the deployment default,
+   * which is the value a confined call would use right now.
+   * @param session - the session whose effective permission is read.
+   * @returns the effective preset name and both resolved knob values.
+   */
+  permissionsOf(session: Session): EffectivePermission {
+    const state = this.permissionState(session)
+    return {
+      preset: this.derive(state),
+      sandbox: state.sandbox ?? this.ctx.shell.sandboxMode as SandboxMode,
+      approval: state.approval ?? this.ctx.approval.config.policy ?? 'ask',
+    }
   }
 
   /** Resolve the preset for one folded knob state (the shared mathematics of `current` and the projection unit). */

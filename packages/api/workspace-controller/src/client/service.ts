@@ -47,6 +47,8 @@ export interface WorkspaceSource {
 export interface IWorkspaces {
   /** Host-authoritative Workspace rows, order, archive set, and follow lifecycle. */
   readonly list: WorkspaceSource
+  /** Move project ownership without changing the execution directory. */
+  moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void>
   /**
    * Register an existing path as a Workspace.
    * @param input - Host create payload.
@@ -119,6 +121,7 @@ export interface IWorkspaces {
 export class WorkspaceController extends Service implements IWorkspaces {
   readonly list: WorkspaceSource
 
+
   /**
    * @param ctx - Client root Context.
    * @param model - Remote-backed Workspace state model.
@@ -126,6 +129,11 @@ export class WorkspaceController extends Service implements IWorkspaces {
   constructor(ctx: Context, private readonly model: ClientWorkspaceModel) {
     super(ctx, 'workspaces')
     this.list = model
+  }
+
+  async moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void> {
+    const result = await this.model.moveSession(sessionId, workspaceId)
+    if (!result.ok) throw commandError('session move', result.error)
   }
 
   async create(input: { path: string }): Promise<WorkspaceView> {

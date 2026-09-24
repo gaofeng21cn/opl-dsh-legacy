@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
@@ -41,9 +44,42 @@ async function baseContext(): Promise<Context> {
 }
 
 describe('Session creation failures', () => {
+  it('allocates distinct durable working directories without creating projects', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-independent-'))
+    const ctx = await baseContext()
+    ctx.provide('workspaceRegistry', {
+      get: () => undefined,
+      list: () => [],
+      moveSession: () => Promise.resolve(),
+    } as never)
+    const ensureSession = vi.fn((sessionId: SessionId, cwd: string) => {
+      const session = ctx.sessions.get(sessionId) ?? ctx.sessions.create(sessionId, { meta: { cwd } })
+      return Promise.resolve({ id: sessionId, session } as Agent)
+    })
+    try {
+      const controller = new SessionCommandController(ctx, controllerAgents({ ensureSession }), '/default', root)
+      const first = await controller.create({ standalone: true })
+      const second = await controller.create({ standalone: true })
+      const cwd = ctx.sessions.get(first.sessionId)!.header.cwd!
+      expect(ctx.sessions.get(second.sessionId)!.header.cwd).not.toBe(cwd)
+      await writeFile(join(cwd, 'relative.txt'), 'kept')
+      await controller.create({ standalone: true, sessionId: first.sessionId })
+      expect(await readFile(join(cwd, 'relative.txt'), 'utf8')).toBe('kept')
+      expect(ctx.workspaceRegistry.list()).toEqual([])
+      await expectFailure(controller.create({ standalone: true, cwd: '/conflict' }), 'gateway/bad-request')
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('mints an identity with the default cwd when no explicit target is supplied', async () => {
     const ctx = await baseContext()
-    ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [] } as never)
+    ctx.provide('workspaceRegistry', {
+      get: () => undefined,
+      list: () => [],
+      moveSession: () => Promise.resolve(),
+    } as never)
     const ensureSession = vi.fn((sessionId: SessionId, cwd: string) => {
       const session = ctx.sessions.create(sessionId, { meta: { cwd } })
       return Promise.resolve({ id: sessionId, session } as Agent)
@@ -258,7 +294,7 @@ describe('Session fork failures', () => {
       sessionIds: [source.id],
       attachSession: () => Promise.reject(new Error('workspace write failed')),
     } as unknown as Workspace
-    ctx.provide('workspaceRegistry', { list: () => [workspace] } as never)
+    ctx.provide('workspaceRegistry', { list: () => [workspace], moveSession: () => Promise.reject(new Error('workspace write failed')) } as never)
     const create = vi.spyOn(ctx.agents, 'create').mockImplementation(
       (options: CreateAgentOptions) => Promise.resolve(resolvedHandle(ctx, options.sessionId)),
     )

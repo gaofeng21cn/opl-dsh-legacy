@@ -100,6 +100,12 @@ Files 模式通过 `maxRequestFilesBytes` 与 `maxImagesPerRequest` 限制保留
 
 `reasoningEffort` 选择公布的默认值。当部署策略允许 thinking 时，确切模型元数据会按顺序公开 `off`、`low`、`high` 与 `max` 强度及选择指引。`low`、`high` 与 `max` 启用 thinking，并以 `output_config.effort` 序列化，适配器自有的 `off` 则发送 `thinking.type: disabled`。不支持的取值会在网络 I/O 前以 `UNSUPPORTED_REASONING_EFFORT` 失败；`thinking: disabled` 会在插件加载时拒绝任何非 `off` 强度。`purpose: 'session-title'` 的请求会强制关闭 thinking，把有界输出留给可见标题文本。适配器转发显式 `temperature`；DeepSeek 在启用 thinking 时接受该参数，但忽略其值。
 
+### 协议诊断
+
+`onProtocolAnomaly` 对照转换前的原生 Messages 事件与转换后的 Harness 块，报告可见文本中的控制标记族、思考与文本的映射不一致，以及缺失的结构化工具调用。报告仅包含字段与字符计数、标记族名称、停止原因、完整性及提供方请求 ID，不包含消息内容、思考签名、凭据或原始 SSE。回调失败不改变生成结果。仅出现在思考中的标记不会触发报告，文本中的工具语法也不会被执行。
+
+将 `DSH_REASONING_TRACE_DIR` 设为绝对目录，可记录本机第 2 版 Messages 诊断。每次请求以独占方式写入 JSON 文件，包含原始思考、转换后推理和已序列化助手历史的 UTF-16 SHA-256 指纹与计数，以及工具 ID 和请求 ID 的哈希。该诊断须显式开启，保留原生思考回放，不记录消息文本、签名或凭据。文件系统失败不会中断生成。
+
 ### 动态配置
 
 连接选项在每次操作开始时从 volatile Config 引用捕获。Config 验证在表单持久化前拒绝无效候选值。凭据使用与端点、图像及 Files 策略、空闲预算相同的快照解析。附件服务在请求时解析。

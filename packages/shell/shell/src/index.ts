@@ -10,6 +10,39 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { ShellExecRequest, ShellExecSpec, ShellExecution } from './types.ts'
 
 export { DSH_ENV_PREFIX } from './types.ts'
+export {
+  AGENT_SHELL_KINDS,
+  assertGitBashConfinement,
+  AGENT_SHELL_SETTINGS_FIELDS,
+  DEFAULT_AGENT_SHELL,
+  assertAgentShellSettings,
+  candidateGitBashPaths,
+  gitForWindowsRoot,
+  isWslBashLauncher,
+  probeGitBash,
+  resolveGitBash,
+  resolveGitBashPath,
+} from './agent-shell.ts'
+export type { AgentShellDialect, AgentShellKind, AgentShellSettings } from './agent-shell.ts'
+export {
+  GIT_BASH_PROBE_DIMENSIONS,
+  brokerAbsolutePath,
+  decideGitBashConfinement,
+  guardGitBashLaunch,
+  isWithinWindowsPathKey,
+  msysPathToWindows,
+  windowsPathKey,
+  windowsPathToMsys,
+} from './git-bash-broker.ts'
+export type {
+  GitBashDecision,
+  GitBashDecisionRequest,
+  GitBashLaunchGuard,
+  GitBashLaunchGuardRequest,
+  GitBashMounts,
+  GitBashProbeDimension,
+  GitBashProbeReport,
+} from './git-bash-broker.ts'
 export type {
   ShellExecRequest,
   ShellExecSpec,

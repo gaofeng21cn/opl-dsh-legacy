@@ -8,6 +8,8 @@ Status: implemented
 
 [Electron 运行时决策](2026-09-11-desktop-electron-node-runtime.zh.md)替代独立上游 Node 可执行文件的选择；本文其他决策仍然适用。
 
+[OPL 搜索与桌面控制决策](../feature/2026-09-21-opl-search-and-desktop-control.zh.md) 针对鉴权自动化部分替代了不监听端口的限制；渲染进程传输与 profile 归属保持不变。
+
 ## 问题
 
 DeepSeek Harness 需要一个复用 Web UI 的 Electron 桌面应用。该应用无需系统 Node.js 或 pnpm 即可工作，通过应用内置 pnpm 安装 dsh 与桌面插件，并通过一个面向用户的流程更新完整桌面发布。

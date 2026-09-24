@@ -14,12 +14,24 @@ import {
   powerMonitor,
   nativeTheme,
   net,
+  Notification,
   protocol,
   session,
   shell,
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions,
 } from 'electron'
+import { resolveDesktopDshHome } from './dsh-home.ts'
+import { type ExecutionEnvironment, executionEnvironmentId, resolveRunningEnvironment } from './execution-environment.ts'
+import { readStoredEnvironment, writeStoredEnvironment } from './execution-environment-store.ts'
+import { applyDesktopPreferencesUpdate, readDesktopPreferences, writeDesktopPreferences } from './desktop-preferences.ts'
+import { closeDecisionFromResult, desktopClosePrompt } from './close-prompt.ts'
+import { createDesktopTray, type DesktopTray } from './tray.ts'
+import { DesktopNotificationCenter, DesktopNotificationLifetime, parseDesktopNotificationReport } from './notifications.ts'
+import { resolveDesktopAppId } from './app-identity.ts'
+import { assertWslPayloadPresent, listWslDistributions, probeWslDistribution, resolveWslLaunchPlan, selectWslDistribution, wslLauncherEnvironment, wslPayloadRoot } from './wsl.ts'
+import { WslDesktopHost } from './wsl-host.ts'
+import type { DesktopEnvironmentState, DesktopWslDistribution } from './ipc.ts'
 import { resolveDesktopPaths } from './paths.ts'
 import { DesktopProjectManager } from './project-manager.ts'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
@@ -126,6 +138,9 @@ interface RuntimeResources {
   readonly pnpm: string
   readonly dsh: string
 }
+
+/** Binding file the Linux Host publishes and this shell reads. */
+const WSL_BINDING_FILENAME = 'wsl-transport.json'
 
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
@@ -295,7 +310,20 @@ async function main(): Promise<void> {
   const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
   const resources = runtimeResources()
-  const paths = resolveDesktopPaths()
+  const dshHome = resolveDesktopDshHome({ platform: process.platform, env: process.env, userDataPath: app.getPath('userData') })
+  process.env.DSH_HOME = dshHome
+  const paths = resolveDesktopPaths(dshHome)
+  const stateRoot = join(dshHome, 'desktop')
+  const runningEnvironment = resolveRunningEnvironment(process.env, readStoredEnvironment(stateRoot))
+  let selectedEnvironment: ExecutionEnvironment = runningEnvironment
+  let preferences = readDesktopPreferences(stateRoot)
+  let tray: DesktopTray | undefined
+  let closePrompt: Promise<void> | undefined
+  const appManifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
+  if (process.platform === 'win32') {
+    const appId = resolveDesktopAppId({ packaged: app.isPackaged, environment: process.env, manifest: appManifest })
+    if (appId !== undefined) app.setAppUserModelId(appId)
+  }
   const development = !app.isPackaged
   const primaryRuntime = development
     ? developmentPrimaryRuntime()
@@ -379,13 +407,22 @@ async function main(): Promise<void> {
     () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US')
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
-    const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, process.env, onFailure,
-      primaryRuntime,
-      resources, (next) => { platformView.setSession(next) })
+    const createHost = (): DesktopHostProcess | WslDesktopHost => {
+      if (runningEnvironment.kind === 'windows-native') {
+        return new DesktopHostProcess(resources.node, resources.dsh, activeProject,
+          hostInspectPort, process.env, onFailure, primaryRuntime,
+          resources, (next) => { platformView.setSession(next) })
+      }
+      if (process.platform !== 'win32') throw new Error('dsh desktop: WSL2 requires Windows')
+      assertWslPayloadPresent(wslPayloadRoot(process.resourcesPath))
+      const plan = resolveWslLaunchPlan({ environment: runningEnvironment,
+        payloadRoot: wslPayloadRoot(process.resourcesPath), bindingFile: join(stateRoot, WSL_BINDING_FILENAME) })
+      return new WslDesktopHost(plan.invocation, plan.bindingFile, wslLauncherEnvironment(process.env), {}, onFailure)
+    }
+    const host = createHost()
     return {
       start: async () => {
-        const ready = await host.start()
+        const ready = host instanceof WslDesktopHost ? await host.ready() : await host.start()
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
@@ -477,6 +514,38 @@ async function main(): Promise<void> {
     return state
   }
 
+  const environmentState = async (): Promise<DesktopEnvironmentState> => {
+    const restartRequired = executionEnvironmentId(runningEnvironment) !== executionEnvironmentId(selectedEnvironment)
+    const base = {
+      current: runningEnvironment.kind,
+      ...(runningEnvironment.kind === 'wsl2' ? { currentDistro: runningEnvironment.distro } : {}),
+      selected: selectedEnvironment.kind,
+      ...(selectedEnvironment.kind === 'wsl2' ? { selectedDistro: selectedEnvironment.distro } : {}),
+      restartRequired,
+    } as const
+    if (process.platform !== 'win32') {
+      return { ...base, distributions: [], unavailable: 'not-windows' }
+    }
+    const installed = await listWslDistributions()
+    if (installed.length === 0) return { ...base, distributions: [], unavailable: 'not-installed' }
+    const probed = await Promise.all(installed.map(async (entry): Promise<DesktopWslDistribution> => {
+      if (entry.version !== 2) return { name: entry.name, isDefault: entry.isDefault, problem: 'not-wsl2' }
+      const result = await probeWslDistribution(entry.name)
+      return {
+        name: entry.name,
+        isDefault: entry.isDefault,
+        ...(result.nodeVersion === undefined ? {} : { nodeVersion: result.nodeVersion }),
+        ...(result.problem === undefined ? {} : { problem: result.problem }),
+      }
+    }))
+    const usable = probed.filter(entry => entry.problem === undefined)
+    return {
+      ...base,
+      distributions: probed,
+      ...(usable.length === 0 ? { unavailable: 'no-usable-distribution' } : {}),
+    }
+  }
+
   const readWelcomeState = async () => {
     if (backend.host === undefined || welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
     return welcomeBackend.read()
@@ -487,7 +556,7 @@ async function main(): Promise<void> {
     startup ??= (async () => {
       await navigateMain(applicationUrl)
       await backend.start(async () => {
-        await manager.applyRelease()
+        if (runningEnvironment.kind === 'windows-native') await manager.applyRelease()
       })
       if (backend.host !== undefined) await openInitialWindow()
       if (backend.host !== undefined) updateJournal?.action('workspace-ready')
@@ -659,6 +728,7 @@ async function main(): Promise<void> {
     platformView.notifyLocaleChanged()
     windowsLanguage = locale.id
     installMenu()
+    tray?.refresh()
   })
   ipcMain.handle(DESKTOP_IPC.updatesStatus, (event) => {
     assertProductSender(event)
@@ -667,6 +737,69 @@ async function main(): Promise<void> {
   ipcMain.handle(DESKTOP_IPC.updatesOpen, async (event) => {
     assertProductSender(event)
     await openUpdatePrompt()
+  })
+  ipcMain.handle(DESKTOP_IPC.environmentStatus, async (event) => {
+    assertProductSender(event)
+    return environmentState()
+  })
+  ipcMain.handle(DESKTOP_IPC.environmentSelect, async (event, selection: unknown) => {
+    assertProductSender(event)
+    if (typeof selection !== 'object' || selection === null) {
+      throw new Error('dsh desktop: invalid execution environment selection')
+    }
+    // The renderer is a separate process, so the value is validated before it
+    // is treated as a selection rather than cast into one.
+    const raw = selection as Record<string, unknown>
+    if (raw.environment === 'windows-native') {
+      selectedEnvironment = { kind: 'windows-native' }
+    } else if (raw.environment !== 'wsl2') {
+      throw new Error(`dsh desktop: unknown execution environment ${JSON.stringify(raw.environment)}`)
+    } else {
+      // Only a distribution that proved usable may be selected: persisting an
+      // unusable one would break the NEXT launch, and the running shell could
+      // not then report why. The choice is checked against the same probe the
+      // settings surface rendered, so the two can never disagree.
+      const requested = typeof raw.distro === 'string' ? raw.distro : undefined
+      const state = await environmentState()
+      const usable = state.distributions.filter(entry => entry.problem === undefined)
+      if (usable.length === 0) {
+        throw new Error(locale.messages.environmentUnavailableNoUsable.replace('{detail}', locale.messages.environmentProblemUnreachable))
+      }
+      const chosen = selectWslDistribution(
+        usable.map(entry => ({ name: entry.name, version: 2, isDefault: entry.isDefault })),
+        requested,
+      )
+      selectedEnvironment = { kind: 'wsl2', distro: chosen.name }
+    }
+    writeStoredEnvironment(stateRoot, selectedEnvironment)
+    return environmentState()
+  })
+  ipcMain.handle(DESKTOP_IPC.preferencesGet, (event) => {
+    assertProductSender(event)
+    return preferences
+  })
+  ipcMain.handle(DESKTOP_IPC.preferencesSet, (event, update: unknown) => {
+    assertProductSender(event)
+    if (typeof update !== 'object' || update === null) {
+      throw new Error('dsh desktop: invalid preferences update')
+    }
+    const raw = update as { notificationsEnabled?: unknown; closeBehavior?: unknown }
+    preferences = applyDesktopPreferencesUpdate(preferences, raw)
+    writeDesktopPreferences(stateRoot, preferences)
+    notificationCenter.setEnabled(preferences.notificationsEnabled)
+    // The close decision reads the same value, so a change applies to the next
+    // close without a restart.
+    publishPreferences()
+    return preferences
+  })
+  ipcMain.handle(DESKTOP_IPC.notificationsReport, (event, report: unknown) => {
+    assertDesktopSender(event, ['app'])
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) {
+      throw new Error('dsh desktop: task notifications require the primary application frame')
+    }
+    const parsed = parseDesktopNotificationReport(report)
+    if (parsed === undefined) throw new Error('dsh desktop: invalid task notification report')
+    notificationCenter.report(parsed)
   })
 
   let promptOperation: Promise<void> | undefined
@@ -902,6 +1035,77 @@ async function main(): Promise<void> {
     })
   }
 
+  const publishPreferences = (): void => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send(DESKTOP_IPC.preferencesState, preferences)
+    }
+  }
+  /** The session a notification click must open, held until a document can take it. */
+  let pendingActivation: string | undefined
+  const deliverActivation = (): void => {
+    const sessionId = pendingActivation
+    const window = mainWindow
+    if (sessionId === undefined || window === undefined || window.isDestroyed()) return
+    // Only the application document owns session navigation; a startup or
+    // emergency document has no session list to open into.
+    if (!window.webContents.getURL().startsWith(applicationUrl)) return
+    pendingActivation = undefined
+    window.webContents.send(DESKTOP_IPC.notificationsActivate, sessionId)
+  }
+  /** Raised notifications the shell keeps referenced until they settle. */
+  const notificationLifetime = new DesktopNotificationLifetime()
+  const notificationCenter = new DesktopNotificationCenter({
+    ports: {
+      isSupported: () => Notification.isSupported(),
+      // A focused window already shows the state the notification would carry.
+      isForeground: () => {
+        const window = mainWindow
+        return window !== undefined && !window.isDestroyed() && window.isFocused()
+      },
+      show({ title, body }, onActivate) {
+        const notification = new Notification({ title, body })
+        notificationLifetime.hold(notification, onActivate)
+        notification.show()
+      },
+    },
+    messages: () => locale.messages,
+    onActivate: (sessionId) => {
+      pendingActivation = sessionId
+      focusPrimaryWindow()
+      deliverActivation()
+    },
+  })
+  notificationCenter.setEnabled(preferences.notificationsEnabled)
+
+  const hideMainWindow = (): void => {
+    const window = mainWindow
+    if (window === undefined || window.isDestroyed()) return
+    window.hide()
+  }
+
+  /**
+   * Answer one close with the tray or the exit path.
+   *
+   * The remembered answer is written immediately, so a choice made here also
+   * reaches the settings surface without a restart. The remembered behavior is
+   * a preference, never a lock: the settings surface can restore the prompt.
+   */
+  const requestCloseDecision = async (): Promise<void> => {
+    const window = mainWindow
+    const prompt = desktopClosePrompt(locale.messages)
+    const result = window === undefined || window.isDestroyed()
+      ? await dialog.showMessageBox(prompt)
+      : await dialog.showMessageBox(window, prompt)
+    const decision = closeDecisionFromResult(result)
+    if (decision.remember) {
+      preferences = { ...preferences, closeBehavior: decision.action === 'tray' ? 'tray' : 'exit' }
+      writeDesktopPreferences(stateRoot, preferences)
+      publishPreferences()
+    }
+    if (decision.action === 'tray') hideMainWindow()
+    else app.quit()
+  }
+
   const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true)
     mainWindow = window
@@ -917,6 +1121,31 @@ async function main(): Promise<void> {
         reportFatal(new Error(`Desktop page failed to load: ${url} (${String(code)}: ${description})`), 'renderer')
       }
     })
+    // Closing the primary window is the shell's decision, not the renderer's:
+    // a tray answer hides the window while the Host and its tasks keep running,
+    // and an exit answer goes through the single quit path that stops them.
+    // Without a tray there is no way back to a hidden window, so the historical
+    // close-means-quit behavior stays in force.
+    window.on('close', (event) => {
+      if (quitting || shellInstallerOwnsQuit || tray === undefined) return
+      event.preventDefault()
+      if (preferences.closeBehavior === 'exit') {
+        app.quit()
+        return
+      }
+      if (preferences.closeBehavior === 'tray') {
+        hideMainWindow()
+        return
+      }
+      // One prompt per close request: a second click cannot stack dialogs.
+      if (closePrompt !== undefined) return
+      closePrompt = requestCloseDecision().catch((error: unknown) => {
+        console.error('desktop close prompt failed', error)
+      }).finally(() => { closePrompt = undefined })
+    })
+    // A notification click may arrive while the window is still loading the
+    // application document; the pending identity is delivered once it is there.
+    window.webContents.on('did-finish-load', () => { deliverActivation() })
     window.webContents.on('preload-error', (_event, _path, error) => {
       if (!quitting && !window.isDestroyed()) reportFatal(error, 'renderer')
     })
@@ -1022,6 +1251,16 @@ async function main(): Promise<void> {
     window.show()
     window.focus()
   }
+  // The tray is the way back to a window the close prompt hid. Electron exposes
+  // the same Tray API on Windows, macOS, and Linux; a platform without a usable
+  // notification area is handled by createDesktopTray's undefined result and
+  // keeps the close path on its safe exit behavior.
+  tray = process.platform === 'darwin' ? undefined : createDesktopTray({
+    iconPath: join(app.getAppPath(), 'renderer', 'tray-icon.png'),
+    messages: () => locale.messages,
+    onOpen: () => { focusPrimaryWindow() },
+    onExit: () => { app.quit() },
+  })
 
   if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient('dsh')
   app.on('open-url', (event, url) => {
@@ -1034,6 +1273,13 @@ async function main(): Promise<void> {
   })
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
+  })
+  app.on('will-quit', () => {
+    // The icon must leave the notification area before the process does, or
+    // Windows keeps drawing it until the user hovers over it.
+    tray?.dispose()
+    tray = undefined
+    notificationLifetime.releaseAll()
   })
   app.on('before-quit', (event) => {
     shuttingDown = true

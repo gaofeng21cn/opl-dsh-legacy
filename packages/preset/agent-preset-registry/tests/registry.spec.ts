@@ -8,6 +8,13 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentPresets from '../src/index.ts'
 import type { Context } from '@deepseek-ai/cordis'
+import { readFile } from 'node:fs/promises'
+import { load } from 'js-yaml'
+import * as Persona from '@deepseek-ai/dsh-persona'
+import BasicCompaction from '@deepseek-ai/dsh-compaction-basic'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { PresetDefinition } from '../src/index.ts'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -355,4 +362,29 @@ it('reports every process-global service published by a preset', async () => {
   } }
   await declare(ctx, { id: 'leaks', plugins: [{ name: 'cordis:leaks' }] })
   expect((await ctx.agentPresets.resolve('leaks')).broken).toContain('presetAlpha, presetZulu')
+})
+
+
+it('mounts the shipped plain chat declaration without tools and refuses escalation', async () => {
+  const ctx = await setup()
+  await ctx.plugin(TokenMeter)
+  ctx.loader.builtins['chat-persona'] = Persona
+  ctx.loader.builtins['chat-compaction'] = BasicCompaction
+  const yaml = (await readFile(new URL('../../../bundle/web-app/presets/chat.patch.yml', import.meta.url), 'utf8'))
+    .replace('@deepseek-ai/dsh-persona', 'cordis:chat-persona')
+    .replace('@deepseek-ai/dsh-compaction-basic', 'cordis:chat-compaction')
+  const patch = load(yaml) as [{ insert: [{ config: PresetDefinition }] }]
+  await declare(ctx, patch[0].insert[0].config)
+  await declare(ctx, contribution('standard'))
+  const project = await agentOn(ctx, 'chat-project', 'standard')
+  const chat = await agentOn(ctx, 'plain-chat', 'chat')
+  expect(ctx.tools.schemas(project).map(row => row.name)).toEqual(['standard'])
+  expect(ctx.tools.schemas(chat)).toEqual([])
+  const result = await ctx.tools.execute({ agent: chat, signal: new AbortController().signal, callId: ToolCallId('denied'), name: 'standard', arguments: {} })
+  expect(result.isError).toBe(true)
+  await expect(ctx.agentPresets.select(chat, 'standard')).rejects.toMatchObject({ code: 'agent-preset/invalid' })
+  expect(ctx.tools.schemas(chat)).toEqual([])
+  const assembly = await ctx.systemPrompt.assemble(assembleContextFor(chat))
+  expect(assembly.tools).toEqual([])
+  expect(assembly.sections).toMatchSnapshot()
 })

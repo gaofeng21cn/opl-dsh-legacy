@@ -16,6 +16,7 @@ import Loader, { type Entry, type EntryOptions } from '@deepseek-ai/cordis-plugi
 import Include, { applyEntryPatches, entryListSchema, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { readAgentShellStartup, type AgentShellSelection } from './agent-shell-selection.ts'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 export { readProfilePatches, resolveTelemetryPatch, type ProfileContext, type ProfilePnpmInvocation } from './profile-context.ts'
 export { sanitizeProfile } from './profile-sanitize.ts'
@@ -41,6 +42,13 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Harness-home path resolver available to Loader `!!js` config expressions. */
     dshHomePath?: typeof dshHomePath
+    /**
+     * Stored Agent command shell, available to Loader `!!js` config
+     * expressions that decide which shell stack a composition mounts.
+     */
+    dshAgentShell?: () => AgentShellSelection
+    /** Startup Git Bash executable for presets mounted later in this process. */
+    dshGitBashPath?: () => string | undefined
   }
 
   interface Events {
@@ -85,6 +93,14 @@ export {
   type PluginPackage,
   type PluginPackagesConfig,
 } from './profile-resolution/service.ts'
+export {
+  AGENT_SHELL_SELECTIONS,
+  DEFAULT_AGENT_SHELL_SELECTION,
+  readAgentShellSelection,
+  readAgentShellStartup,
+  type AgentShellStartup,
+  type AgentShellSelection,
+} from './agent-shell-selection.ts'
 
 /**
  * Resolve the config to boot. Replay swaps a `cordis.yml` basename for
@@ -998,6 +1014,9 @@ export async function boot(
     }, { global: true, prepend: true })
     await ctx.plugin(Loader)
     await prepare?.(ctx)
+    const shellStartup = readAgentShellStartup()
+    ctx.provide('dshAgentShell', () => shellStartup.agentShell)
+    ctx.provide('dshGitBashPath', () => shellStartup.gitBashPath)
     stage = 'plugin tree failed to load'
     await mountRootInclude(ctx, absoluteConfigPath, patches, bareModuleBaseUrl, binName)
     // A surface can finish and dispose the whole tree while startup is still

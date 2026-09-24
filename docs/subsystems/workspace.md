@@ -119,7 +119,7 @@ Ownership truth is the record's ordered `sessionIds`, never derived from session
 
 `WorkspaceRegistry` ([signatures](#ctxworkspaceregistry--workspaceregistry)) owns registration and resolution. `create(path, title?)` requires a fully qualified path, canonicalizes it, rejects a nonexistent path (the original `ENOENT`) or a non-directory, returns the existing entity unchanged when the canonical path is already owned, and otherwise creates a record with `title ?? defaultWorkspaceTitle(path)` prepended to the durable registry order (different canonical paths may share a display title, and a path with no final segment uses its root spelling). `get(id)` and the ordered `list()` are synchronous cache reads; `resolveByPath(path)` applies the same fully qualified realpath canon without creating. `delete(id)` removes only the registration, order entry, and session account — the directory, user files, live sessions, and persisted logs are never touched, so those sessions become Ungrouped ([decision](../../.agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.md)); unknown ids return `false`. Create and delete persist a pending-mutation marker before their two writes (record + order) can diverge; startup resolves exactly the marked mutation — by deleting the marked table row, which completes an interrupted delete and rolls back an interrupted create (the registration is re-creatable, so rollback is the safe direction) — and an unmarked order/table mismatch fails loud as corruption.
 
-Sessions get their cwd at create time from whoever creates them, not from this registry — the API gateway resolves a new session's cwd from the chosen workspace's `path` (falling back to an explicit or default cwd), creates the session so the cwd lands in its immutable [`SessionHeader`](persistence.md#sessionheader--metadata-beside-the-log), then calls `attachSession`, which re-validates that stored header cwd against the workspace path. On the first successful start, the registry bootstraps history from persisted headers alone (`id`, `cwd`, `createdAt` — never event bodies), grouping sessions with a valid canonical cwd into per-directory workspaces, newest first; the initialized marker is written last so an interrupted bootstrap resumes safely. The bootstrap is one-time: cwd-less legacy sessions stay Ungrouped, and sessions created afterwards join a workspace only through `attachSession`.
+Sessions get their cwd at create time from whoever creates them, not from this registry — the API gateway resolves a new session's cwd from the chosen workspace's `path` (falling back to an explicit or default cwd), creates the session so the cwd lands in its immutable [`SessionHeader`](persistence.md#sessionheader--metadata-beside-the-log), then calls `attachSession`, which re-validates that stored header cwd against the workspace path. A caller-supplied `cwd` that a registered workspace already owns joins it the same way; an unowned, non-directory, or unresolvable `cwd` leaves the session outside projects without creating one. On the first successful start, the registry bootstraps history from persisted headers alone (`id`, `cwd`, `createdAt` — never event bodies), grouping sessions with a valid canonical cwd into per-directory workspaces, newest first; the initialized marker is written last so an interrupted bootstrap resumes safely. Every later start re-applies the same directory rule rather than consuming it once: each session whose canonical cwd names a registered workspace path and that no explicit `sessionPlacements` entry covers is attached to that workspace, oldest first so the newest lands at the head, which is how sessions produced outside this create-then-attach flow join. That pass is idempotent — an already-accounted session writes nothing — and per-session atomic: one that cannot attach is logged, left outside, and retried on the next start ([decision](../../.agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.md)).
 
 ## Default Workspace initialization
 
@@ -375,6 +375,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('insertSessionBefore') insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue>
 
 /**
+ * Change project membership while retaining the Session working directory.
+ * @param request - Session identity and optional destination project.
+ * @returns acknowledgement after durable placement.
+ */
+@Remote('moveSession') moveSession(request: WorkspaceMoveSessionRequest): Promise<{ moved: true }>
+
+/**
  * Hide one known Session from Workspace grouping surfaces.
  * @param request - Session identity to archive.
  * @returns the complete resulting archive set.
@@ -595,6 +602,22 @@ unpinSession(sessionId: SessionId): Promise<void>
  * @returns the workspace owning the canonical path, when one exists.
  */
 async resolveByPath(path: string): Promise<Workspace | undefined>
+
+/**
+ * Resolve explicit sidebar placement over the original directory account.
+ * @param id - destination project.
+ * @param sessions - original directory-matching members.
+ * @returns visible members, including sessions whose cwd belongs elsewhere.
+ */
+projectMembers(id: WorkspaceId, sessions: readonly SessionId[]): readonly SessionId[]
+
+/**
+ * Change project ownership with one durable write, preserving Session logs and files.
+ * @param sessionId - existing Session to place.
+ * @param workspaceId - registered destination; omitted removes project ownership.
+ * @returns committed placement; rejects unknown identities or failed storage writes.
+ */
+moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void>
 ```
 
 Types: [SessionId](core.md)

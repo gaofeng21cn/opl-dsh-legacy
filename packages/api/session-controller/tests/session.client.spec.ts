@@ -470,6 +470,72 @@ describe('paging', () => {
   })
 })
 
+describe('edit and resend', () => {
+  it('addresses the edited seq with a fresh identity and mirrors a refusal into promptError', async ({ mock, start }) => {
+    const session = await sessionBench(mock, start, SID)
+
+    const accepted = await session.editPrompt(7, [{ type: 'text', text: 'edited' }])
+    expect(accepted).toEqual({ ok: true, value: { accepted: true, seq: 9 } })
+    const requests = mock.log.requests('session/editPrompt') as readonly Record<string, unknown>[]
+    expect(requests).toHaveLength(1)
+    // The client mints the submission identity; its exact value is not the assertion.
+    expect(typeof requests[0]?.['requestId']).toBe('string')
+    expect(requests[0]).toMatchObject({
+      sessionId: SID,
+      seq: 7,
+      content: [{ type: 'text', text: 'edited' }],
+      clientTimeZone: TIME_ZONE,
+    })
+
+    mock.remote.session.editPrompt.mockResolvedValue(err(new RemoteError(
+      'session/edit-unavailable',
+      'not the last user message',
+      { sessionId: SID, reason: 'not-last' },
+    )))
+    const refused = await session.editPrompt(6, [{ type: 'text', text: 'stale' }])
+    expect(refused).toMatchObject({
+      ok: false,
+      error: { code: 'session/edit-unavailable', details: { reason: 'not-last' } },
+    })
+    expect(session.getSnapshot().promptError).toMatchObject({
+      op: 'send', error: { code: 'session/edit-unavailable' },
+    })
+  })
+})
+
+describe('rewind', () => {
+  it('addresses the rolled-back seq and returns the host receipt', async ({ mock, start }) => {
+    const session = await sessionBench(mock, start, SID)
+
+    const accepted = await session.rewind(7)
+
+    expect(accepted).toEqual({
+      ok: true,
+      value: { accepted: true, seq: 11, shadowedSeqs: [7, 9], discarded: [] },
+    })
+    const requests = mock.log.requests('session/rewind') as readonly Record<string, unknown>[]
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({ sessionId: SID, seq: 7 })
+  })
+
+  it('returns a refusal without touching the session snapshot', async ({ mock, start }) => {
+    const session = await sessionBench(mock, start, SID)
+    mock.remote.session.rewind.mockResolvedValue(err(new RemoteError(
+      'session/rewind-unavailable',
+      'the last turn has not settled',
+      { sessionId: SID, reason: 'busy' },
+    )))
+
+    const refused = await session.rewind(7)
+
+    expect(refused).toMatchObject({
+      ok: false,
+      error: { code: 'session/rewind-unavailable', details: { reason: 'busy' } },
+    })
+    expect(session.getSnapshot().promptError).toBeNull()
+  })
+})
+
 describe('prompt and cancel errors', () => {
   const CHILD = { parentSessionId: PARENT, childSessionId: SID, mode: 'continuable' } as const
 

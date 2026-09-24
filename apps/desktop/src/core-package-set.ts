@@ -114,6 +114,25 @@ export function desktopCorePackageOverrides(packageSet: DesktopCorePackageSet): 
   return Object.fromEntries(packageSet.packages.map(record => [record.name, desktopCorePackageSpec(record)]))
 }
 
+/** First-party core package whose reviewed postinstall every generated project must approve. */
+export const DESKTOP_CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
+
+/**
+ * Return the `allowBuilds` key that approves the core package's lifecycle script.
+ *
+ * pnpm records a `file:` dependency under its canonical spec, which drops a
+ * leading `./`, and matches `allowBuilds` against that form. A key spelled with
+ * `./` therefore approves nothing, and `strictDepBuilds` fails the install as an
+ * ignored build rather than running the postinstall.
+ * @param overrides - Override map the generated project installs from.
+ * @returns The key to place in `allowBuilds`.
+ */
+export function desktopCoreBuildKey(overrides: Readonly<Record<string, string>>): string {
+  const spec = overrides[DESKTOP_CORE_BUILD_PACKAGE]
+  if (spec === undefined) return DESKTOP_CORE_BUILD_PACKAGE
+  return `${DESKTOP_CORE_BUILD_PACKAGE}@${spec.replace('file:./', 'file:')}`
+}
+
 /** Return the local direct dependency spec for the dsh package. */
 export function desktopDshPackageSpec(packageSet: DesktopCorePackageSet): string {
   const record = packageSet.packages.find(entry => entry.name === DSH_PACKAGE)

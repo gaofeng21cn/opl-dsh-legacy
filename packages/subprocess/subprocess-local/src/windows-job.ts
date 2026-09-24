@@ -138,9 +138,18 @@ export function launchWindowsJob(
       ...spec.argv,
     ], {
       cwd: process.cwd(),
-      windowsHide: true,
       env: runnerEnvironment(WINDOWS_RUNNER_SELECTION, invocation),
       stdio: runnerStdio(spec, true, ignoredStdinFd ?? 'pipe'),
+      // The runner is a background Node process that would otherwise open a
+      // console window for every model tool call and steal foreground focus.
+      // Hiding the runner's own console is best-effort: it is the Electron
+      // binary in a packaged shell — a GUI-subsystem image — so Windows
+      // ignores CREATE_NO_WINDOW here and the runner has no console at all.
+      // The target therefore requests its own hidden console
+      // (spawnCurrentTokenJobProcess); CREATE_NO_WINDOW on the restricted
+      // child of the ACL sandbox is what dies with STATUS_DLL_INIT_FAILED
+      // (see @deepseek-ai/dsh-sandbox-windows-acl) and stays forbidden there.
+      windowsHide: true,
     }) as RunnerProcess
   } finally {
     if (ignoredStdinFd !== undefined) closeSync(ignoredStdinFd)

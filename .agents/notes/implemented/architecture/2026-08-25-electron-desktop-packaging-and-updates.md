@@ -8,6 +8,8 @@ Plugin management and native recovery follow the [shared Web wrapper decision](2
 
 The [Electron runtime decision](2026-09-11-desktop-electron-node-runtime.md) supersedes the separate upstream Node executable; other decisions in this note remain applicable.
 
+The [OPL search and desktop control decision](../feature/2026-09-21-opl-search-and-desktop-control.md) partially supersedes the no-listening-port constraint for authenticated automation; renderer transport and profile ownership remain unchanged.
+
 ## Problem
 
 DeepSeek Harness needs an Electron desktop application that reuses the Web UI, works without system Node.js or pnpm, installs dsh and desktop plugins through an application-bundled pnpm, and updates the complete desktop release through one user-facing flow.

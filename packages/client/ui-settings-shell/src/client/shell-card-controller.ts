@@ -2,7 +2,7 @@
 
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import {
-  SettingsFormModel, settingsNumberField,
+  SettingsFormModel, settingsNumberField, settingsChoiceField, settingsTextField,
   type SettingsFieldState, type SettingsFormActions, type SettingsFormScope, type SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 
@@ -17,6 +17,10 @@ export interface ShellSettings {
   timeoutMs?: number
   /** Per-stream in-memory output cap in bytes. */
   maxOutputBytes?: number
+  /** Windows command executor. */
+  agentShell?: string
+  /** Explicit Git for Windows bash executable. */
+  gitBashPath?: string
 }
 
 /** What the shell page renders. */
@@ -25,6 +29,10 @@ export interface ShellCardState extends SettingsFormShell {
   timeoutMs: SettingsFieldState
   /** Per-stream output cap in bytes. */
   maxOutputBytes: SettingsFieldState
+  /** Windows command executor draft. */
+  agentShell: SettingsFieldState
+  /** Git for Windows executable draft. */
+  gitBashPath: SettingsFieldState
 }
 
 /** The registration-side face the shell page's slot entry injects. */
@@ -42,7 +50,7 @@ export class ShellCardController {
 
   /** @param scope - the shared configuration form of the composed shell executor entry. */
   constructor(scope: SettingsFormScope<ShellSettings>) {
-    this.form = new SettingsFormModel(scope, [settingsNumberField('timeoutMs'), settingsNumberField('maxOutputBytes')])
+    this.form = new SettingsFormModel(scope, [settingsNumberField('timeoutMs'), settingsNumberField('maxOutputBytes'), settingsChoiceField('agentShell', ['powershell', 'git-bash']), settingsTextField('gitBashPath')])
     this.store = this.form.bind(() => this.projection())
   }
 
@@ -51,6 +59,8 @@ export class ShellCardController {
       ...this.form.shell(),
       timeoutMs: this.form.field('timeoutMs'),
       maxOutputBytes: this.form.field('maxOutputBytes'),
+      agentShell: this.form.field('agentShell'),
+      gitBashPath: this.form.field('gitBashPath'),
     }
   }
 

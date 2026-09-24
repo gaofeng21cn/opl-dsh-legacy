@@ -44,6 +44,8 @@
     "packages/client/*/tests/**/*.host.spec.ts"
   ],
   "references": [
+    { "path": "./packages/client/ui-desktop-notifications" },
+
     { "path": "./apps/desktop/tsconfig.client.json" },
     { "path": "./packages/experimental/client-ui-voice-input" },
 

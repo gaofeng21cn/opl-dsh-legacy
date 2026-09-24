@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-system-prompt` lets agents receive one ordered system prompt and the available tool schemas for each model step. Use it to add prompt sections, dynamic runtime facts, reusable variables, or tool schemas, or to control the fixed harness identity, deployment persona, runtime context, and model-facing tool order. Agent-scoped contributions override same-named global defaults without affecting other agents. Invalid complete-prompt combinations and unresolved variables fail assembly instead of sending a malformed prompt.
+`dsh-system-prompt` lets agents receive one ordered system prompt and the available tool schemas for each model step. Use it to add prompt sections, dynamic runtime facts, reusable variables, or tool schemas, to control the fixed harness identity, deployment persona, runtime context, and model-facing tool order, or to select the language of model-authored output. Agent-scoped contributions override same-named global defaults without affecting other agents. Invalid complete-prompt combinations and unresolved variables fail assembly instead of sending a malformed prompt.
 
 ## Table of Contents
 
@@ -50,6 +50,19 @@ The config owns the fixed opener, runtime context, deployment persona prefix and
 | `toolOrder` | — | Explicit model-facing tool order with one `'<unlisted-tools>'` rest entry |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-system-prompt) is the exhaustive source for every accepted field. A `toolOrder` list without exactly one rest entry or with duplicates fails at load; a listed name with no registered tool rejects every `assemble()`.
+
+<a id="select-the-output-language"></a>
+### Select the output language
+
+The `system-prompt` Loader entry selects the language of model-authored prose through its live `outputLanguage` configuration:
+
+```yaml
+- id: system-prompt
+  config:
+    outputLanguage: zh
+```
+
+`default` — the value used when the field is omitted — renders no directive, so nothing changes for an existing user document. `zh` and `en` render one `harness:output-language` section at order `100`, asking the model to write its final replies and any documents, reports, or documentation it produces in that language, to keep code, identifiers, commands, file paths, and quoted source text in their original form, and to follow an explicit user request for a different language. The section reads the setting at every assembly, so a committed change applies to the next request; the field belongs to the Host-wide prompt configuration with no per-workspace layer, and a same-named section registered in an agent scope shadows the directive for that agent alone. The web client exposes the section as the **Output language** card on Settings → Plugins → Plugin configuration ([ui-settings-plugins](../../client/ui-settings-plugins/README.md)).
 
 ### Contribute a prompt section
 
@@ -134,7 +147,7 @@ The package-level contract is enough for most consumers; read these when you nee
 
 #### What the model sees
 
-First-party sections render the harness identity, deployment persona prefix (including the model-name introduction), reusable instructions (including the generated tools SDK and structured-output guidance), then the environment-bearing suffix: harness source (`10000`), Web surface (`10100`), and deployment persona suffix (`10200`). External section orders and assembly listeners remain authoritative. `includeHarnessIdentity: false` omits only that fixed opener. Empty sections disappear; scoped sections and variables can shadow globals for one agent. The `system-prompt/assemble` waterfall determines the delivered prompt and tool schemas unless one effective section declares itself complete — that exact section then becomes the whole system prompt while the waterfall's contexts, tools, and variables remain. The rendered prompt reaches the model as a system-role message of derived history — surface node 0, or the latest system node after an in-history update — neither the loop request nor `request/header` carries a separate `system` field. If the complete rendering is empty, the loop clears every active system node through logged empty replacements, so no older prompt remains in model history. Ordered dynamic contexts are separate from sections and become sourced user-role snapshots only when present; `includeRuntimeContext: false` or a scoped suppressor removes them all.
+First-party sections render the harness identity, deployment persona prefix (including the model-name introduction), the selected output-language directive, reusable instructions (including the generated tools SDK and structured-output guidance), then the environment-bearing suffix: harness source (`10000`), Web surface (`10100`), and deployment persona suffix (`10200`). External section orders and assembly listeners remain authoritative. `includeHarnessIdentity: false` omits only that fixed opener. Empty sections disappear; scoped sections and variables can shadow globals for one agent. The `system-prompt/assemble` waterfall determines the delivered prompt and tool schemas unless one effective section declares itself complete — that exact section then becomes the whole system prompt while the waterfall's contexts, tools, and variables remain. The rendered prompt reaches the model as a system-role message of derived history — surface node 0, or the latest system node after an in-history update — neither the loop request nor `request/header` carries a separate `system` field. If the complete rendering is empty, the loop clears every active system node through logged empty replacements, so no older prompt remains in model history. Ordered dynamic contexts are separate from sections and become sourced user-role snapshots only when present; `includeRuntimeContext: false` or a scoped suppressor removes them all.
 
 ##### Harness identity
 
@@ -144,7 +157,7 @@ You are an AI agent powered by DeepSeek Harness.
 
 #### Token effect
 
-Identity is a fixed per-request cost when enabled. Persona prefixes, suffixes, and plugin text are repeated per request and scale with their rendered content.
+Identity is a fixed per-request cost when enabled. Persona prefixes, suffixes, and plugin text are repeated per request and scale with their rendered content. The output-language directive costs nothing while the setting is `default` and repeats on every request once a language is selected.
 
 #### KV Cache effect
 
@@ -171,7 +184,9 @@ Prefix-stable while the visible schema set, rendering, and order are unchanged. 
 
 These limits define when prompt assembly needs special care. They are current package constraints, not a task backlog.
 
-- **Deployment-authored prompt text is config/composition only** — this plugin owns the global persona prefix and suffix defaults, creator plugins may register agent-scoped shadows, and other sections come from the plugin that owns the fact; there is no end-user prompt-editing API.
+- **Deployment-authored prompt text is config/composition only** — this plugin owns the global persona prefix and suffix defaults, creator plugins may register agent-scoped shadows, and other sections come from the plugin that owns the fact; the only end-user prompt preference is the output language.
+- **The output-language setting governs written output only** — it asks for the language of final replies and generated documents. It neither describes nor controls the model's internal reasoning, and no code in this package reads or rewrites reasoning content, so reasoning text may still mix languages.
+- **A `complete: true` persona replaces the whole prompt** — a preset declaring its persona complete (the shipped `chat` and `minimal` presets) receives no first-party section, so the output-language directive does not reach those agents.
 - **No inline escape syntax in interpolated text** — use `interpolate: false` when a whole section must preserve literal braces.
 - **`toolOrder` misconfiguration surfaces at prompt assembly (the first turn), not at boot** — only shape violations throw at config load.
 

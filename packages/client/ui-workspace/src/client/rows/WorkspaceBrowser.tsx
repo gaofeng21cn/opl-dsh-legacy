@@ -311,7 +311,7 @@ function SessionTree({
   }, [groupExpansion, parents, workspaces])
   const groups = useMemo(
     () => deriveGroups(list, workspaces, rowState, statuses, {
-      expandedGroups,
+      expandedGroups: [...expandedGroups, UNGROUPED_KEY],
       ungroupedOrder: ungroupedSessionIds,
     }),
     [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds],
@@ -342,7 +342,9 @@ function SessionTree({
       ? ungroupedSessionIds
       : workspaces.find(workspace => workspace.workspaceId === activeDrag.accountKey)?.sessionIds
     if (accountSessionIds === undefined) return
-    const renderedSessions = collapsedSessionRows(group.sessions, sessionLimits[group.key]).rows
+    const renderedSessions = group.workspaceId === undefined
+      ? group.sessions
+      : collapsedSessionRows(group.sessions, sessionLimits[group.key]).rows
     const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over)
     if (nextOrder !== undefined) setSessionOrder(activeDrag.accountKey, nextOrder)
   }
@@ -391,11 +393,11 @@ function SessionTree({
     const collapsed = collapsedSessionRows(group.sessions)
     const visible = collapsedSessionRows(group.sessions, sessionLimits[group.key])
     const sessionsExpanded = visible.hiddenCount === 0
-    rowKeys.push(`workspace:${group.key}`)
+    if (workspaceId !== undefined) rowKeys.push(`workspace:${group.key}`)
     const childRows = group.expanded ? children.map(child => renderGroup(child, depth + 1)) : []
-    const sessions = visible.rows
+    const sessions = workspaceId === undefined ? group.sessions : visible.rows
     for (const node of sessions) rowKeys.push(`session:${node.id}`)
-    if (collapsed.hiddenCount > 0) rowKeys.push(`overflow:${group.key}`)
+    if (workspaceId !== undefined && collapsed.hiddenCount > 0) rowKeys.push(`overflow:${group.key}`)
     const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
       ? workspaceDrag.over.half
       : null
@@ -465,7 +467,7 @@ function SessionTree({
             }
           }}
       >
-        <ProjectRowItem
+        {workspaceId !== undefined && <ProjectRowItem
           group={group}
           containsCurrentDescendant={currentAncestors.has(group.key)}
           home={home}
@@ -495,7 +497,7 @@ function SessionTree({
                 if (group.workspaceId !== undefined) onDeleteRequest(group.workspaceId, group.label)
               },
             }}
-        />
+        />}
         {childRows.length > 0 && (
           <div role="group">
             {childRows}
@@ -549,7 +551,7 @@ function SessionTree({
             />
           )
         })}
-        {collapsed.hiddenCount > 0 && (
+        {workspaceId !== undefined && collapsed.hiddenCount > 0 && (
           <button
             type="button"
             className={css.sessionOverflowButton}
@@ -575,7 +577,10 @@ function SessionTree({
     )
   }
 
-  const groupRows = rootGroups.map(group => renderGroup(group, 0))
+  const projectGroups = rootGroups.filter(group => group.workspaceId !== undefined)
+  const outsideGroup = rootGroups.find(group => group.workspaceId === undefined)
+  const projectRows = projectGroups.map(group => renderGroup(group, 0))
+  const outsideRows = outsideGroup === undefined ? null : renderGroup(outsideGroup, 0)
   return (
     <div className={clsx(css.treeBody, css.wide)}>
       {workspaceDropAtListStart && <span className={css.listTopDropIndicator} aria-hidden="true" />}
@@ -589,7 +594,18 @@ function SessionTree({
         {groups.length === 0 && (
           <div className={css.empty} data-row-key="empty">{t('empty.none')}</div>
         )}
-        {groupRows}
+        {projectRows.length > 0 && (
+          <div role="group" aria-label={t('section.inProjects')}>
+            <div className={css.sectionTitle} aria-hidden="true">{t('section.inProjects')}</div>
+            {projectRows}
+          </div>
+        )}
+        {outsideRows !== null && (
+          <div role="group" aria-label={t('section.outsideProjects')}>
+            <div className={css.sectionTitle} aria-hidden="true">{t('section.outsideProjects')}</div>
+            {outsideRows}
+          </div>
+        )}
       </AnimatedRows>
       <span className={css.fade} />
     </div>
@@ -817,6 +833,9 @@ export function WorkspaceBrowser({
   startSession,
   open,
   requestSessionRename,
+  moveSession,
+  settleSessionMove,
+  useSessionMoveRequest,
   notifyArchivedNotOpenable,
   renameWorkspace,
   deleteWorkspace,
@@ -830,6 +849,11 @@ export function WorkspaceBrowser({
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
+  const moveTarget = useSessionMoveRequest(value => value)
+  const [movePicking, setMovePicking] = useState(false)
+  const [moveBusy, setMoveBusy] = useState(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  useEffect(() => { setMoveError(null); setMovePicking(false) }, [moveTarget])
   const home = useHostInfo(info => info.home)
   // Ordering remains live while the rail or search replaces the list body.
   const list = useSessions(state => state)
@@ -1067,6 +1091,20 @@ export function WorkspaceBrowser({
       controller.abort()
     }
   }, [normalizedQuery, searchSessions])
+
+  const commitMove = async (workspaceId?: WorkspaceId): Promise<void> => {
+    if (moveTarget === null || moveBusy) return
+    setMoveBusy(true)
+    setMoveError(null)
+    try {
+      await moveSession(moveTarget, workspaceId)
+      settleSessionMove()
+    } catch (error: unknown) {
+      setMoveError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setMoveBusy(false)
+    }
+  }
 
   // Rename dialog (browser-owned so it outlives row unmounts during collapse).
   const [renameTarget, setRenameTarget] = useState<{ workspaceId: WorkspaceId; currentTitle: string } | null>(null)
@@ -1347,6 +1385,37 @@ export function WorkspaceBrowser({
             ))}
       </div>
 
+      {renderSlot('sidebar.workspaces.directoryFlow', {
+        open: movePicking,
+        busy: moveBusy,
+        onPicked: (path: string) => {
+          if (moveBusy || moveTarget === null) return
+          setMoveBusy(true)
+          void createWorkspace({ path }).then(workspace => moveSession(moveTarget, workspace.workspaceId))
+            .then(() => { settleSessionMove() })
+            .catch((error: unknown) => { setMoveError(error instanceof Error ? error.message : String(error)) })
+            .finally(() => { setMoveBusy(false); setMovePicking(false) })
+        },
+        onCancel: () => { setMovePicking(false); settleSessionMove() },
+        onError: (message: string) => { setMoveError(message); setMovePicking(false) },
+      })}
+      <Modal
+        open={moveTarget !== null && !movePicking}
+        onClose={() => { if (!moveBusy) settleSessionMove() }}
+        closeLabel={t('close')}
+        title={t('menu.moveSession')}
+        description={t('move.description')}
+      >
+        <p>{t('move.directory')}: {moveTarget === null ? '' : list.byId[moveTarget]?.cwd}</p>
+        <Button disabled={moveBusy} onClick={() => { void commitMove() }}>{t('move.outside')}</Button>
+        {workspaces.map(workspace => (
+          <Button key={workspace.workspaceId} disabled={moveBusy}
+            onClick={() => { void commitMove(workspace.workspaceId) }}>{workspace.title}</Button>
+        ))}
+        <Button disabled={moveBusy || !directoryFlowAvailable}
+          onClick={() => { setMoveError(null); setMovePicking(true) }}>{t('move.newProject')}</Button>
+        {moveError !== null && <div role="alert">{moveError}</div>}
+      </Modal>
       <Modal
         open={renameTarget !== null}
         onClose={closeRename}

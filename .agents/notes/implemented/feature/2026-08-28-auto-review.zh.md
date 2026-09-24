@@ -12,7 +12,7 @@ Full access 让有用的项目工作无需反复审批即可继续，但也允�
 
 [`dsh-experimental-auto-review`](../../../../packages/experimental/auto-review/README.zh.md)是显式安装的实验性 Web 层，按[实验包发布决策](../process/2026-09-12-publish-all-experimental-packages.zh.md)参与发布。默认 Web 保持 Read Only、Workspace Write 与 Full access。此层贡献仅限当前会话的 `auto`，唯一持久身份为 `permission/preset:auto`；它共用 Full access 未改变的 `danger-full-access + never` 旋钮与工具定义。Headless、通用设置与新会话默认值都排除此 integration。
 
-每个原生调用与已开始的 PTC `tools.*` inner call 都在 body 前接受一次审查。外层 `run_code` transport 与 PTC 程序内直接 Node 效果不在保证范围内。不提供按工具名豁免、缓存 grant、重试、可配置策略、第二授权检查或人工 fallback。重复调用也重新审查。
+每个原生调用与已开始的 PTC `tools.*` inner call 都在 body 前获得一次决策，由三个阶段中第一个作出决策者给出：确定性规则，然后 reviewer，然后部署的审批答复方。外层 `run_code` transport 与 PTC 程序内直接 Node 效果不在保证范围内。allow 之后没有重试层、持久 grant 或第二授权检查。[路由决策](2026-09-23-auto-review-rules-routing.zh.md)拥有三个阶段、reviewer 路由、合并并发重复并在当前 step 内重放拒绝的 review 记忆，以及 fail-closed 上抛路径。
 
 ### 效果与权威
 
@@ -30,7 +30,7 @@ Reviewer 从既有 Session 事实派生权威。Shipped Web human 指令具有 `
 
 ### 一次完整 reviewer 请求
 
-Integration 只使用最新 `request/header.config` 的 provider／model 与 shipped adapter 默认 reasoning。它既不比较冗余 route metadata，也不复制主 agent 请求。请求固定包含五个分区：
+Integration 在部署配置了快速 reviewer 路由时使用它，否则使用最新 `request/header.config` 的 provider／model，并沿用 shipped adapter 默认 reasoning。它既不比较冗余 route metadata，也不复制主 agent 请求。请求固定包含五个分区：
 
 | 分区 | 保留输入 |
 | --- | --- |
@@ -46,7 +46,7 @@ reviewer 从 Session 的完整动作历史构建这两个动作分节：授权�
 
 ### 结果与取消
 
-Reviewer 可以输出 reasoning blocks，随后恰好一个 JSON text block 和终态 `stop`。封闭对象只允许 `low + allow`、`medium + allow/deny` 与 `high + deny`；只有 deny 可携带字符串 `reason`。额外字段、重复成员、非法组合、其他 block 或终态以及 provider 失败均使用普通 Auto 拒绝结果。风险与 reviewer trace 不成为持久状态。
+Reviewer 可以输出 reasoning blocks，随后恰好一个 JSON text block 和终态 `stop`。封闭对象只允许 `low + allow`、`medium + allow/deny` 与 `high + deny`；只有 deny 可携带字符串 `reason`。额外字段、重复成员、非法组合、其他 block 或终态、provider 失败，以及超过配置 reviewer 超时的请求都不产生裁决，调用随后走[上抛路径](2026-09-23-auto-review-rules-routing.zh.md)而不会执行。风险与 reviewer trace 不成为持久状态。
 
 原生结果与 PTC 结算事件携带同形结构化 `AutoReviewDeniedError`／`AUTO_REVIEW_DENIED` 及可选原始理由。主 agent 通过普通失败渲染只收到 `Auto review rejected tool "<name>"; its body was not executed`。PTC 保留既有程序异常／catch 行为；捕获拒绝不会将其提升为外层失败。通用 Web 工具卡片为折叠行提供拒绝身份，为展开行提供一行未执行输出，不提供输入正文。只有该显示过程会 trim、折叠行分隔符，或提供本地化空理由 fallback；持久化与两套 SDK 保留完整原始理由，不增加长度或脱敏规则。
 
@@ -72,7 +72,7 @@ Auto 带右上标 `EXP`。两个可见当前会话选择器都要求实验确认
 
 **用 Session 事件表达目录变化**会把进程可用性归到 Session，并要求同序号重新发布。完整 Remote 读取加失效通知让每项事实保留在自己的 owner。
 
-**可配置策略、豁免、grant 或另一个审批阶段**会削弱固定安全上限，或引入第二个决定生命周期。每个受支持调用一次 review 提供单一结果与取消 owner。
+**可配置策略、豁免、grant 或另一个审批阶段**会削弱固定安全上限，或引入第二个决定生命周期。每个受支持调用一次 review 提供单一结果与取消 owner。[路由决策](2026-09-23-auto-review-rules-routing.zh.md)只采纳保持该上限的部分：判定固定策略会给出相同答案的两端的确定性规则集，以及 reviewer 未决调用的一次审批阶段。
 
 ## 后果
 

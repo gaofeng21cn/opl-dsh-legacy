@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { en, zh } from '../src/locale.ts'
 import type { ContextMenuParams, MenuItemConstructorOptions } from 'electron'
 
 const menus = await vi.hoisted(() => ({ popup: vi.fn(), templates: [] as unknown[] }))
@@ -96,4 +97,17 @@ describe('desktop context menu installation', () => {
     expect(menus.templates).toEqual([])
     expect(menus.popup).not.toHaveBeenCalled()
   })
+})
+
+
+it('localizes native editing labels while preserving command roles', () => {
+  for (const messages of [zh, en]) {
+    const menu = desktopApplicationMenuTemplate(messages.application, [{ role: 'quit', label: messages.quit }], messages)
+    expect(menu[1]?.label).toBe(messages.editMenu)
+    const entries = menu[1]?.submenu as MenuItemConstructorOptions[]
+    expect(entries.find(entry => entry.role === 'copy')?.label).toBe(messages.copy)
+    expect(entries.find(entry => entry.role === 'selectAll')?.label).toBe(messages.selectAll)
+    const context = desktopContextMenuTemplate({ isEditable: true, editFlags: editFlags() }, messages)
+    expect(context.find(entry => entry.role === 'paste')?.label).toBe(messages.paste)
+  }
 })

@@ -66,18 +66,43 @@ describe('dsh-base bundle', () => {
     // shell stack mounts per host. Evaluate with a platform-scoped context
     // (the `with` scope shadows the global `process`) so both outcomes pin on
     // every host.
-    for (const [id, win32, linux] of [
-      ['bash-sandbox', true, false],
-      ['tool-bash', true, false],
-      ['pwsh-sandbox', false, true],
-      ['tool-pwsh', false, true],
-    ] as const) {
+    for (const id of ['bash-sandbox', 'tool-bash', 'pwsh-sandbox', 'tool-pwsh'] as const) {
       const row = rows.find(candidate => candidate.id === id)
       if (row === undefined) throw new Error(`base patch must mount ${id}`)
       const expression = (row.disabled as { __jsExpr?: string } | undefined)?.__jsExpr
       if (expression === undefined) throw new Error(`${id} must gate on a !!js disabled expression`)
-      expect(Boolean(evaluate({ process: { platform: 'win32' } }, expression)), `${id} on win32`).toBe(win32)
-      expect(Boolean(evaluate({ process: { platform: 'linux' } }, expression)), `${id} on linux`).toBe(linux)
+      // The bundle expressions also consult the selected Windows shell. Keep
+      // that fact explicit in the test context instead of relying on a
+      // process-global helper that is unavailable to the evaluator.
+      for (const shell of ['git-bash', 'powershell'] as const) {
+        const enabledOnWin32 =
+          (id.includes('bash') && shell === 'git-bash') ||
+          (id.includes('pwsh') && shell === 'powershell')
+        expect(
+          Boolean(
+            evaluate(
+              {
+                process: { platform: 'win32' },
+                dshAgentShell: () => shell,
+              },
+              expression,
+            ),
+          ),
+          `${id} on win32 with ${shell}`,
+        ).toBe(!enabledOnWin32)
+        expect(
+          Boolean(
+            evaluate(
+              {
+                process: { platform: 'linux' },
+                dshAgentShell: () => shell,
+              },
+              expression,
+            ),
+          ),
+          `${id} on linux with ${shell}`,
+        ).toBe(id.includes('pwsh'))
+      }
     }
     // The platform layer folded into these rows: no separate patch file ships.
     expect(existsSync(resolve(root, 'windows.cordis.patch.yml'))).toBe(false)

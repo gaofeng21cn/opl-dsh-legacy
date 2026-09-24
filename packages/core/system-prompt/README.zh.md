@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-system-prompt` 让 agent 在每个模型步骤收到一份有序系统提示词与可用工具 schema。需要添加提示词段、动态运行时事实、可复用变量或工具 schema，或者控制固定 harness 身份、部署 persona、运行时上下文和面向模型的工具顺序时，请使用本包。agent 作用域的贡献会遮蔽同名全局默认值，而不影响其他 agent。无效的完整提示词组合与未解析变量会使组装失败，不会向模型发送格式错误的提示词。
+`dsh-system-prompt` 让 agent 在每个模型步骤收到一份有序系统提示词与可用工具 schema。需要添加提示词段、动态运行时事实、可复用变量或工具 schema，控制固定 harness 身份、部署 persona、运行时上下文和面向模型的工具顺序，或者选择模型输出语言时，请使用本包。agent 作用域的贡献会遮蔽同名全局默认值，而不影响其他 agent。无效的完整提示词组合与未解析变量会使组装失败，不会向模型发送格式错误的提示词。
 
 ## 目录
 
@@ -50,6 +50,19 @@ kind: "package-reference"
 | `toolOrder` | — | 显式面向模型工具顺序，含一个 `'<unlisted-tools>'` 其余项标记 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-system-prompt)是每个受支持字段的穷尽式真源。没有恰好一个其余项或存在重复项的 `toolOrder` 列表会在加载时失败；已列名称没有对应已注册工具会使每次 `assemble()` 被拒绝。
+
+<a id="select-the-output-language"></a>
+### 选择输出语言
+
+`system-prompt` Loader 条目通过可实时更新的 `outputLanguage` 配置选择模型撰写内容的语言：
+
+```yaml
+- id: system-prompt
+  config:
+    outputLanguage: zh
+```
+
+`default` —— 字段省略时使用的值 —— 不渲染任何指令，因此已有用户文档的行为不变。`zh` 与 `en` 渲染一个顺序为 `100` 的 `harness:output-language` 段，要求模型用该语言撰写最终回复，以及它生成的任何文档、报告或说明文档，同时保持代码、标识符、命令、文件路径与引用原文原样，并遵从用户对另一种语言的明确要求。该段在每次组装时读取设置，因此已提交的变更从下一次请求生效；该字段属于 Host 范围内的提示词配置，没有按工作区划分的层，在 agent 作用域注册的同名段只对该 agent 遮蔽这条指令。Web 客户端把它呈现为「设置 → 插件 → 插件配置」中的**输出语言**卡片（[ui-settings-plugins](../../client/ui-settings-plugins/README.zh.md)）。
 
 ### 贡献提示词段
 
@@ -134,7 +147,7 @@ ctx.systemPrompt.variable('cwd', ({ agent }) => agent?.session.header.cwd)
 
 #### 模型看到什么
 
-第一方段落依次渲染 harness 身份、部署 persona 前缀（含模型名称介绍）、可复用指令（包括生成的工具 SDK 和结构化输出指导），最后是携带环境信息的后缀：harness 源码（`10000`）、Web 表层（`10100`）和部署 persona 后缀（`10200`）。外部段落的顺序与组装监听器仍决定其最终结果。`includeHarnessIdentity: false` 仅省略这个固定开场白。空段会消失；带作用域的段与变量可以为一个 agent 遮蔽全局项。`system-prompt/assemble` waterfall 决定交付的提示词与工具 schema，除非一个有效段声明自身为 complete——此时该确切段会成为完整的系统提示词，而 waterfall 得到的上下文、工具与变量保持不变。渲染后的提示词作为派生历史中的 system 角色消息——surface 第 0 号节点，或历史内更新之后最新的系统节点——到达模型；循环请求与 `request/header` 均不含单独的 `system` 字段。完整渲染结果为空时，循环通过有日志记录的空内容替换清除所有生效的系统节点，模型历史不再保留任何旧提示词。有序动态上下文与段分离，只在存在时才会成为带来源的 user 角色快照；`includeRuntimeContext: false` 或带作用域的抑制器会移除全部这类上下文。
+第一方段落依次渲染 harness 身份、部署 persona 前缀（含模型名称介绍）、选定的输出语言指令、可复用指令（包括生成的工具 SDK 和结构化输出指导），最后是携带环境信息的后缀：harness 源码（`10000`）、Web 表层（`10100`）和部署 persona 后缀（`10200`）。外部段落的顺序与组装监听器仍决定其最终结果。`includeHarnessIdentity: false` 仅省略这个固定开场白。空段会消失；带作用域的段与变量可以为一个 agent 遮蔽全局项。`system-prompt/assemble` waterfall 决定交付的提示词与工具 schema，除非一个有效段声明自身为 complete——此时该确切段会成为完整的系统提示词，而 waterfall 得到的上下文、工具与变量保持不变。渲染后的提示词作为派生历史中的 system 角色消息——surface 第 0 号节点，或历史内更新之后最新的系统节点——到达模型；循环请求与 `request/header` 均不含单独的 `system` 字段。完整渲染结果为空时，循环通过有日志记录的空内容替换清除所有生效的系统节点，模型历史不再保留任何旧提示词。有序动态上下文与段分离，只在存在时才会成为带来源的 user 角色快照；`includeRuntimeContext: false` 或带作用域的抑制器会移除全部这类上下文。
 
 ##### harness 身份
 
@@ -144,7 +157,7 @@ You are an AI agent powered by DeepSeek Harness.
 
 #### Token 影响
 
-启用时，身份是每次请求的固定成本。Persona 前缀、后缀与插件文本在每次请求中重复，成本随渲染内容增长。
+启用时，身份是每次请求的固定成本。Persona 前缀、后缀与插件文本在每次请求中重复，成本随渲染内容增长。输出语言设置为 `default` 时该指令不产生成本；选定语言后它会在每次请求中重复。
 
 #### KV Cache 影响
 
@@ -171,7 +184,9 @@ schema token 在每次请求中重复。限制工具会为该 agent 移除其全
 
 这些限制说明提示词组装何时需要特别留意。它们是当前包约束，不是待办事项清单。
 
-- **部署方编写的提示词文本只来自配置／组合**：此插件拥有全局 persona 前缀与后缀默认值；创建方插件可以注册 agent 作用域的遮蔽项；其他段来自拥有相应事实的插件。不存在终端用户提示词编辑 API。
+- **部署方编写的提示词文本只来自配置／组合**：此插件拥有全局 persona 前缀与后缀默认值；创建方插件可以注册 agent 作用域的遮蔽项；其他段来自拥有相应事实的插件。唯一的终端用户提示词偏好是输出语言。
+- **输出语言设置只作用于书面输出**：它要求的是最终回复与生成文档的语言，既不描述也不控制模型内部推理，本包也没有任何代码读取或改写 reasoning 内容，因此模型思考仍可能是中英夹杂。
+- **`complete: true` 的 persona 会替换整份提示词**：声明 persona 为 complete 的预设（已交付的 `chat` 与 `minimal`）不会收到任何第一方段，输出语言指令到不了这些 agent。
 - **插值文本不支持行内转义语法**：整段需要保留字面花括号时，使用 `interpolate: false`。
 - **`toolOrder` 配置错误在提示词组装（首轮）时出现，而不是启动时**：只有形状违规会在配置加载时抛出。
 

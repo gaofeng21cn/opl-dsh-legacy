@@ -306,10 +306,12 @@ describe('web e2e: workspace management (create / rename / grouping / hover affo
     expect((await readPersistedEvents(scaffold, SessionId(SEED_ID))).length).toBeGreaterThan(0)
 
     // Re-registering the exact deleted path immediately, without a reload, is
-    // a supported reversible flow. It creates a fresh Workspace id and does
-    // NOT re-adopt the retained (non-blank) Session; the New Session flow
-    // mints a fresh blank session and attaches it to the new registration
-    // (no cwd-based blank reuse exists, so the account is never empty).
+    // a supported reversible flow. It creates a fresh Workspace id, and this
+    // run never re-adopts the retained (non-blank) Session — adoption runs at
+    // registry start, so the seed returns only on a later start; the New
+    // Session flow mints a fresh blank session and attaches it to the new
+    // registration (no cwd-based blank reuse exists, so the account is never
+    // empty).
     await adoptDirectory(scaffold.workspaceCwd)
     await expect.poll(
       () => scaffold.ctx.workspaceRegistry.resolveByPath(scaffold.workspaceCwd),

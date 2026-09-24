@@ -1,0 +1,4 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state.
+2026-09-24-codex-dsh-coordination-skill.md: c9e84d932b21d91a7eab4e2c31609911d6e05c09
+2026-09-24-codex-dsh-coordination-skill.zh.md: 148d745582fe84a96e6b7ab5ba5ca909acc2d007

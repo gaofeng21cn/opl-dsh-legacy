@@ -109,6 +109,12 @@ export interface ChatSnapshot {
   readonly navigation: ChatTurnNavigationIndex
   readonly timeline: ConversationTimelineSnapshot
   readonly legacy: LegacyConversationSlice
+  /**
+   * Loaded Turns whose every materialized row a superseding prompt rewrite hid.
+   * The whole-log `turnOutline` rail names these Turns too, so the view drops
+   * marks that have no row left to scroll to.
+   */
+  readonly supersededTurns: ReadonlySet<number>
 }
 
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
@@ -118,6 +124,7 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 }
 
 const EMPTY_LIST: readonly never[] = []
+const EMPTY_TURNS: ReadonlySet<number> = new Set()
 const EMPTY_TIMELINE: ConversationTimelineSnapshot = { turnOrder: EMPTY_LIST, turns: new Map() }
 const EMPTY_NODE_SOURCE: ChatNodeSource = {
   getSnapshot: () => undefined,
@@ -150,6 +157,7 @@ export const EMPTY_CHAT_SNAPSHOT: ChatSnapshot = {
     items: () => EMPTY_LIST,
   },
   timeline: EMPTY_TIMELINE,
+  supersededTurns: EMPTY_TURNS,
   legacy: {
     nodes: EMPTY_LIST,
     turnTimings: new Map(),

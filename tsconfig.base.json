@@ -28,6 +28,16 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@one-person-lab/dsh-llm-opl-gateway": ["./packages/llm/llm-opl-gateway/src"],
+
+      "@deepseek-ai/dsh-api-task-feedback": ["./packages/api/task-feedback/src/index.ts"],
+      "@deepseek-ai/dsh-api-task-feedback/types": ["./packages/api/task-feedback/src/types.ts"],
+      "@deepseek-ai/dsh-session-rewind-files/types": ["./packages/session/session-rewind-files/src/types.ts"],
+      "@deepseek-ai/dsh-client-ui-desktop-notifications": ["./packages/client/ui-desktop-notifications/src"],
+      "@deepseek-ai/dsh-client-ui-desktop-notifications/client": ["./packages/client/ui-desktop-notifications/src/client/index.ts"],
+      "@one-person-lab/dsh-client-ui-settings-opl-gateway": ["./packages/client/ui-settings-opl-gateway/src"],
+      "@one-person-lab/dsh-client-ui-settings-opl-gateway/client": ["./packages/client/ui-settings-opl-gateway/src/client/index.ts"],
+      "@deepseek-ai/dsh-session-rewind-files": ["./packages/session/session-rewind-files/src"],
       "@deepseek-ai/dsh-client-ui-settings-account": ["./packages/client/ui-settings-account/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-settings-account/client": ["./packages/client/ui-settings-account/src/client/index.ts"],
       "@deepseek-ai/dsh-api-gateway/stream-protocol": ["./packages/api/gateway/src/stream-protocol.ts"],
@@ -393,7 +403,6 @@
       "@deepseek-ai/dsh-llm": ["./packages/llm/llm/src"],
       "@deepseek-ai/dsh-llm/invariant": ["./packages/llm/llm/src/invariant.ts"],
       "@deepseek-ai/dsh-llm-deepseek": ["./packages/llm/llm-deepseek/src"],
-      "@one-person-lab/dsh-llm-opl-gateway": ["./packages/llm/llm-opl-gateway/src"],
       "@deepseek-ai/dsh-llm-mock-server": ["./packages/test-support/llm-mock-server/src"],
       "@deepseek-ai/dsh-llm-pi-ai": ["./packages/llm/llm-pi-ai/src"],
       "@deepseek-ai/dsh-llm-replay": ["./packages/test-support/llm-replay/src"],

@@ -28,6 +28,8 @@ export {
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
 } from './defaults.ts'
 export { DeepSeekAdapter } from './adapter.ts'
+export { attemptAnomaly, controlMarkerFamilies, describeAttemptAnomaly, WireObserver } from './protocol-anomaly.ts'
+export type { AttemptAnomaly, AttemptFacts, BlockFacts, ProtocolAnomalyFinding, WireFacts, WireFieldTally } from './protocol-anomaly.ts'
 export type { DeepSeekAdapterOptions, DeepSeekCatalogModel, DeepSeekConnectionOptions } from './types.ts'
 export {
   DEFAULT_LOW_DETAIL_IMAGE_PIXEL_BUDGET,
@@ -90,6 +92,9 @@ export function apply(ctx: Context, config: Config): void {
     options,
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(`llm-deepseek: unusable Messages replay state on assistant history for route "${provider}/${model}"; sending provider-neutral content (${reason})`)
+    },
+    onProtocolAnomaly: ({ provider, model, report }) => {
+      ctx.logger.warn(`llm-deepseek: control-marker anomaly on route "${provider}/${model}"; ${report}`)
     },
     resolveApiKey,
     resolveAccountToken: connection => ctx.get('deepseekAccount')?.resolveToken(connection.baseURL) ?? Promise.resolve(undefined),

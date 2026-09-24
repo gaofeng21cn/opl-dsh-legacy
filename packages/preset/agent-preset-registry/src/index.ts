@@ -311,6 +311,11 @@ export class AgentPresetRegistry extends TypertRemoteService {
    * @returns The bound identity.
    */
   async recompose(ctx: Context, id: string): Promise<AgentPreset> {
+    if (this.composedPreset(ctx) === 'chat' && id !== 'chat') {
+      throw new RemoteError('agent-preset/invalid',
+        'Plain chat cannot acquire project tools; open a workspace to start a project session.',
+        { agentPreset: id, reason: 'Plain chat has a fixed tool-free composition.' })
+    }
     const preset = await this.mount(ctx, id)
     try { this.owner.emit('tools/change') }
     catch (error) { this.owner.logger.warn(`Preset tools observer: ${String(error)}`) }

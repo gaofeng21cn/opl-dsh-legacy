@@ -9,6 +9,7 @@ import {
   snapshotSessionEvent,
   isAppendSurfaceEvent,
   isReplacementSurfaceEvent,
+  isRewindSurfaceEvent,
   isSurfaceEligibleType,
   isSurfaceEvent,
 } from '@deepseek-ai/dsh-session'
@@ -1020,5 +1021,57 @@ describe('developer message history', () => {
     expect(isSurfaceEligibleType('developer/message')).toBe(true)
     const restored = Session.fromRestore(session.id, session.snapshotEvents(), session.header, SessionLogOffset(0), 'shared-frozen')
     expect(restored.deriveMessages()).toEqual([replacement])
+  })
+})
+
+describe('conversation rewind marker', () => {
+  function rewindEvent(seq: number, plugin: string, text: string, op: TestSurfaceOp = 'append'): SessionEvent {
+    return {
+      type: 'developer/message',
+      seq: SessionSeq(seq),
+      time: seq,
+      data: { turn: 1, step: 1, message: createDeveloperMessage({ content: text === '' ? [] : [{ type: 'text', text }], source: { kind: plugin === 'rewind' ? 'rewind' : 'test' } }) },
+      surfaceOp: surfaceOp(op),
+      ...op === 'append' ? {} : { sourceEventSeqs: [SessionSeq(op.startSeq)] },
+    }
+  }
+
+  function appendedUser(seq: number): SessionEvent {
+    return {
+      type: 'user/message',
+      seq: SessionSeq(seq),
+      time: seq,
+      data: createUserMessage({ content: [{ type: 'text', text: `u${seq}` }], source: { kind: 'user' } }),
+      surfaceOp: 'append',
+    }
+  }
+
+  it('recognizes only the empty rewind-owned developer replacement', () => {
+    const rewind = rewindEvent(2, 'rewind', '', { op: 'replace', startSeq: 1, endSeq: 1 })
+    expect(isRewindSurfaceEvent(rewind)).toBe(true)
+    // Any other empty system replacement belongs to the system-prompt series.
+    expect(isRewindSurfaceEvent(rewindEvent(2, 'other', '', { op: 'replace', startSeq: 1, endSeq: 1 }))).toBe(false)
+    // A rewind never carries prompt text, and an append is not a rewind.
+    expect(isRewindSurfaceEvent(rewindEvent(2, 'rewind', 'text', { op: 'replace', startSeq: 1, endSeq: 1 }))).toBe(false)
+    expect(isRewindSurfaceEvent(rewindEvent(2, 'rewind', ''))).toBe(false)
+    expect(isRewindSurfaceEvent(appendedUser(2))).toBe(false)
+  })
+
+  it('folds a rewind whose empty node projects to no model message', () => {
+    const history = [
+      { ...rewindEvent(0, 'test-plugin', 'v1'), type: 'system/message' as const, data: { turn: 1, step: 1, message: createSystemMessage('v1') } },
+      appendedUser(1),
+      rewindEvent(2, 'rewind', '', { op: 'replace', startSeq: 1, endSeq: 1 }),
+    ]
+    const fold = foldSurface(history)
+
+    expect(fold.nodes).toEqual(sourceSeqs(0, 2))
+    expect(fold.replacements).toEqual([{ seq: 2, start: 1, end: 1, shadowedSeqs: [1] }])
+    // The rewind node stays on the surface while deriving no wire message, so
+    // the next request sees exactly the history that preceded the prompt.
+    const session = Session.create(SessionId('rewind'), history)
+    expect(session.deriveMessages().map(message => message.role)).toEqual(['system'])
+    expect(session.snapshotEvents().map(event => event.type))
+      .toEqual(['system/message', 'user/message', 'developer/message', 'session/end-seed'])
   })
 })

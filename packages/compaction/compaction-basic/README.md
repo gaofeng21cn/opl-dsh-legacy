@@ -48,34 +48,43 @@ You can verify success by watching the conversation continue past the point wher
 ```yaml
 - name: '@deepseek-ai/dsh-compaction-basic'
   config:
-    thresholdRatio: 0.8
-    retainRatio: 0.16
+    inputBudget: 258400
+    thresholdTokens: 244800
     modelPolicies:
       - provider: local
         model: small-context
+        inputBudget: 32768
         thresholdRatio: 0.7
         retainTokens: 2048
 ```
 
 ### Tuning when condensation starts
 
-All settings are optional. With context window `W`, effective request output cap `O`, and headroom `B`, the default trigger is `floor(min(W × 0.8, W − O − B))`, where `B = 65,536` tokens. Retention keeps the newest 16% of `W − O` verbatim. The table below lists every setting; the generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-compaction-basic) also includes their types.
+All settings are optional. Let `W` be the model context window, `O` its routed output reservation, `B` the configured headroom (default `65,536`), and `I = min(W, inputBudget)` (or `W` without a configured budget). The admission ceiling is `min(I, W − O)`. The trigger is `floor(min(I × thresholdRatio, I, W − O − B))`, or the same minimum with `thresholdTokens` replacing the ratio term. Retention keeps the newest 16% of the admission ceiling verbatim. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-compaction-basic) also includes the accepted field types.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `thresholdRatio` | `0.8` | Window fraction used in `floor(min(W × thresholdRatio, W − O − headroomTokens))`. |
+| `inputBudget` | Routed message budget | Effective input context budget in tokens: the ceiling a step's priced request may reach, and the basis for both ratios. A model whose own window is smaller keeps that smaller window. |
+| `thresholdRatio` | `0.8` | Fraction of the configured budget or model window; the trigger also respects reserved output and headroom. |
 | `headroomTokens` | `65536` | Additional pressure headroom beyond the routed output reservation; a non-negative integer. |
-| `retainRatio` | `0.16` | Recent conversation kept verbatim as a fraction of `W − O`; mutually exclusive with `retainTokens`. |
-| `retainTokens` | — | Absolute recent-conversation budget kept verbatim; mutually exclusive with `retainRatio` and must be below the resolved threshold. |
+| `thresholdTokens` | — | Absolute trigger; mutually exclusive with `thresholdRatio`, and clamped to a route whose effective budget is smaller. |
+| `retainRatio` | `0.16` | Recent conversation kept verbatim as a fraction of the effective input budget; mutually exclusive with `retainTokens`. |
+| `retainTokens` | — | Absolute recent-conversation budget kept verbatim; mutually exclusive with `retainRatio` and must be below the resolved trigger. |
 | `summarizationProvider` | `''` | Set together with `summarizationModel`; an empty pair uses the latest routed request target, then the `AgentOptions` pair. |
 | `summarizationModel` | `''` | Set together with `summarizationProvider`; an empty pair uses the latest routed request target, then the `AgentOptions` pair. |
 | `maxTokens` | `headroomTokens` (`65536`) | Positive summary output cap, including any provider-counted reasoning tokens. Explicit per-model caps override explicit global caps; otherwise the cap follows the resolved headroom. |
 | `compactionRetries` | `1` | Extra condensation attempts after the first when pressure remains above threshold. |
 | `maxOverflowRetries` | `1` | Maximum retries after a confirmed context-window overflow; `0` disables recovery only. |
 | `modelPolicies` | `[]` | Exact `{ provider, model, ...partialPolicy }` overrides for individual model routes. |
-| `auto` | `true` | Enable automatic condensation and overflow recovery; set `false` for manual-only operation. |
+| `auto` | `true` | Enable automatic condensation, step admission, and overflow recovery; set `false` for manual-only operation, which installs no admission ceiling. |
 
-Misconfiguration fails fast: unknown settings, duplicate per-model overrides, invalid token counts, both retention forms together, or a retention ratio at least as large as the threshold ratio reject the plugin at load. When the model is first used, `W − O − B` must be positive and the resolved retained budget must be below the trigger. Zero headroom requires an explicit positive `maxTokens`, globally or in that model policy. Small-window deployments must configure headroom that fits their capacity; lower `thresholdRatio` to compact earlier.
+Misconfiguration fails fast: an unknown setting, a duplicate per-model override, both threshold forms together, both retention forms together, a ratio retention that is not below the ratio threshold, or an absolute retention that is not below the absolute threshold all reject the plugin at load. A configured `inputBudget` decides the trigger at its own value, so a retention budget that does not fit below that trigger also rejects the plugin at load. Without a configured budget the same comparison needs the routed model's context size and fails when that model is first used. The output reservation plus headroom must leave positive capacity. Zero headroom requires an explicit positive `maxTokens`; small-window deployments must configure headroom that fits.
+
+### The effective input budget
+
+The adapter owns the model's nominal capacity; the deployment owns the budget. Configuring `inputBudget` never rewrites adapter metadata, so a 1M model keeps its 1M capability while the deployment plans, prices, and admits against its own smaller ceiling. Ratios scale from the effective budget, and an absolute trigger or retention value is taken as configured — a trigger clamps to the effective budget so a smaller model still condenses at its own window.
+
+Pre-step condensation runs before a step's request is derived. When the priced request reaches the trigger, the backend condenses the oldest balanced span while keeping the priced recent tail. If the request still exceeds the effective input budget afterwards — or condensation failed and left it above — the step is refused with `StepInputBudgetError` and no request is sent. A condensation failure that leaves the request within the budget is logged and the step proceeds. An adapter publishing no capacity for a route keeps the warn-once-and-continue behavior unless the deployment configured `inputBudget`, which is an explicit ceiling and is enforced without adapter capacity. Step admission is part of automatic condensation, so `auto: false` installs none of it and a configured budget then only shapes programmatic `compactIfNeeded` calls.
 
 ### What happens when condensation runs
 
@@ -112,7 +121,7 @@ The backend is built on four commitments:
 
 With `auto: true`, a serial `agent/pre-step` listener checks pressure before request derivation: it prices the latest durable routed request envelope through `ctx.tokenMeter`, and when pressure crosses the routed model's threshold it prunes, then summarizes the oldest balanced span while keeping a priced recent tail. Every selected range starts at the first surface node that is not a `system/message`, so a system prompt at surface node 0 is never shadowed; a later `system/message` appended by an in-history prompt update is ordinary history that the range may shadow, and the agent loop's projection then replaces node 0 with the current prompt when their text differs ([decision rule](../../core/agent-loop/README.md#understand-the-implementation)). The `agent/request-error` listener reacts to a provider-confirmed `CONTEXT_WINDOW_EXCEEDED`: it bypasses the normal threshold and retention policy, attempts one maximal balanced head reduction, and authorizes a retry only after the surface replacement generation advances. Cancellation stays authoritative throughout.
 
-Pressure policy resolves capacity from the adapter that owns the durable route. Missing capacity, output plus headroom exhausting the window, or a retained budget at least as large as the threshold makes the manual pressure path throw a target-specific configuration error. The automatic listener warns once for that exact target and skips proactive compaction until its configuration is corrected; provider-confirmed overflow recovery remains available.
+Pressure policy resolves capacity from the adapter that owns the durable route. An adapter that returns no capacity for a valid dynamic route makes the manual pressure path throw a target-specific configuration error; the automatic listener warns once for that exact target and continues with full history. The resolved effective input budget is the automatic listener's admission ceiling: a step whose priced request still exceeds it after pre-step condensation is refused with `StepInputBudgetError` instead of being sent, while a condensation failure that leaves the request within the budget is logged and the step proceeds.
 
 ### Summarization mechanics
 
@@ -126,7 +135,7 @@ The transaction validates the surface span and the durable lock, appends `compac
 
 ### Config resolution
 
-`resolveConfig` validates and detaches defaults, `resolveTargetPolicy` merges exact provider/model overrides, and `resolveCompactSpec` requires explicit adapter capacity and routed output reservation to resolve the trigger and retained budget. The effective envelope’s `maxTokens` supplies that reservation, falling back to the adapter default and then zero. Model discovery (`listModels()`) is never consulted for policy; only the durable route's capacity matters.
+`resolveConfig` validates and detaches the defaults, `resolveTargetPolicy` merges an exact provider/model override over them, and `resolveCompactSpec` clamps the configured effective input budget to the adapter-owned context capacity and scales the merged policy into concrete admission, trigger, and retention budgets. Model discovery (`listModels()`) is never consulted for policy; only the durable route's capacity matters.
 
 ### Source map
 

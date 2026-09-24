@@ -18,7 +18,8 @@
 import type { Volatile } from '@deepseek-ai/cordis'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { ShellExecutor } from '@deepseek-ai/dsh-shell'
+import { AGENT_SHELL_SETTINGS_FIELDS, ShellExecutor, assertAgentShellSettings } from '@deepseek-ai/dsh-shell'
+import type { AgentShellSettings } from '@deepseek-ai/dsh-shell'
 import type { CollectedOutput, ShellExecRequest, ShellExecSpec, ShellExecution, ShellProcess, ShellProcessRead, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import type { SubprocessCollect, SubprocessHandle, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { clampTimeout, deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -55,7 +56,7 @@ const DEFAULT_GRACE_MS = 3_000
 const DEFAULT_MAX_SPILL_BYTES = 64 * 1024 * 1024
 
 /** Validated plugin configuration with live command budgets. */
-export interface Config {
+export interface Config extends AgentShellSettings {
   /** Default working directory for commands (default: process.cwd()). */
   cwd: Volatile<string | undefined>
   /** Default foreground timeout in milliseconds. */
@@ -116,6 +117,15 @@ export function assertServiceablePwshConfig(config: Config): void {
 }
 
 /**
+ * Validate a configured Agent shell selection against this host.
+ * @param config - the executor configuration carrying the shared shell fields.
+ * @throws Error naming a Git Bash selection this host cannot run.
+ */
+export function validateAgentShellConfig(config: Config): void {
+  assertAgentShellSettings(config)
+}
+
+/**
  * Local PowerShell executor over `ctx.subprocess`. Bounded output, spill
  * files, and managed-range termination are the subprocess service's mechanics;
  * this executor supplies their configured budgets per spawn.
@@ -131,6 +141,7 @@ export class PwshLocalExecutor extends ShellExecutor {
     maxSpillBytes: z.number().default(DEFAULT_MAX_SPILL_BYTES).volatile(),
     graceMs: z.number().default(DEFAULT_GRACE_MS).volatile(),
     pwshPath: z.string().volatile(),
+    ...AGENT_SHELL_SETTINGS_FIELDS,
   })
 
   /** The declared executable the current {@link pwshPath} was resolved from. */
@@ -292,10 +303,9 @@ export class PwshLocalExecutor extends ShellExecutor {
       } finally { signal.removeEventListener('abort', abort) }
     } else { argv = argvOrPrepare }
 
-    // A synchronous spawn throw (pre-aborted signal, alternative subprocess
-    // implementations) is contained into the same settled-killed shape as an
-    // asynchronous spawn rejection, so execute() itself never throws for a
-    // spawn problem and result() carries the failure uniformly.
+    // A spawn rejected after its signal aborts is a cancellation with no target
+    // outcome. Other synchronous spawn failures settle the handle as killed
+    // and remain failures of result().
     let running: SubprocessHandle | undefined
     let syncSpawnError: { error: unknown } | undefined
     try {
@@ -315,9 +325,10 @@ export class PwshLocalExecutor extends ShellExecutor {
     const spawned = preparationTimedOut
       ? Promise.resolve({ exitCode: null, signal: null })
       : running !== undefined ? running.done
-      // The original throw is preserved for callers even when it was not an Error.
-      // eslint-disable-next-line prefer-promise-reject-errors
-        : Promise.reject(spawnThrow())
+        : spawnSignal?.aborted === true ? Promise.resolve({ exitCode: null, signal: null })
+        // The original throw is preserved for callers even when it was not an Error.
+        // eslint-disable-next-line prefer-promise-reject-errors
+          : Promise.reject(spawnThrow())
 
     // A provider rejection produces no process output, so the subprocess
     // service has nothing to buffer: once the provider rejected, its
@@ -364,8 +375,9 @@ export class PwshLocalExecutor extends ShellExecutor {
         // target started has no exit to report and rejects with the
         // cancellation reason instead. The result projection classifies it
         // from the deadline wiring; nothing is a provider failure. A
-        // synchronous spawn throw never produced a handle and stays a failure.
-        if (running !== undefined && (proc.status === 'killed' || spawnSignal?.aborted === true)) {
+        // different rejection that races an abort remains a provider failure.
+        if (running !== undefined && (proc.status === 'killed'
+          || (spawnSignal?.aborted === true && error === spawnSignal.reason))) {
           proc.status = 'killed'
           this.onProcessDone(proc, collected.stderr.readFrom(0).text, false)
           disarm()

@@ -9,7 +9,9 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Open **Plugins** in the sidebar and select **Shell** in the Official group to set how long one command may run and how much of each output stream stays in memory. The page stages what is typed and writes it only on save, marks the values the user overrode, and offers to reset each back to the deployment's default. The page exists while the Host serves the `shell` namespace, so a deployment without a local shell executor shows no trace of it.
+Open **Plugins** in the sidebar and select **Shell** in the Official group to set how long one command may run and how much of each output stream stays in memory. The page stages what is typed and writes it only on save, marks the values the user overrode, and offers to reset each back to the deployment's default. The page exists while the Host serves a shell executor entry, so a deployment without a local shell executor shows no trace of it.
+
+The page also exposes the Windows **Agent shell** (`powershell` or `git-bash`) and **Git Bash path**. These load-time fields require fully quitting and restarting the app. Git Bash needs Git for Windows and full access; changing the shell does not grant permissions. Command limits still apply immediately.
 
 ## Table of Contents
 
@@ -64,7 +66,7 @@ None; this package neither assembles nor sends a provider request.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **The page follows the composed executor** — the POSIX and PowerShell executor families share the `shell` namespace because a host composes exactly one of them, so the served schema differs by platform (PowerShell adds `pwshPath`) while the page edits the same two fields on both.
+- **The page follows the composed executor** — the POSIX and PowerShell executor families share the `shell` namespace because a host composes exactly one of them, so the served schema differs by platform (PowerShell adds `pwshPath`) while the page edits command limits and the Windows shell selection on the active entry.
 - **Runtime invariant:** No companion is published. The page holds no owned relationship of its own: what it shows derives from the settings mirror, and what it writes the Host validates.
 
 <a id="dev-note"></a>

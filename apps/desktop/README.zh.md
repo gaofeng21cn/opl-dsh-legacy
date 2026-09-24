@@ -18,6 +18,50 @@ Desktop Host 的 Platform API 请求与更新策略请求使用相同的 `x-clie
 
 按 F12（多媒体功能键键盘上为 Fn+F12）、macOS 的 Command+Option+I 或 Windows 的 Ctrl+Shift+I，可切换当前获得焦点的应用页面的 DevTools，打包版本同样支持。这些原生快捷键通过隐藏的应用菜单项注册。更新遮罩和打包版本的内嵌浏览器禁用 DevTools。
 
+## 桌面控制
+
+<a id="desktop-control"></a>
+
+运行中的 OPL 桌面在 127.0.0.1 发布鉴权端点，并将私有绑定写入 $DSH_HOME/profiles/desktop/control.json。启动前设置 DSH_DESKTOP_CONTROL=0 可禁用。绑定令牌授权访问会话；带浏览器 Origin 的请求和白名单以外的方法会被拒绝。Windows 继承当前用户目录权限。
+
+Windows 包含 opl-dsh-control.cmd，通过已安装的 Electron 可执行文件以 Node 模式运行。命令包括 list、create [absolute-directory]、send SESSION --file PROMPT.txt [--mode queue|steer]、steer-queued SESSION ITEM、read SESSION、stop SESSION、wait SESSION [--turn N] [--timeout SECONDS]、projects 和 move-session SESSION (--project WORKSPACE_ID | --out)。发送返回受理状态与请求 ID，并非执行完成；重试时通过 --request-id 复用 ID。默认的 `--mode queue` 把提示词追加到后续轮次；`--mode steer` 交给后端既有的插话路径，它沿用与 GUI 相同的安全边界，并由会话自身状态决定落点，因此该命令不承诺硬中断正在运行的 shell 命令。回执在服务器的 `accepted` 旁以 `requestMode` 回显请求模式；`accepted` 表示已受理，而不是模型已执行或已读取。`steer-queued SESSION ITEM` 通过 `session/updateQueue` 把一个仍在排队的条目按 ID 转为插话，因此只有在该条目仍待处理且当前轮次接受插话时才成功；被拒绝时退出码为 1，并返回 `session/steer-unavailable` 或 `session/queue-item-not-found`，条目保持排队，而不会被当作提示词重发。读取可观察持久记录和实时助手流。`wait` 在 Host 事件流上阻塞，直到会话完成、失败、被取消或需要输入，并输出观测到的结果及其轮次；它绝不轮询，`--timeout` 到期时以退出码 3 返回“仍在运行”，而不会报告虚假的完成。`projects` 输出已注册项目及其会话成员关系，`move-session` 把一个会话放入某个项目或移出所有项目，且不改变其工作目录或历史。命令操作 GUI 中的同一份会话，保留正常权限确认。rpc --file REQUEST.json 接受白名单内的具名 Remote 调用，包括 oplSearch 设置与测试。
+
+## 窗口、托盘与通知
+
+<a id="window-tray-and-notifications"></a>
+
+关闭主窗口由 shell 决定，而不是渲染器。在 Windows 和 Linux 上，首次关闭会询问是收进托盘继续运行还是退出，并带有“记住选择”复选框；默认项和 Esc 对应项都是“收进托盘”，因为隐藏窗口可以恢复，而退出应用不能。记住的选择存放在 `$DSH_HOME/desktop/desktop-preferences.json`，无需重启即对下次关闭生效，并可在“设置 → 插件”的**窗口与通知**中改回“每次询问”。macOS 保持其平台行为：关闭窗口即关闭，由 Dock 重新打开。
+
+应用留在托盘期间，Host 及其任务继续运行，渲染器保持连接，因此任务事件仍能到达 shell。托盘图标可恢复并聚焦主窗口，并带有明确的“退出”菜单项；两者都经过同一个进程级单实例归属，因此再次启动只会聚焦已有窗口，而不会新建窗口。退出始终走正常的退出路径——停止 Host、等待其子进程结束，并在进程离开前移除托盘图标。没有可用托盘图标的构建完全不拦截关闭，从而保留历史上“关闭即退出”的行为；桌面环境拒绝创建托盘时同样如此。
+
+应用会把四类任务事件作为 Windows 系统通知上报：一次运行停止、一次运行失败、有待处理的审批、有待回答的问题。仅当应用不在前台时才会出现通知，**窗口与通知**可以关闭通知。点击通知会聚焦窗口并打开它所指的会话。应用渲染器通过 `dshDesktop.notifications` 上报事件；策略由 shell 掌握，因此上报内容不包含消息正文、提示词、工具参数、错误消息或凭据。其中唯一来自会话的内容是会话显示标题，最多 120 个码点，并折叠为单行。上报标识会被记住，因此同一渲染器内同一事件的重复投递——重连的事件流、重复投递的待处理请求——会被丢弃而不会显示两次；运行结果还带有按渲染器实例生成的标识，因此重新加载的渲染器不会让新一轮运行被误认为已上报过的事件。断线永远不会被上报为任务结束，因为 Host 不会为它发布状态事件；子代理的结果属于父级回合，而不是用户自己的任务。
+
+Windows 通过 AppUserModelID 把 toast 归属于某个应用。NSIS 安装器会把 electron-builder 的 `appId` 写入它创建的快捷方式，打包同时把同一值以 `dshDesktopAppId`（`extraMetadata`）写入打包后的 manifest，shell 会在打开任何窗口之前用 `app.setAppUserModelId` 发布该身份。未打包运行没有安装器写入的快捷方式，因此除非 `DSH_DESKTOP_APP_ID` 指定身份，它不会发布任何身份。真实安装上的验证——toast 身份、专注助手行为，以及已安装快捷方式的 AppUserModelID——需要已安装的构建，单元测试不覆盖。
+
+## 执行环境
+
+桌面端在两种环境之一中运行 Host，在「设置 → 插件」中选择，并存放在 `$DSH_HOME/desktop/execution-environment.json`。**Windows 本机**（默认，也是所有既有安装的行为）以 Node 模式运行内置 Electron 可执行文件，并提供共享 Web profile。**WSL2** 在一个已安装的发行版内，使用该发行版的 Linux Node、路径、工具和沙箱运行完整的 dsh Host。
+
+已保存的选择决定下一次启动所用的环境，因此选择 WSL2 并重启即会启动 WSL2 Host。`DSH_DESKTOP_ENVIRONMENT`（配合 `DSH_DESKTOP_WSL_DISTRO`）是显式的单次启动覆盖，用于调试或脚本化运行时会优先于它。无法满足的选择会在启动页明确失败；桌面端绝不回退到 Windows 本机——那会让用户运行在其 Linux 会话与插件都不在的环境中。
+
+切换需要重启应用，且正在运行的会话会保持其启动时的环境；设置界面分别展示「当前使用」与「重启后使用」的环境，而不会暗示已实时切换。只有在通过一次性探测（`wsl.exe -d <distro> --exec sh -lc 'node --version'`）后才会提供某个发行版，因此不可用的发行版会连同原因一并列出且无法选中。
+
+WSL2 在每次启动时只启动一次 Host，并在整个会话期间保持运行；`wsl.exe` 只负责启动、探测和生命周期管理，绝不用于包装单次工具调用。Linux Host 绑定一个临时回环端口，通过仅所有者可读的文件发布带版本的绑定（端点、每次启动的 bearer 令牌、进程 ID），并公布官方 Web profile 的鉴权 URL 和启动注入。渲染进程随后使用该 profile 的 HTTP API 与 WebSocket 流。两种 transport 分派到同一套插件树、Remote 网关、资源路由和客户端资源，因此只有一套 Agent 实现，而不是两套。Windows 侧会拒绝版本不匹配的绑定，报告握手超时，并报告会话中途退出的 Host。就绪的判据是端点能接受连接，而不是绑定文件出现：WSL2 会把 Windows 的回环连接转发进发行版，而该转发比发行版自身的绑定滞后约一秒。
+
+Linux Host 读取或写入的每个路径都会在启动前完成转换：内置负载和绑定文件位于 Windows 磁盘上，发行版通过 `/mnt/<盘符>` 访问它们。Windows 进程环境中的任何内容都不会进入发行版——`WSLENV` 被显式设置，因此环境中的 Windows 取值无法转发本进程的 `DSH_HOME` 或其凭据。`DSH_DESKTOP_WSL_HOME` 是唯一受支持的覆盖项，其取值为绝对 Linux 路径。
+
+路径遵循必须使用它的环境。Windows 盘符路径在 WSL2 内变为 `/mnt/<盘符>/…`，反向亦然；`\\wsl$\<发行版>\…` 转换为 Linux 路径，而指向其他发行版的路径会被拒绝。允许使用位于 `/mnt/<盘符>` 的项目，但每次文件操作都要跨越 Linux/Windows 文件系统边界，因此设置界面会提示：位于发行版内的项目要快得多。不会复制或移动任何项目。
+
+Windows 本机与每个发行版各自保留运行时状态。Windows 本机沿用 `$DSH_HOME` 下的既有布局；WSL2 Host 把其 Harness home、profile、会话、缓存与凭据保留在发行版内（默认 `~/.dsh-opl`，可由 `DSH_DESKTOP_WSL_HOME` 覆盖）。因此两种环境绝不会写入同一个数据库，也不会把在 Windows 上准备的 profile（其原生模块是 Windows 二进制）交给 Linux。
+
+同一发行版中运行的工具可在发行版内直接通过回环访问该 Host 的控制端点，无需每次调用都经过 Windows 互操作；Windows GUI 则通过桌面端的连接访问同一个 Host。[Agent Note](../../.agents/notes/implemented/architecture/2026-09-22-desktop-execution-environments.zh.md) 记录了原因与延期的协调工作。
+
+### 打包 Linux 负载
+
+Windows 安装包在 `resources/wsl` 下携带 Linux 运行时：一个 Linux Node.js 可执行文件、一棵 dsh 树（其生产安装在一个发行版内执行，因此原生模块是 Linux 构建）以及一份 `wsl-runtime.json` 清单。`prepare:wsl` 构建它，`package-target.ts` 在 Windows 目标上于 electron-builder 把该树映射进 `extraResources` 之前运行它；没有可用 WSL2 发行版的打包机会在此失败，而不会产出声称支持某环境却无法提供该环境的安装包。`verify-opl-package.mjs` 要求每个 Windows 应用树都带有该负载，并校验该可执行文件是 Linux x64 ELF 镜像，因此安装包无法在缺少 Linux Node 与 Host 文件的情况下声称支持 WSL2。
+
+设置 → 搜索可选择本地 Bing 检索或 OPL 云端搜索。云端模式接受账号模型 ID，可在保存前测试实际引用来源。仅能发现模型不代表它支持搜索。本地检索依赖本机网络与代理；云端检索由服务端执行，后续网页抓取仍走本机。统计按模型和会话记录调用、失败、耗时与返回的 token 用量。缺失用量保持未知；统计不作为价格估算。
+
 ## 关键技术决策
 
 设计师原稿位于 `resources/icon.png` 和 `resources/icon.svg`；平台适配保留鲸鱼与渐变，分别位于 `resources/icon-windows.*` 和 `resources/icon-macos.*`。将各平台 SVG 导出为透明的 1024×1024 PNG。electron-builder 为 Windows 应用、安装程序和卸载程序生成多尺寸 ICO（[Windows 图标要求](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-construction)）。安装页面在两种主题下使用匹配的图案；卸载程序的欢迎和完成页共用 `installer/assets/uninstaller-sidebar.png`，准备阶段将其转换为 164×314 BMP。
@@ -281,6 +325,22 @@ Windows 卸载程序会随应用一起删除 Electron 用户数据目录（`%APP
 
 使用 `node apps/desktop/scripts/test-windows-installer.mjs --uninstall-only --compile-only` 以每次运行唯一的带作用域包名编译独立的中英文夹具。省略 `--compile-only` 可对预置数据运行原生删除器回归，以及交互、静默、`--updated`、`/KEEP_APP_DATA` 和 `DSH_HOME` 位于 Electron 数据内的检查。编译本身不能证明已安装卸载行为。
 
+### OPL 的 macOS 与 Windows 打包
+
+本发行版使用自己的 electron-builder 配置打包，而不使用上游配置。`electron-builder.opl.mjs` 提供 OPL 的身份、两个平台的图标与产物命名，同时不修改 `electron-builder.config.mjs`，以便与上游 rebase 时保持最小差异。`scripts/package-target.ts --config <file>` 在两者之间选择，未给出标志时 `DSH_DESKTOP_BUILDER_CONFIG` 从环境提供同一取值。
+
+```sh
+# macOS arm64, signed and notarized through the OPL identity
+pnpm run package:opl:desktop:mac:arm64
+
+# Windows x64, NSIS installer and portable executable, unsigned
+pnpm run package:opl:desktop:win:x64:unsigned
+```
+
+每个目标都写入 `.desktop-build/targets/<target>/` 之下：macOS 发行版在 `artifacts/`，未签名的 Windows 发行版在 `unsigned-artifacts/`，解包后的应用位于该目标所用的两个目录之一下面的 `win-unpacked/`（macOS 目标为 `mac-arm64/OPL DSH.app`）。Windows 产物为 `opl-dsh-<版本>-win-x64-setup.exe` 与 `opl-dsh-<版本>-win-x64-portable.exe`，发行身份随文件名一起传递。
+
+用 `opl/install-windows.ps1` 安装 Windows 构建。构建产生了 NSIS 安装包时它会运行该安装包，否则复制 `win-unpacked`，随后用 `opl/verify-opl-package.mjs` 复检安装后的目录；`-KeepPrevious` 会保留被替换的那份构建。
+
 ### Windows EV 签名
 
 运行时签名在当前 Windows 账户的各 worktree 间共享完整的已签名文件。`.env.windows` 中的 `DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_DIR` 指定固定本地磁盘上的绝对目录；默认值为 `%USERPROFILE%\.dsh-desktop-signing\signature-cache\v1`。缓存目录必须属于当前账户，访问权限不得向其他普通账户开放；带链接的路径会被拒绝。缓存项标识原始字节、公钥证书和签名工具链。每次恢复都检查摘要、Windows 信任状态、时间戳和证书，再替换未签名文件；缓存项无效会停止打包，不回退到硬件签名。不会仅因缓存较旧而重新签名。缓存信任同账户运行的程序，不防御管理员。[运行时签名缓存决策](../../.agents/notes/implemented/process/2026-09-17-windows-runtime-signature-cache.zh.md)定义验收要求和设计限制。
@@ -423,3 +483,14 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 ## 开发备注
 
 上线前 CDN 与容量决策见[桌面更新提案](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.zh.md#cdn-and-capacity-qualification)。
+
+- 切换执行环境需要重启应用；正在运行的会话其 Host 不会被原地替换。
+- WSL2 环境同时需要已安装的 WSL2 发行版和本构建在 `resources/wsl` 下提供的 Linux 负载；缺少任一项时，启动会以具体原因失败，而不会回退到 Windows 本机。
+- 打包 Windows 发行版要求构建机上存在可用的 WSL2 发行版，因为 Linux 树的原生模块必须由 Linux 包管理器安装。
+- WSL2 发行版从 Windows 注册表发现，因此为其他 Windows 用户安装的发行版不会被列出。
+- 共享 Web 插件管理器管理当前运行环境的 profile；WSL2 使用其发行版内的 profile。
+- `session.wait` 只对审批上报 `needs-input`；`user-questions` 及其他交互暂停不发布持久结算事件。
+- 没有机制在 DSH 事件流上协调 Codex 桌面任务。`session.wait` 是未来常驻协调器应使用的稳定接口；驱动 Codex 自动化仍只是周期性巡检兜底，而非完成信号。
+- 任务通知上报的是客户端自身订阅到的事实，因此被取消的运行会显示为“任务已结束”：持久化的 `turn/end` 原因只存在于 Host，不会到达渲染器。通知还依赖已加载的应用渲染器；Host 自身没有通知界面。
+- 通知正文包含会话显示标题；会话没有标题时，客户端用首条用户消息推导它。当用户允许在锁屏显示通知时，Windows 会在锁屏展示该通知，因此解锁前可读到该标题——会话中除标题外的内容不会出现在通知里。
+- 通知身份、toast 外观，以及已安装快捷方式的 AppUserModelID 只能由 Windows 上的已安装构建验证，单元测试不覆盖。

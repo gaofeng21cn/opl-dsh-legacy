@@ -8,7 +8,7 @@
 
 import { readFileSync, lstatSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 
 /** Canonical OPL Gateway inference root. */
 export const OPL_GATEWAY_INFERENCE_BASE_URL = 'https://gateway.medopl.com/v1'
@@ -49,6 +49,76 @@ export const OPL_GATEWAY_STATE_ROOT_ENV = 'OPL_GATEWAY_STATE_ROOT'
 /** State-directory suffix below the user's home on macOS. */
 const STATE_DIRECTORY_SUFFIX = ['Library', 'Application Support', 'OPL', 'state', 'gateway'] as const
 
+/** State-directory suffix below a Windows roaming or local application-data root. */
+const WINDOWS_STATE_DIRECTORY_SUFFIX = ['OPL', 'state', 'gateway'] as const
+
+/**
+ * Windows application-data roots the OPL app may have used, most specific first.
+ *
+ * Roaming leads because that is where a Windows application keeps per-account
+ * state, with Local as the fallback for a deployment that stored it per machine.
+ * Both may be absent, in which case there is simply nothing to reuse.
+ * @param env - environment carrying the Windows application-data roots.
+ * @returns distinct absolute roots, or an empty list.
+ */
+function windowsStateRoots(env: NodeJS.ProcessEnv): string[] {
+  const roots = [env.APPDATA, env.LOCALAPPDATA]
+    .map(root => root?.trim())
+    .filter((root): root is string => root !== undefined && root !== '')
+  return [...new Set(roots)]
+}
+
+/**
+ * Resolve every OPL Gateway state directory this platform could use.
+ *
+ * The OPL application owns this directory and this module only reads it, so an
+ * absent one is an ordinary answer rather than an error: a machine with no OPL
+ * installation installs nothing here, which is exactly the case the in-app
+ * sign-in exists for.
+ *
+ * The candidates are built with the named platform's own separators rather than
+ * the host's, so a caller asking about macOS gets a macOS-shaped answer even
+ * when it runs on Windows, and vice versa.
+ * @param home - user's home directory.
+ * @param env - environment carrying the optional override and Windows roots.
+ * @param platform - platform whose layout applies.
+ * @returns absolute state directories to try, most specific first.
+ */
+export function oplGatewayStateDirectories(
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const configured = env[OPL_GATEWAY_STATE_ROOT_ENV]?.trim()
+  if (configured !== undefined && configured !== '') return [configured]
+  if (platform === 'win32') {
+    return windowsStateRoots(env).map(root => win32.join(root, ...WINDOWS_STATE_DIRECTORY_SUFFIX))
+  }
+  return [posix.join(home, ...STATE_DIRECTORY_SUFFIX)]
+}
+
+/**
+ * Resolve the OPL Gateway state directory.
+ *
+ * Kept as the single-path form of {@link oplGatewayStateDirectories} for callers
+ * that only need the platform's primary location.
+ * @param home - user's home directory.
+ * @param env - environment carrying the optional override.
+ * @param platform - platform whose layout applies.
+ * @returns absolute state directory path.
+ */
+export function oplGatewayStateDirectory(
+  home: string = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const candidates = oplGatewayStateDirectories(home, env, platform)
+  if (candidates[0] !== undefined) return candidates[0]
+  return platform === 'win32'
+    ? win32.join(home, ...WINDOWS_STATE_DIRECTORY_SUFFIX)
+    : posix.join(home, ...STATE_DIRECTORY_SUFFIX)
+}
+
 /** One gateway credential OPL bound to a client configuration. */
 export interface OplGatewayKey {
   /** Bearer token OPL provisioned for this account. */
@@ -88,22 +158,6 @@ export interface OplGatewayAccount {
   readonly stale: boolean
   /** Why OPL's last refresh failed, when one did. */
   readonly lastErrorCode: string | null
-}
-
-/**
- * Resolve the OPL Gateway state directory.
- * @param home - user's home directory.
- * @param env - environment carrying the optional override.
- * @returns absolute state directory path.
- */
-export function oplGatewayStateDirectory(
-  home: string = homedir(),
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const configured = env[OPL_GATEWAY_STATE_ROOT_ENV]?.trim()
-  return configured === undefined || configured === ''
-    ? join(home, ...STATE_DIRECTORY_SUFFIX)
-    : configured
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,10 +213,29 @@ function accountNumber(value: unknown): number | null {
 
 /**
  * Read the account facts OPL recorded for its own gateway binding.
- * @param stateDirectory - OPL Gateway state directory.
+ *
+ * Accepts several candidate directories so the account page reads the same
+ * location the key import does: on Windows either application-data root may be
+ * the one OPL chose, and a page that looked at only one of them would report
+ * "not signed in" while requests still worked.
+ * @param stateDirectory - OPL Gateway state directory, or candidates to try in order.
  * @returns the recorded account, or undefined when OPL has none.
  */
-export function readOplGatewayAccount(stateDirectory: string): OplGatewayAccount | undefined {
+export function readOplGatewayAccount(stateDirectory: string | readonly string[]): OplGatewayAccount | undefined {
+  const candidates = typeof stateDirectory === 'string' ? [stateDirectory] : stateDirectory
+  for (const candidate of candidates) {
+    const account = readOplGatewayAccountAt(candidate)
+    if (account !== undefined) return account
+  }
+  return undefined
+}
+
+/**
+ * Read the account OPL recorded in exactly one directory.
+ * @param stateDirectory - OPL Gateway state directory.
+ * @returns the recorded account, or undefined when this directory holds none.
+ */
+function readOplGatewayAccountAt(stateDirectory: string): OplGatewayAccount | undefined {
   const text = privateFileText(join(stateDirectory, 'account.json'))
   if (text === undefined) return undefined
   let parsed: unknown
@@ -251,21 +324,45 @@ function escapeRegExp(value: string): string {
 
 /**
  * Import the gateway key OPL provisioned for this account.
- * @param options - state directory and expected provider id overrides.
+ *
+ * An explicit `stateDirectory` names one location, or several to try in order.
+ * Otherwise every candidate this platform could have used is tried, so a
+ * Windows installation finds state under whichever application-data root OPL
+ * chose, and a machine with no OPL installation simply yields `undefined`
+ * rather than failing to start.
+ * @param options - state directory candidates and expected provider id overrides.
  * @returns the imported credential, or undefined when OPL has none to offer.
  */
-export function importOplGatewayKey(options: { stateDirectory?: string; providerId?: string } = {}): OplGatewayKey | undefined {
-  const stateDirectory = options.stateDirectory ?? oplGatewayStateDirectory()
-  const binding = readOplGatewayBinding(stateDirectory)
-  if (binding === undefined) return undefined
-  if (options.providerId !== undefined && options.providerId !== binding.providerId) return undefined
-  const text = privateFileText(binding.configPath)
-  if (text === undefined) return undefined
-  const bound = readBoundGatewayKey(text, binding.providerId)
-  if (bound === undefined) return undefined
-  return {
-    key: bound.key,
-    baseURL: resolveInferenceBaseURL(bound.baseURL),
-    providerId: binding.providerId,
+export function importOplGatewayKey(
+  options: { stateDirectory?: string | readonly string[]; providerId?: string } = {},
+): OplGatewayKey | undefined {
+  const requested = options.stateDirectory
+  const candidates = requested === undefined
+    ? oplGatewayStateDirectories()
+    : typeof requested === 'string' ? [requested] : requested
+  for (const stateDirectory of candidates) {
+    // General Codex/AGI bindings are not credentials for this native DeepSeek route.
+    const accountText = privateFileText(join(stateDirectory, 'account.json'))
+    if (accountText === undefined) continue
+    let account: unknown
+    try { account = JSON.parse(accountText) } catch { continue }
+    if (!isRecord(account) || !Array.isArray(account.available_groups)) continue
+    const group = account.available_groups.find((entry: unknown) => isRecord(entry)
+      && String(entry.group_id) === String(account.key_group_id)
+      && typeof entry.label === 'string' && entry.label.trim().toLowerCase() === 'deepseek')
+    if (group === undefined) continue
+    const binding = readOplGatewayBinding(stateDirectory)
+    if (binding === undefined) continue
+    if (options.providerId !== undefined && options.providerId !== binding.providerId) continue
+    const text = privateFileText(binding.configPath)
+    if (text === undefined) continue
+    const bound = readBoundGatewayKey(text, binding.providerId)
+    if (bound === undefined) continue
+    return {
+      key: bound.key,
+      baseURL: resolveInferenceBaseURL(bound.baseURL),
+      providerId: binding.providerId,
+    }
   }
+  return undefined
 }

@@ -100,6 +100,12 @@ Files mode bounds retained request versions by `maxRequestFilesBytes` and `maxIm
 
 `reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `high`, and `max` efforts with selection guidance when deployment policy permits thinking. `low`, `high`, and `max` enable thinking and serialize as `output_config.effort`, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text. The adapter forwards an explicit `temperature`; DeepSeek accepts it with thinking enabled but ignores its value in that mode.
 
+### Protocol diagnostics
+
+`onProtocolAnomaly` compares native Messages events before translation with the resulting Harness blocks. It reports control-marker families appearing in visible text, reasoning/text mapping mismatches, and missing structured tool calls. Reports contain field and character counts, marker family names, stop reasons, completeness, and the provider request ID; they omit message content, thinking signatures, credentials, and raw SSE. Callback failures do not change generation results. Markers inside thinking alone do not trigger a report, and text containing tool syntax is never executed.
+
+Set `DSH_REASONING_TRACE_DIR` to an absolute directory to record local version-2 Messages diagnostics. Each request writes an exclusive JSON file with UTF-16 SHA-256 fingerprints and counts for raw thinking, translated reasoning, and serialized assistant history, plus hashed tool and request IDs. This opt-in diagnostic preserves native thinking replay and records no message text, signatures, or credentials. Filesystem failures do not interrupt generation.
+
 ### Dynamic configuration
 
 Connection options are captured from volatile Config references once per operation. Config validation rejects invalid candidates before form persistence. Credentials resolve from the same snapshot as the endpoint, image and Files policies, and idle budget. Attachment services resolve at request time.

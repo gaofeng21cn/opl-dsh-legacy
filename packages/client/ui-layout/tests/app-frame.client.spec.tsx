@@ -375,6 +375,25 @@ describe('AppFrame normal width concessions', () => {
     expect(tracks(frame)[0]).toBe(280)
     expect(instance.getSnapshot().layoutInfo.sidebar).toBe(0)
   })
+
+  it('drops the sidebar splitter with the rail and keeps the rail width layout-owned', () => {
+    const { frame, instance, sidebarOwner } = mountFrame()
+    act(() => { instance.actions.setSidebar(420) })
+    expect(frame.querySelector('[data-side="sidebar"]')).not.toBeNull()
+
+    // Auto-collapse below the breakpoint: the 56px rail is the layout's, and
+    // the width preference survives for the next wide frame.
+    resize(1023)
+    expect(tracks(frame)[0]).toBe(56)
+    expect(sidebarOwner()).toEqual({ collapsed: true, width: 56 })
+    expect(frame.querySelector('[data-side="sidebar"]')).toBeNull()
+
+    // A rail drag cannot reach the handle, so a later resize cannot leave a
+    // half-dragged width behind: the preference is still the dragged 420.
+    resize(1600)
+    expect(tracks(frame)[0]).toBe(420)
+    expect(frame.querySelector('[data-side="sidebar"]')).not.toBeNull()
+  })
 })
 
 describe('AppFrame right panel presentation', () => {

@@ -12,13 +12,12 @@ import type {
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type {
-  IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
+  IWorkspaces, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { RowToast } from './contract/slots.ts'
-import { en, zh } from './locales.ts'
 import { pinOrderAccounts, pinOrderSource } from './pin-order.ts'
 import type { WorkspaceViewStoreActions } from './stores.ts'
 
@@ -29,6 +28,8 @@ interface MainSelection {
 
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
+  /** Create and open an independent Session, coalescing concurrent creation. */
+  openChat(): Promise<void>
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
@@ -58,11 +59,11 @@ export interface UiWorkspace {
   /**
    * Start a New Session flow and navigate to its Session; a creation the Host
    * refuses is shown through the Workspace notice and leaves the selection as it was.
-   * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
+   * @param workspaceId - explicit target; absent creates an independent Session.
    */
   startSession(workspaceId?: WorkspaceId): void
   /**
-   * Archive a Session and clear it when it is the current selection.
+   * Archive a Session and replace an archived main selection with an independent Session.
    * @param sessionId - Session to archive.
    * @param options - `stopActivity` asks the Host to stop the Session's running work instead of refusing.
    */
@@ -131,6 +132,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     {}, { persist: { name: 'dsh.sessions.current' } },
   )
   private mainReference: SessionReference | undefined
+  private chatCreation: Promise<SessionId> | undefined
+  private owedLanding: 'startup' | 'replacement' | null = 'startup'
+  private readonly userNavigations = new Set<AbortSignal>()
+  private reconciling = false
+  private landingInFlight = false
 
   /**
    * @param ctx - Client root Context.
@@ -202,47 +208,47 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   async openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void> {
-    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
-    let sessionId: SessionId
-    try {
-      sessionId = await this.connectWorkspace(workspaceId)
-    } catch (error: unknown) {
-      // Reported here, not in connectWorkspace: startup restoration calls that
-      // directly and stays console-only.
-      if (!navigation.aborted) this.notify({ kind: 'createFailed', message: creationFailureMessage(error) })
-      throw error
-    }
-    if (navigation.aborted) return
-    this.replaceMain(sessionId, navigation, 'reveal', beforeOpen)
+    return this.navigate(async (navigation) => {
+      let sessionId: SessionId
+      try {
+        sessionId = await this.connectWorkspace(workspaceId)
+      } catch (error: unknown) {
+        if (!navigation.aborted) this.notify({ kind: 'createFailed', message: creationFailureMessage(error) })
+        throw error
+      }
+      if (!navigation.aborted) this.replaceMain(sessionId, navigation, 'reveal', beforeOpen)
+    })
   }
 
   async forkSession(sessionId: SessionId): Promise<void> {
     await this.sessions.fork({ sessionId, increaseTitle: true })
   }
 
+  async openChat(): Promise<void> {
+    return this.navigate(async (navigation) => {
+      let sessionId: SessionId
+      try {
+        sessionId = await this.createChat()
+      } catch (error: unknown) {
+        if (!navigation.aborted) this.notify({ kind: 'createFailed', message: creationFailureMessage(error) })
+        throw error
+      }
+      if (!navigation.aborted) this.replaceMain(sessionId, navigation, 'reveal')
+    })
+  }
+
   startSession(workspaceId?: WorkspaceId): void {
-    const workspace = this.workspaces.list.getSnapshot()
-    const sessions = this.sessions.list.getSnapshot()
-    const current = this.mainReference?.sessionId
-    const currentWorkspaceId = current === undefined
-      ? undefined
-      : workspace.items.find(item => item.sessionIds.includes(current))?.workspaceId
-    const recent = workspace.phase === 'ready' && sessions.phase === 'ready'
-      ? recentWorkspace(workspace.items, sessions.byId)
-      : undefined
-    const target = workspaceId ?? currentWorkspaceId ?? recent
-    if (target === undefined) {
-      this.clearMain()
-      return
-    }
-    void this.openWorkspace(target).catch(
-      (reason: unknown) => { console.warn('new session failed:', reason) },
-    )
+    const operation = workspaceId === undefined ? this.openChat() : this.openWorkspace(workspaceId)
+    void operation.catch((reason: unknown) => { console.warn('new session failed:', reason) })
   }
 
   async archiveSession(sessionId: SessionId, options: { readonly stopActivity?: boolean } = {}): Promise<void> {
     await this.workspaces.archiveSession(sessionId, options)
-    if (this.mainReference?.sessionId === sessionId) this.clearMain()
+    if (this.mainReference?.sessionId === sessionId) {
+      this.clearMain('preserve')
+      this.owedLanding = 'replacement'
+      this.reconcileNavigation()
+    }
   }
 
   async unarchiveSession(sessionId: SessionId): Promise<void> {
@@ -281,30 +287,35 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     return result.value
   }
 
-  private watchNavigation(): () => void {
-    let initial: 'waiting' | 'connecting' | 'done' = 'waiting'
-    const reconcile = (): void => {
-      if (this.lifetime.signal.aborted) return
-      if (this.clearArchivedCurrent()) return
-      if (initial !== 'waiting') return
-      const workspace = this.workspaces.list.getSnapshot()
-      const sessions = this.sessions.list.getSnapshot()
-      if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
-      if (this.mainReference !== undefined) {
-        initial = 'done'
-        return
-      }
-      initial = 'connecting'
-      void this.restoreSelection(workspace, sessions).then(
-        () => { initial = 'done' },
-        (reason: unknown) => {
-          if (this.lifetime.signal.aborted) return
-          initial = 'waiting'
-          console.warn('initial Session restoration failed:', reason)
-        },
-      )
+  /** Run user navigation while an automatic landing defers to its result. */
+  private async navigate<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+    this.userNavigations.add(navigation)
+    navigation.addEventListener('abort', () => {
+      queueMicrotask(() => { this.reconcileNavigation() })
+    }, { once: true })
+    try {
+      return await run(navigation)
+    } finally {
+      this.userNavigations.delete(navigation)
+      this.reconcileNavigation()
     }
+  }
 
+  private hasLiveNavigation(): boolean {
+    for (const navigation of this.userNavigations) {
+      if (navigation.aborted) this.userNavigations.delete(navigation)
+    }
+    return this.userNavigations.size > 0
+  }
+
+  private createChat(): Promise<SessionId> {
+    return this.chatCreation ??= this.sessions.create({ standalone: true })
+      .finally(() => { this.chatCreation = undefined })
+  }
+
+  private watchNavigation(): () => void {
+    const reconcile = (): void => { this.reconcileNavigation() }
     const disposeWorkspaces = this.workspaces.list.subscribe(reconcile)
     const disposeSessions = this.sessions.list.subscribe(reconcile)
     reconcile()
@@ -315,49 +326,64 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     }
   }
 
-  private async restoreSelection(workspaces: WorkspaceSnapshot, sessions: SessionListState): Promise<void> {
-    const saved = this.selection.getSnapshot()
-    if (saved.subagentAddress !== undefined) {
+  private reconcileNavigation(): void {
+    if (this.reconciling || this.lifetime.signal.aborted) return
+    this.reconciling = true
+    try {
+      if (this.clearArchivedCurrent()) this.owedLanding = 'replacement'
+      if (this.mainReference !== undefined) {
+        this.owedLanding = null
+        return
+      }
+      const owed = this.owedLanding
+      if (owed === null || this.landingInFlight || this.hasLiveNavigation()) return
+      const workspaces = this.workspaces.list.getSnapshot()
+      const sessions = this.sessions.list.getSnapshot()
+      if (workspaces.phase !== 'ready' || sessions.phase !== 'ready') return
+      this.owedLanding = null
+      this.landingInFlight = true
+      let failed = false
+      void this.restoreSelection(owed, sessions).catch((reason: unknown) => {
+        failed = true
+        if (owed === 'startup' && this.selection.getSnapshot().sessionId !== undefined) this.owedLanding = owed
+        if (!this.lifetime.signal.aborted) console.warn(owed === 'startup' ? 'initial Session restoration failed:' : 'replacement Session restoration failed:', reason)
+      }).finally(() => {
+        this.landingInFlight = false
+        if (!failed) this.reconcileNavigation()
+      })
+    } finally {
+      this.reconciling = false
+    }
+  }
+
+  /** Restore a saved main reference; an absent selection lands outside projects. */
+  private async restoreSelection(owed: 'startup' | 'replacement', sessions: SessionListState): Promise<void> {
+    const saved = owed === 'startup' ? this.selection.getSnapshot() : {}
+    const archived = this.workspaces.list.getSnapshot().archivedSessionIds
+    if (saved.subagentAddress !== undefined && !archived.includes(saved.subagentAddress.childSessionId)) {
       this.replaceMain(saved.subagentAddress, this.lifetime.signal, 'preserve')
       return
     }
     const summary = saved.sessionId === undefined ? undefined : sessions.byId[saved.sessionId]
-    const workspace = summary === undefined ? undefined
-      : workspaces.items.find(item => item.sessionIds.includes(summary.id))
-    if (summary !== undefined && (!summary.blank || workspace === undefined)) {
-      this.replaceMain(summary.id, this.lifetime.signal, 'preserve')
+    let sessionId: SessionId
+    let navigation = this.lifetime.signal
+    if (summary !== undefined && !archived.includes(summary.id)) {
+      const workspace = this.workspaces.list.getSnapshot().items.find(item => item.sessionIds.includes(summary.id))
+      if (summary.blank && workspace !== undefined) {
+        navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
+        sessionId = summary.cwd === workspace.path
+          ? await this.reuseBlank(workspace.workspaceId, summary.id)
+          : await this.connectWorkspace(workspace.workspaceId)
+      } else sessionId = summary.id
+    } else {
+      sessionId = await this.createChat()
+    }
+    if (navigation.aborted || this.mainReference !== undefined) return
+    if (this.hasLiveNavigation()) {
+      this.owedLanding ??= owed
       return
     }
-    const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
-    let sessionId: SessionId | undefined
-    if (summary !== undefined && workspace !== undefined && summary.cwd === workspace.path
-      && !workspaces.archivedSessionIds.includes(summary.id)) {
-      sessionId = await this.reuseBlank(workspace.workspaceId, summary.id)
-    }
-    let target = workspace?.workspaceId ?? recentWorkspace(workspaces.items, sessions.byId)
-    if (target === undefined && workspaces.items.length === 0 && sessions.ids.length === 0) {
-      const prepared = await this.initializeDefaultWorkspace(navigation)
-      if (navigation.aborted) return
-      target = prepared?.workspaceId
-    }
-    if (sessionId === undefined && target !== undefined) sessionId = await this.connectWorkspace(target)
-    if (sessionId !== undefined && !navigation.aborted) {
-      this.replaceMain(sessionId, navigation, 'preserve')
-    }
-  }
-
-  private async initializeDefaultWorkspace(signal: AbortSignal): Promise<WorkspaceView | undefined> {
-    const language = this.ctx.locale.getSnapshot().active.toLowerCase().split('-')[0]
-    const title = (language === 'zh' ? zh : en)['defaultWorkspace.title']
-    try {
-      return await this.workspaces.initializeDefault({
-        directoryName: language === 'zh' || language === 'en' ? title : 'default-workspace',
-        title,
-      }, signal)
-    } catch (_error: unknown) {
-      if (!signal.aborted) this.notify({ kind: 'defaultWorkspaceFailed' })
-      return undefined
-    }
+    this.replaceMain(sessionId, this.lifetime.signal, 'preserve')
   }
 
   /** @returns true when an archived current selection was cleared. */
@@ -365,16 +391,16 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const current = this.mainReference?.sessionId
     if (current === undefined
       || !this.workspaces.list.getSnapshot().archivedSessionIds.includes(current)) return false
-    this.clearMain()
+    this.clearMain('preserve')
     return true
   }
 
-  private clearMain(): void {
+  private clearMain(panel: 'reveal' | 'preserve' = 'reveal'): void {
     const previous = this.mainReference
     this.mainReference = undefined
     this.selection.set({})
     previous?.release()
-    this.ctx.layout.selectPanel(null)
+    if (panel === 'reveal') this.ctx.layout.selectPanel(null)
   }
 
   private replaceMain(
@@ -428,28 +454,6 @@ function creationFailureMessage(error: unknown): string {
   const refused = sessionCreateErrorOf(error)
   if (refused !== undefined) return `${refused.rpcError.code}: ${refused.rpcError.message}`
   return error instanceof Error ? error.message : String(error)
-}
-
-/** Stable tie-breaking follows Host Workspace order. */
-function recentWorkspace(
-  workspaces: readonly WorkspaceView[],
-  sessions: SessionListState['byId'],
-): WorkspaceId | undefined {
-  let selected: WorkspaceId | undefined
-  let selectedTime = Number.NEGATIVE_INFINITY
-  for (const workspace of workspaces) {
-    let latest = Number.NEGATIVE_INFINITY
-    for (const sessionId of workspace.sessionIds) {
-      const session = sessions[sessionId]
-      if (session !== undefined) latest = Math.max(latest, session.updatedAt)
-    }
-    if (latest === Number.NEGATIVE_INFINITY) latest = Date.parse(workspace.createdAt)
-    if (selected === undefined || latest > selectedTime) {
-      selected = workspace.workspaceId
-      selectedTime = latest
-    }
-  }
-  return selected
 }
 
 export { UiWorkspaceService }

@@ -18,6 +18,8 @@ kind: "package-reference"
 - [Chat 隐藏的行](#system-prompt-row)
 - [指令与失败行](#command-and-failure-rows)
 - [轮次 token 用量](#turn-token-usage)
+- [编辑并重发](#edit-and-resend)
+- [对话回退](#conversation-rewind)
 - [已完成轮次的页脚](#completed-turn-footer)
 - [轮次过程折叠](#turn-process-folding)
 - [分组渲染](#grouped-rendering)
@@ -61,6 +63,20 @@ Assistant 尝试结束且没有可见消息时，Chat 隐藏已发布的 Node，
 在非回环地址浏览器中，设置作用域无法持久化写入，因此该偏好仅在当前进程内生效。明确选择会立即更新所有使用方；回环地址浏览器收到 Host 已接受的设置后会同步当前值。
 
 偏好菜单在发布新选择之前，先将焦点还给触发按钮，且不引起滚动。
+
+<a id="edit-and-resend"></a>
+## 编辑并重发
+
+最后一条真人提示词带有「编辑并重发」操作：该行可展开内联草稿并支持取消与重发，展示 Host 返回的拒绝文案，并在轮次运行时隐藏。IME 组合期间 Escape 与 Cmd/Ctrl+Enter 不生效——包括结束组合的那次按键以及 `compositionend` 之后的短暂窗口——因此中文或日文输入法的任何手势都不会取消草稿或触发重发。规则由 Host 决定——只有这一条消息可编辑——视图镜像同一个「最后一条提示词」事实。重发会铸造新的提交回显，并由持久化的 replacement `user/message` 像其他提示词一样将其回收。
+
+该 replacement 同时开启一个新的 transcript 代际：被取代的提示词及其分支在 replacement 之前产生的每一行——Assistant 回复、Tool 行、过程折叠与已完成轮次的页脚——在同一次发布中离开可见 transcript，而 replacement 自身作为普通提示词出现在它的新轮次之前。被替换的事件全部保留在 append-only 日志中，因此重新打开、fork 或查看 Session 仍能读到它们。只要某个轮次还有任意一行可见，它就保留轨道刻度，因此替换一条 steering 消息只会隐藏该分支覆盖的行；compaction 检查点不声明这种分支，继续遵循「被遮蔽的行仍然可见」的既有约定。
+
+<a id="conversation-rewind"></a>
+## 对话回退
+
+同一个「最后一条真人提示词」还带有回退操作：它把对话恢复到发送该消息之前的状态，且不删除任何内容。Host 追加一条空的 `developer/message`，替换从该提示词到当前 surface 尾部的全部模型可见节点，因此下一次请求看到的历史恰好是提示词之前的那一段；被遮蔽的事件（包括该轮次产生的 Assistant 与 Tool 输出）仍留在 append-only 日志中。轮次运行时该操作隐藏；拒绝时（编辑的四种状态，外加「轮次尚未结束」）在行下方展示 Host 给出的原因。
+
+该 replacement 不携带提示词文本，因此呈现为回退标记行而不是提示词卡片，位置正是被移除分支所占的位置。标记声明了被遮蔽的分支，于是这些行与该轮次的轨道刻度像提示词重写一样离开当前 transcript 代际；从日志重新打开 Session 会得到同样的视图。接受后，被回退的提示词文本会在输入框仍为空时回到输入框——用户此后键入的草稿是更新的输入，不会被覆盖。
 
 <a id="completed-turn-footer"></a>
 ## 已完成轮次的页脚
@@ -160,6 +176,7 @@ Chat 会在历史前插与 renderer 重新挂载时恢复语义锚点，并且�
 
 - **transcript 只反映已加载的 Session 窗口**——只有会话控制器加载前一页事件后，更早的 transcript node 才会出现。轮次导航比窗口更宽：轨道把已加载的轮次与宿主 `turnOutline` 投影合并，每个已开始的轮次都有固定间距刻度（相隔 10px；阶梯高于外框时在框内滚动并以渐变淡出标示可滚方向），激活未加载刻度会先把历史分页拉到该轮次的 `turn/start` seq 再落到它的行上。没有该投影时（未挂载 `dsh-session-turn-outline` 的装配），轨道回退到仅显示已加载轮次。
 - **导航预览按卡片尺寸截断**——提示词一行（50 字符）、回复至多三行（120 字符），已加载与未加载 Turn 一致；未加载 Turn 的回复要等该轮落定后才随大纲到达，进行中的轮次在此之前只预览提示词（或仅轮次号）。
+- **只读汇总仍会统计被取代的分支**——隐藏被替换的分支会移除它的行与轨道刻度，但全日志投影（`sessionStats`、`turnOutline`、token 用量）仍统计其事件；新轮次的轨道卡片没有提示词预览，因为 replacement 提示词在它的轮次开始之前就已落盘。
 
 
 <a id="dev-note"></a>

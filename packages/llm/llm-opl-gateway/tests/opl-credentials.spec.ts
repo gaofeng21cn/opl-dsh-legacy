@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   OPL_GATEWAY_INFERENCE_BASE_URL,
   importOplGatewayKey,
+  oplGatewayStateDirectories,
   oplGatewayStateDirectory,
   readBoundGatewayKey,
+  readOplGatewayAccount,
   readOplGatewayBinding,
   resolveInferenceBaseURL,
 } from '../src/opl-credentials.ts'
@@ -27,6 +29,8 @@ function privateFile(path: string, text: string): void {
 function writeState(root: string, binding: unknown): void {
   privateFile(join(root, 'account.json'), `${JSON.stringify({
     surface_kind: 'opl_gateway_account_state.v1',
+    key_group_id: '22',
+    available_groups: [{ group_id: '22', label: 'DeepSeek' }],
     status: 'connected',
     codex_binding: binding,
   }, undefined, 2)}\n`)
@@ -38,12 +42,42 @@ afterEach(() => {
 
 describe('gateway state location', () => {
   it('defaults below the home directory and honors the override', () => {
-    expect(oplGatewayStateDirectory('/Users/example', {}))
+    expect(oplGatewayStateDirectory('/Users/example', {}, 'darwin'))
       .toBe('/Users/example/Library/Application Support/OPL/state/gateway')
-    expect(oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '/custom/state' }))
+    expect(oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '/custom/state' }, 'darwin'))
       .toBe('/custom/state')
-    expect(oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '  ' }))
+    expect(oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '  ' }, 'darwin'))
       .toBe('/Users/example/Library/Application Support/OPL/state/gateway')
+  })
+
+  it('uses the Windows application-data roots instead of the macOS layout', () => {
+    expect(oplGatewayStateDirectories('C:\\Users\\Example', {
+      APPDATA: 'C:\\Users\\Example\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\Example\\AppData\\Local',
+    }, 'win32')).toEqual([
+      'C:\\Users\\Example\\AppData\\Roaming\\OPL\\state\\gateway',
+      'C:\\Users\\Example\\AppData\\Local\\OPL\\state\\gateway',
+    ])
+  })
+
+  it('offers every Windows root once and ignores blank ones', () => {
+    expect(oplGatewayStateDirectories('C:\\Users\\Example', { APPDATA: 'C:\\shared', LOCALAPPDATA: 'C:\\shared' }, 'win32'))
+      .toEqual(['C:\\shared\\OPL\\state\\gateway'])
+    expect(oplGatewayStateDirectories('C:\\Users\\Example', { APPDATA: '  ', LOCALAPPDATA: 'C:\\local' }, 'win32'))
+      .toEqual(['C:\\local\\OPL\\state\\gateway'])
+  })
+
+  it('has no Windows candidate when no root is defined, and still answers with a path', () => {
+    expect(oplGatewayStateDirectories('C:\\Users\\Example', {}, 'win32')).toEqual([])
+    expect(oplGatewayStateDirectory('C:\\Users\\Example', {}, 'win32'))
+      .toBe('C:\\Users\\Example\\OPL\\state\\gateway')
+  })
+
+  it('honors the override ahead of every platform layout', () => {
+    expect(oplGatewayStateDirectories('/Users/example', { OPL_GATEWAY_STATE_ROOT: 'D:\\opl\\state' }, 'win32'))
+      .toEqual(['D:\\opl\\state'])
+    expect(oplGatewayStateDirectories('/Users/example', { OPL_GATEWAY_STATE_ROOT: 'D:\\opl\\state' }, 'darwin'))
+      .toEqual(['D:\\opl\\state'])
   })
 })
 
@@ -69,7 +103,18 @@ describe('binding discovery', () => {
     const root = scratch()
     const real = join(scratch(), 'account.json')
     privateFile(real, '{}')
-    symlinkSync(real, join(root, 'account.json'))
+    try {
+      symlinkSync(real, join(root, 'account.json'))
+    } catch {
+      // Windows denies a file symlink unless Developer Mode is on or the
+      // process is elevated. A directory junction needs neither, and `lstat`
+      // reports a junction as a symbolic link just the same, which is the
+      // clause this case exists to protect. A junction keeps the guard covered
+      // on those machines instead of skipping the case and leaving it dark.
+      const foreignDirectory = join(scratch(), 'account.json')
+      mkdirSync(foreignDirectory, { recursive: true })
+      symlinkSync(foreignDirectory, join(root, 'account.json'), 'junction')
+    }
     expect(readOplGatewayBinding(root)).toBeUndefined()
   })
 })
@@ -141,6 +186,76 @@ describe('credential import', () => {
     const root = scratch()
     writeState(root, { config_path: join(root, 'absent.toml'), provider_id: 'gflab' })
     expect(importOplGatewayKey({ stateDirectory: root })).toBeUndefined()
+  })
+
+  it('adopts the account from whichever Windows root OPL used', () => {
+    // Windows can keep the state under either application-data root, so an
+    // installation that used the second one must still be found.
+    const empty = scratch()
+    const populated = scratch()
+    const config = join(scratch(), 'config.toml')
+    privateFile(config, '[model_providers.gflab]\nexperimental_bearer_token = "sk-windows"\n')
+    writeState(populated, { config_path: config, provider_id: 'gflab' })
+    expect(importOplGatewayKey({ stateDirectory: [empty, populated] })?.key).toBe('sk-windows')
+  })
+
+  it('degrades to no credential when no candidate holds any OPL state', () => {
+    // A machine with no OPL installation must fall back to the in-app sign-in
+    // rather than failing, so an empty search is an ordinary answer.
+    const candidates = [scratch(), scratch(), join(scratch(), 'absent')]
+    expect(importOplGatewayKey({ stateDirectory: candidates })).toBeUndefined()
+    expect(importOplGatewayKey({ stateDirectory: [] })).toBeUndefined()
+  })
+})
+
+describe('recorded account', () => {
+  function writeAccount(root: string, status: string, snapshot: Record<string, unknown>): void {
+    privateFile(join(root, 'account.json'), `${JSON.stringify({
+      surface_kind: 'opl_gateway_account_state.v1',
+      key_group_id: '22',
+      available_groups: [{ group_id: '22', label: 'DeepSeek' }],
+      status,
+      snapshot,
+      observed_at: '2026-09-19T00:00:00.000Z',
+      stale_after: '2026-09-19T01:00:00.000Z',
+    }, undefined, 2)}\n`)
+  }
+
+  it('reads the account and its usage totals', () => {
+    const root = scratch()
+    writeAccount(root, 'connected', {
+      display_name: 'Example',
+      balance_amount: 12.5,
+      balance_currency: 'CNY',
+      today_tokens: 10,
+      total_tokens: 2048,
+    })
+    expect(readOplGatewayAccount(root)).toMatchObject({
+      status: 'connected',
+      displayName: 'Example',
+      balanceAmount: 12.5,
+      balanceCurrency: 'CNY',
+      todayTokens: 10,
+      totalTokens: 2048,
+    })
+  })
+
+  it('reports no account for an absent or unreadable state directory', () => {
+    expect(readOplGatewayAccount(join(scratch(), 'absent'))).toBeUndefined()
+    expect(readOplGatewayAccount([])).toBeUndefined()
+  })
+
+  it('follows the same candidate order the credential import uses', () => {
+    const empty = scratch()
+    const populated = scratch()
+    writeAccount(populated, 'connected', { display_name: 'Second root' })
+    expect(readOplGatewayAccount([empty, populated])?.displayName).toBe('Second root')
+  })
+
+  it('rejects a state file that records no status', () => {
+    const root = scratch()
+    privateFile(join(root, 'account.json'), '{"surface_kind":"opl_gateway_account_state.v1"}')
+    expect(readOplGatewayAccount(root)).toBeUndefined()
   })
 })
 

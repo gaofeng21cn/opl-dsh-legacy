@@ -33,6 +33,7 @@ export type AgentPresetSettingsKey =
   | 'showPickerDescription'
   | 'enablePickerToSetDefault'
   | 'enablePickerToCreate'
+  | 'presetChatName' | 'presetChatDescription'
 
 /** English copy. */
 export const en: Record<AgentPresetSettingsKey, string> = {
@@ -47,6 +48,8 @@ export const en: Record<AgentPresetSettingsKey, string> = {
   setDefault: 'Set as new task default',
   view: 'View configuration',
 
+  presetChatName: 'Chat',
+  presetChatDescription: 'Questions, writing, and translation without local tools.',
   presetStandardName: 'Standard mode',
   presetStandardDescription:
     'Work with code, files, and information. Suitable for most tasks, with search, editing, terminal commands, and other tools available as needed.',
@@ -93,6 +96,8 @@ export const zh: Record<AgentPresetSettingsKey, string> = {
   setDefault: '设为新任务默认',
   view: '查看配置',
 
+  presetChatName: '普通聊天',
+  presetChatDescription: '日常问答、写作和翻译，不提供本地操作工具。',
   presetStandardName: '标准模式',
   presetStandardDescription: '处理代码、文件和资料，适合大多数任务。Agent 会按需使用检索、编辑和终端等工具。',
   presetPtcName: 'PTC 模式',

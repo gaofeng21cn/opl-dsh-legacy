@@ -1,10 +1,19 @@
 /** Typed preload operations exposed only by the Electron shell. */
 
+import type { DesktopCloseBehavior } from './desktop-preferences.ts'
+import type { DesktopNotificationReport } from './notifications.ts'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
+  environmentStatus: 'dsh-desktop:environment-status',
+  environmentSelect: 'dsh-desktop:environment-select',
+  preferencesGet: 'dsh-desktop:preferences-get',
+  preferencesSet: 'dsh-desktop:preferences-set',
+  preferencesState: 'dsh-desktop:preferences-state',
+  notificationsReport: 'dsh-desktop:notifications-report',
+  notificationsActivate: 'dsh-desktop:notifications-activate',
   boot: 'dsh-desktop:boot',
   enterWorkspace: 'dsh-desktop:enter-workspace',
   bootFailed: 'dsh-desktop:boot-failed',
@@ -23,6 +32,36 @@ export const DESKTOP_IPC = {
   windowsMenu: 'dsh-desktop:windows-menu',
 } as const
 
+/** Desktop shell preferences as the settings surface reads them. */
+export interface DesktopShellPreferences {
+  readonly notificationsEnabled: boolean
+  readonly closeBehavior: DesktopCloseBehavior
+}
+
+/** Partial preference change requested by the settings surface. */
+export interface DesktopShellPreferencesUpdate {
+  readonly notificationsEnabled?: boolean
+  readonly closeBehavior?: DesktopCloseBehavior
+}
+
+/** Notification reporting exposed to the application renderer. */
+export interface DshDesktopNotificationApi {
+  /** Report one task event; the shell decides whether it becomes a notification. */
+  report(report: DesktopNotificationReport): Promise<void>
+  /**
+   * Subscribe to notification clicks.
+   * @param listener - receives the session a clicked notification named.
+   * @returns the unsubscribe function.
+   */
+  onActivate(listener: (sessionId: string) => void): () => void
+}
+
+/** Narrow bridge exposed to backend-provided application documents. */
+export interface DshDesktopAppApi {
+  readonly protocolVersion: 1
+  readonly notifications: DshDesktopNotificationApi
+}
+
 /** Desktop release update state rendered by desktop-owned UI. */
 export type DesktopUpdatePreparationFailureKind = 'stop-failed' | 'tasks-changed' | 'tasks-unavailable'
 
@@ -36,6 +75,43 @@ export interface DesktopUpdateState {
   readonly failedOperation?: 'check' | 'download' | 'install'
   /** Main-owned preparation cause; UI wording is selected by the active locale. */
   readonly preparationFailure?: DesktopUpdatePreparationFailureKind
+}
+
+/** One installed WSL2 distribution offered by the environment settings. */
+export interface DesktopWslDistribution {
+  readonly name: string
+  readonly isDefault: boolean
+  /** Linux Node.js version, absent when the distribution cannot host the Host. */
+  readonly nodeVersion?: string
+  /** Stable reason the distribution cannot host the Host, absent when it can. */
+  readonly problem?: 'not-wsl2' | 'unreachable' | 'node-missing' | 'node-too-old' | 'host-missing'
+}
+
+/** Current execution environment, as the settings surface presents it. */
+export interface DesktopEnvironmentState {
+  /** Environment the running Desktop is currently using. */
+  readonly current: 'windows-native' | 'wsl2'
+  /** Distribution the running Desktop uses, when it uses WSL2. */
+  readonly currentDistro?: string
+  /** Environment the next launch will use. */
+  readonly selected: 'windows-native' | 'wsl2'
+  /** Distribution the next launch will use, when it uses WSL2. */
+  readonly selectedDistro?: string
+  /**
+   * Whether the running and selected environments differ, which means the
+   * change needs a restart before it takes effect.
+   */
+  readonly restartRequired: boolean
+  /** Installed distributions, empty when WSL2 is unavailable. */
+  readonly distributions: readonly DesktopWslDistribution[]
+  /** Why the environment surface cannot offer WSL2, when it cannot. */
+  readonly unavailable?: 'not-windows' | 'not-installed' | 'no-usable-distribution'
+}
+
+/** One environment selection request from the settings surface. */
+export interface DesktopEnvironmentSelection {
+  readonly environment: 'windows-native' | 'wsl2'
+  readonly distro?: string
 }
 
 /** Classified failure copy selected by the Web locale without exposing raw updater diagnostics. */
@@ -59,13 +135,22 @@ export interface DesktopUpdatePresentation {
 }
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
-export interface DshDesktopProductApi {
+export interface DshDesktopProductApi extends DshDesktopAppApi {
   readonly protocolVersion: 1
   readonly browser: DesktopBrowserBridge
   readonly updates: {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
+  }
+  readonly environment: {
+    status(): Promise<DesktopEnvironmentState>
+    select(selection: DesktopEnvironmentSelection): Promise<DesktopEnvironmentState>
+  }
+  readonly preferences: {
+    get(): Promise<DesktopShellPreferences>
+    set(update: DesktopShellPreferencesUpdate): Promise<DesktopShellPreferences>
+    subscribe(listener: (preferences: DesktopShellPreferences) => void): () => void
   }
 }
 

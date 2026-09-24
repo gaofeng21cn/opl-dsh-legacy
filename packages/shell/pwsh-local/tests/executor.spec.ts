@@ -520,6 +520,41 @@ describe.skipIf(!hasPwsh)('PwshLocalExecutor.run', () => {
     expect(result.timedOut).toBe(false)
   })
 
+  it('settles a cancellation that lands inside the provider\'s own pre-spawn check', async () => {
+    const { ctx, bash } = await setup()
+    const controller = new AbortController()
+    const reason = new Error('cancelled during launch')
+    // The provider refuses to start an already-aborted target; the abort lands
+    // inside the spawn call, so this race is deterministic on every host.
+    vi.spyOn(ctx.subprocess, 'spawn').mockImplementation(() => {
+      controller.abort(reason)
+      throw new Error(`aborted before spawn: ${reason.message}`)
+    })
+    const result = await run(bash, bash.resolve({ command: 'Start-Sleep -Seconds 60', signal: controller.signal }))
+    expect(result.aborted).toBe(true)
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBeNull()
+  })
+
+  it('settles a deadline that expires inside the provider\'s own pre-spawn check', async () => {
+    const { ctx, bash } = await setup()
+    vi.useFakeTimers()
+    try {
+      // Fake timers run the deadline callback synchronously, so the expiry is
+      // staged exactly between argv resolution and the provider's abort check.
+      vi.spyOn(ctx.subprocess, 'spawn').mockImplementation(() => {
+        vi.advanceTimersByTime(1_000)
+        throw new Error('aborted before spawn: BASH_TIMEOUT')
+      })
+      const result = await run(bash, bash.resolve({ command: 'Start-Sleep -Seconds 60', timeoutMs: 10 }))
+      expect(result.timedOut).toBe(true)
+      expect(result.aborted).toBe(false)
+      expect(result.exitCode).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('classifies a self-killed command as neither timed out nor aborted', async () => {
     const { bash } = await setup({ timeoutMs: 60_000 })
     const result = await run(bash, bash.resolve({ command: 'Stop-Process -Id $PID' }))

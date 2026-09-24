@@ -18,6 +18,8 @@ File-mention providers receive the viewed Session ID with the closing-turn owner
 - [Hidden Chat rows](#system-prompt-row)
 - [Command and failure rows](#command-and-failure-rows)
 - [Turn token usage](#turn-token-usage)
+- [Edit and resend](#edit-and-resend)
+- [Conversation rewind](#conversation-rewind)
 - [Completed-turn footer](#completed-turn-footer)
 - [Turn Process Folding](#turn-process-folding)
 - [Grouped rendering](#grouped-rendering)
@@ -61,6 +63,20 @@ Settings → General → Performance & usage stores `ui-chat.performanceUsage` a
 On non-loopback browsers, the preference remains process-local because the settings scope cannot persist writes. Explicit selections update every consumer immediately; accepted Host settings reconcile the live value on loopback browsers.
 
 Preference menus restore focus to their trigger without scrolling before publishing a new selection.
+
+<a id="edit-and-resend"></a>
+## Edit and resend
+
+The last direct human prompt carries an edit-and-resend action: its row opens an inline draft with cancel and resend, reports the Host's refusal copy, and disappears while a turn runs. Escape and Cmd/Ctrl+Enter are inert while an IME is composing — including the composition-closing keystroke and the short window after `compositionend` — so no Chinese or Japanese IME gesture cancels the draft or resends it. The Host owns the rule — only that one message is editable — and the view mirrors the same last-prompt fact. Resending mints a fresh submission echo, which the durable replacement `user/message` retires like any other prompt.
+
+The replacement also opens a transcript generation: the superseded prompt and every row its branch produced up to the replacement — Assistant replies, Tool rows, process disclosure, and completed-Turn footer — leave the visible transcript in the same publication, and the replacement renders as an ordinary prompt ahead of its own Turn. Every replaced event stays in the append-only log, so reopening, forking, or inspecting the Session still reaches it. A Turn keeps its rail mark while any of its rows survives, so replacing a steering message hides only the rows the branch covered; a compaction checkpoint declares no such branch and keeps its existing contract that the rows it shadowed stay visible.
+
+<a id="conversation-rewind"></a>
+## Conversation rewind
+
+The same last direct human prompt also carries a rewind action: it rolls the conversation back to the state before that message without deleting anything. The Host appends one empty `developer/message` that replaces every model-visible node from the prompt through the current surface tail, so the next request sees exactly the history that preceded the prompt; the shadowed events, including the assistant and Tool output the turn produced, stay in the append-only log. The action disappears while a turn runs, and a refusal — the same four states as editing plus a turn that never closed — renders the Host's reason under the row.
+
+The replacement carries no prompt text, so it materializes as a rewind marker row instead of a prompt card, at the position the removed branch occupied. The marker declares the shadowed branch, so those rows and the Turn's rail mark leave the current transcript generation exactly as a prompt rewrite does; reopening the Session from the log reproduces the same view. On acceptance the rolled-back prompt's text returns to the composer when it is still empty — a draft the user typed since is newer input and is left alone.
 
 <a id="completed-turn-footer"></a>
 ## Completed-turn footer
@@ -160,6 +176,7 @@ None; Chat presentation does not assemble or mutate provider requests.
 
 - **The transcript reflects the loaded Session window** — older transcript nodes become available only after Session Controller loads the preceding event page. Turn navigation is wider than the window: the rail merges the loaded Turns with the host `turnOutline` projection, so every started Turn gets a fixed-pitch mark (10px apart; a ladder taller than the frame scrolls inside it with gradient fades), and activating an unloaded mark pages history through the Turn's `turn/start` seq before landing on its row. Without the projection (assemblies not mounting `dsh-session-turn-outline`) the rail falls back to loaded Turns only.
 - **Rail previews are card-sized** — one prompt line (50 characters) and up to three response lines (120), on loaded and unloaded Turns alike; an unloaded Turn's response arrives from the outline only once the Turn settled, so an open Turn previews its prompt (or just the Turn number) until then.
+- **Read-only aggregates still count a superseded branch** — hiding a replaced branch removes its rows and rail mark, but whole-log projections (`sessionStats`, `turnOutline`, token usage) keep counting its events, and the new Turn's rail card shows no prompt preview because the replacement prompt is logged before that Turn starts.
 
 
 <a id="dev-note"></a>

@@ -138,6 +138,11 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     return this.onUnarchiveSession(request)
   }
 
+  async moveSession(request: Parameters<WorkspaceRemote['moveSession']>[0]) {
+    this.record('moveSession', request)
+    return remoteOk({ moved: true as const })
+  }
+
   pinSession(request: WorkspacePinSessionRequest): Promise<RemoteResult<WorkspacePinValue>> {
     this.record('pinSession', request)
     return this.onPinSession(request)

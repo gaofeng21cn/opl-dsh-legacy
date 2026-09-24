@@ -40,7 +40,7 @@ export function WorkspaceId(id: string): WorkspaceId {
 }
 
 /**
- * An archiveSession or pinSession request named a session neither live nor in
+ * A registry operation named a session neither live nor in
  * session persistence — a definite miss only; storage faults propagate as
  * themselves.
  */
@@ -49,7 +49,7 @@ export class WorkspaceUnknownSessionError extends Error {
    * @param sessionId - The unknown session id.
    * @param verb - The registry operation that named the session.
    */
-  constructor(readonly sessionId: SessionId, verb: 'archive' | 'pin') {
+  constructor(readonly sessionId: SessionId, verb: 'archive' | 'pin' | 'move') {
     super(`cannot ${verb} session '${sessionId}': live sessions and session persistence hold no such session`)
     this.name = 'WorkspaceUnknownSessionError'
   }
@@ -181,6 +181,7 @@ export class WorkspaceRegistry extends Service {
 
   private readonly host: WorkspaceEntityHost = {
     table: () => this.requireTable(),
+    members: (id, sessions) => this.projectMembers(id, sessions),
     sessionPath: id => this.sessionPaths.get(id),
     readSessionHeader: id => this.readSessionHeader(id),
     rememberSessionPath: (id, path) => {
@@ -193,7 +194,10 @@ export class WorkspaceRegistry extends Service {
     super(ctx, 'workspaceRegistry')
   }
 
-  /** Open the domain, finish bootstrap when required, and rebuild the ordered cache. */
+  /**
+   * Open the domain, finish bootstrap when required, adopt unplaced sessions,
+   * and rebuild the ordered cache.
+   */
   protected async [Service.init](): Promise<void> {
     const domain = await this.ctx.storageDomain.open(workspaceDomainSpec)
     this.ctx.effect(() => () => domain.close(), 'workspace.domainClose')
@@ -214,6 +218,7 @@ export class WorkspaceRegistry extends Service {
     await this.indexLiveSessions()
     this.validateStoredState(this.requireState())
     this.rebuildEntities()
+    await this.adoptSessions()
     this.reportFilteredCandidates()
   }
 
@@ -737,6 +742,59 @@ export class WorkspaceRegistry extends Service {
     })
   }
 
+  /**
+   * Attach every indexed session whose canonical cwd names a registered
+   * workspace path and that no explicit placement covers.
+   *
+   * Directory membership is a property of the stored header alone, so it is
+   * re-applied on every start rather than only during the one-time bootstrap:
+   * sessions produced by a composition that never calls `attachSession` join
+   * their directory's workspace too. An explicit placement always wins — a
+   * session the user moved to another project, or out of projects entirely,
+   * is never re-attached to its directory's workspace.
+   *
+   * Candidates attach oldest first so the newest ends up at the head, the same
+   * order creation and bootstrap produce. One session that cannot attach — its
+   * directory disappeared after indexing, or the record write failed — is
+   * logged and left outside; the pass is per-session atomic, so no partial
+   * account survives and the next start retries it.
+   * @returns resolution after every candidate has been attempted.
+   */
+  private async adoptSessions(): Promise<void> {
+    const byPath = new Map<string, WorkspaceEntity>()
+    for (const entity of this.entities.values()) byPath.set(entity.path, entity)
+    if (byPath.size === 0) return
+
+    const placements = this.requireState().sessionPlacements ?? {}
+    const members = new Map<WorkspaceId, Set<SessionId>>()
+    const candidates: Array<{ readonly header: SessionHeader; readonly entity: WorkspaceEntity }> = []
+    for (const header of this.headers.values()) {
+      const path = this.sessionPaths.get(header.id)
+      if (path === undefined || Object.hasOwn(placements, header.id)) continue
+      const entity = byPath.get(path)
+      if (entity === undefined) continue
+      let accounted = members.get(entity.id)
+      if (accounted === undefined) {
+        accounted = new Set(entity.sessionIds)
+        members.set(entity.id, accounted)
+      }
+      if (accounted.has(header.id)) continue
+      candidates.push({ header, entity })
+    }
+
+    candidates.sort((left, right) => compareHeaders(right.header, left.header))
+    for (const candidate of candidates) {
+      try {
+        await candidate.entity.attachSession(candidate.header.id)
+      } catch (error) {
+        this.ctx.logger.warn(
+          `workspace '${candidate.entity.id}' did not adopt session '${candidate.header.id}' `
+          + `from '${candidate.entity.path}': ${String(error)}`,
+        )
+      }
+    }
+  }
+
   private validateStoredState(state: WorkspaceDomainState): void {
     const table = this.requireTable()
     const order = new Set<WorkspaceId>()
@@ -876,7 +934,41 @@ export class WorkspaceRegistry extends Service {
     return this.state
   }
 
+  /**
+   * Resolve explicit sidebar placement over the original directory account.
+   * @param id - destination project.
+   * @param sessions - original directory-matching members.
+   * @returns visible members, including sessions whose cwd belongs elsewhere.
+   */
+  projectMembers(id: WorkspaceId, sessions: readonly SessionId[]): readonly SessionId[] {
+    const placements = this.global?.get().sessionPlacements ?? {}
+    const moved = Object.entries(placements).filter(([, target]) => target === id)
+      .map(([session]) => session as SessionId)
+    return [...new Set([...moved, ...sessions.filter(session =>
+      !Object.hasOwn(placements, session) || placements[session] === id)])]
+  }
+
+  /**
+   * Change project ownership with one durable write, preserving Session logs and files.
+   * @param sessionId - existing Session to place.
+   * @param workspaceId - registered destination; omitted removes project ownership.
+   * @returns committed placement; rejects unknown identities or failed storage writes.
+   */
+  moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      if (!(await this.sessionKnown(sessionId))) throw new WorkspaceUnknownSessionError(sessionId, 'move')
+      if (workspaceId !== undefined && !this.entities.has(workspaceId)) {
+        throw new WorkspaceOrderInvalidError(workspaceId)
+      }
+      const state = this.requireState()
+      await this.setState({ ...state, sessionPlacements: {
+        ...state.sessionPlacements, [sessionId]: workspaceId ?? null,
+      } })
+    })
+  }
+
   private async setState(state: WorkspaceDomainState): Promise<void> {
+    state = { ...state, sessionPlacements: state.sessionPlacements ?? this.state?.sessionPlacements }
     await (this.global as DomainGlobal<WorkspaceDomainState>).set(state)
     this.state = state
   }

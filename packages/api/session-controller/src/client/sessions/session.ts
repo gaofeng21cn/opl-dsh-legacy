@@ -19,7 +19,7 @@ import type {
   SessionRequestId,
 } from '../../types.ts'
 import type {
-  BeginSubmissionInput, PendingSubmissionRetirement, SessionFace, SubmissionHandle,
+  BeginSubmissionInput, PendingSubmissionRetirement, SessionFace, SessionRewindReceipt, SubmissionHandle,
 } from '../contract/session.ts'
 import type {
   OpenState, PendingSubmission, PromptError, SessionSnapshot,
@@ -312,6 +312,55 @@ export class Session implements SessionFace {
     }
     this.options.onEngaged?.(this)
     return result
+  }
+
+  /**
+   * Rewrite the last editable user message and resend it (see the ISession
+   * declaration); failures land in the snapshot's promptError.
+   * @param seq - durable event seq of the user message being edited.
+   * @param content - edited text, browser-owned temporary image uploads, and staged-file receipts.
+   * @param signal - optional caller cancellation for the complete admission round-trip.
+   * @param requestId - identity from {@link beginSubmission}; a failed identified edit retires its echo.
+   * @returns acceptance with the replacement event seq (also mirrored into promptError on failure).
+   */
+  async editPrompt(
+    seq: number,
+    content: PromptContentPart[],
+    signal?: AbortSignal,
+    requestId?: SessionRequestId,
+  ): Promise<RemoteResult<{ accepted: true; seq: number }>> {
+    this.promptError = null
+    this.lastAgentError = null
+    this.promptAttempted = true
+    this.notifier.markDirty()
+    const result = await this.remote.session.editPrompt({
+      requestId: requestId ?? randomUUID() as SessionRequestId,
+      sessionId: this.sessionId,
+      seq,
+      content,
+      clientTimeZone: resolvedClientTimeZone(),
+    }, signal)
+    if (!result.ok) {
+      if (requestId !== undefined) this.retireFailedSubmission(requestId)
+      this.promptError = { op: 'send', error: result.error }
+      this.notifier.markDirty()
+      return result
+    }
+    // An edited branch exists only in a Session that already ran a turn, so the
+    // blank-session flip `prompt` owns never applies here.
+    return result
+  }
+
+  /**
+   * Roll this session's conversation back to the state before its last direct
+   * human prompt (see the ISession declaration); the host owns every refusal, so
+   * a failed rewind surfaces only through the caller's own copy.
+   * @param seq - durable event seq of the user message to roll back past.
+   * @param signal - optional caller cancellation for the round-trip.
+   * @returns the committed replacement and what it removed, or the business error.
+   */
+  async rewind(seq: number, signal?: AbortSignal): Promise<RemoteResult<SessionRewindReceipt>> {
+    return this.remote.session.rewind({ sessionId: this.sessionId, seq }, signal)
   }
 
   /**

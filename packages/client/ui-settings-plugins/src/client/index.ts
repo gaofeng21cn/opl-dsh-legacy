@@ -19,6 +19,10 @@ import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { PluginsSettingsSection } from './PluginsSettingsSection.tsx'
 import type { PluginsSettingsSectionInjected, PluginsSettingsTabEntry } from './PluginsSettingsSection.tsx'
 import { en, zh } from './locales.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import { DesktopSettingsSection, type DesktopSettingsBridge } from './DesktopSettingsSection.tsx'
+import { OutputLanguageCard } from './OutputLanguageCard.tsx'
+import { OUTPUT_LANGUAGE_NS, OutputLanguageCardController } from './output-language-card-controller.ts'
 
 export type { PluginsSettingsSectionInjected, PluginsSettingsSectionProps } from './PluginsSettingsSection.tsx'
 
@@ -26,7 +30,7 @@ export type { PluginsSettingsSectionInjected, PluginsSettingsSectionProps } from
 const NS = 'settings.plugins'
 
 /** Required services (cordis fiber inject). */
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'configForms']
 
 /**
  * Mount the built-in plugins section.
@@ -35,6 +39,21 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-plugins: section dictionaries')
+
+  const desktop = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number } & DesktopSettingsBridge }).dshDesktop
+  if (desktop?.protocolVersion === 1 && desktop.preferences !== undefined && desktop.environment !== undefined) {
+    ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section', id: 'desktop', order: 16, locale: NS,
+      label: () => t('desktopTitle'), inject: () => ({ desktop }),
+    }, DesktopSettingsSection))
+  }
+
+  const outputLanguage = new OutputLanguageCardController(ctx.configForms.get(OUTPUT_LANGUAGE_NS))
+  ctx.effect(() => () => { outputLanguage.dispose() }, 'ui-settings-plugins: output-language subscription')
+  ctx.effect(() => ctx.configForms.whileServed([OUTPUT_LANGUAGE_NS], () => ctx.slots.inject('plugins.item', () => ctx.slots.register({
+    name: 'plugins.item', id: 'output-language', order: 25, locale: NS,
+    label: () => t('outputLanguageTitle'), inject: () => outputLanguage.inject(),
+  }, OutputLanguageCard))), 'ui-settings-plugins: output-language page')
 
   let tabsVersion = -1
   let tabsRevision = -1

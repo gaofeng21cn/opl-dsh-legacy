@@ -44,6 +44,7 @@ export function toolChatSnapshot(
     },
     navigation: { items: () => [] },
     timeline: { turnOrder: [], turns: new Map() },
+    supersededTurns: new Set(),
     legacy: {
       nodes: settled,
       runningCalls: running,

@@ -27,13 +27,17 @@ kind: "package-reference"
 
 当组合需要执行 PowerShell 命令——通常是在 Windows 上——且不需要隔离时，挂载此执行器。它注册为 `ctx.shell`，面向模型的 `pwsh` 工具会立即基于它工作：agent（智能体）调用工具，命令即以全新 `pwsh -Command` 进程按下面的预算运行。
 
+### 共享的 Agent shell 设置
+
+PowerShell 生效时，共享 [shell 设置](../shell/README.zh.md)也提供 Native Agent shell 选项及 Git Bash 路径。所选 Git Bash 可执行文件在解析时验证；切换提供者及模型工具需要完全重启。命令预算保留原有的实时更新行为。
+
 ### 何时选择
 
 它是 `dsh-bash-local` 的 Windows 对应实现：当 `pwsh` 是平台 shell 时选择它，组合即可把 POSIX 行换成 pwsh 行并保持相同的语义。执行器从显式 `pwshPath`、常见的 Windows 安装位置、PATH 条目，或作为最后手段的 Windows PowerShell 5.1 解析 `pwsh` 可执行文件。非隔离执行时它就是默认选择；需要沙箱能力时组合 `dsh-pwsh-sandbox`。
 
 ### 最小配置
 
-按你需要的预算加载执行器；每个字段都有默认值，因此最小的组合就是单独一个插件条目。当组合了设置提供方时，用户段会叠加在该条目之上，预算无需重载即可在运行时变更（见[运行时调整预算](#adjusting-budgets-at-runtime)）。
+按你需要的预算加载执行器；每个字段都有默认值，因此最小的组合就是单独一个插件条目。插件页面编辑这个 profile 条目，volatile 预算无需重载即可在运行时变更（见[运行时调整预算](#adjusting-budgets-at-runtime)）。
 
 ```yaml
 - id: bash
@@ -72,7 +76,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 <a id="adjusting-budgets-at-runtime"></a>
 ### 运行时调整预算
 
-执行预算是解析每条命令时读取的 volatile Config 字段。插件页面编辑当前执行器的 profile 条目。完整 Config 验证在表单写入磁盘前拒绝无效数字和定时器上限。
+执行预算是解析每条命令时读取的 volatile Config 字段。插件页面编辑当前执行器的 profile 条目。执行器在解析下一条命令时拒绝非正预算和不可用的定时器上限。
 
 -----
 
@@ -92,7 +96,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：`PwshLocalExecutor`、`Config`、设置接线、argv seam |
+| [`src/index.ts`](src/index.ts) | 插件入口：`PwshLocalExecutor`、`Config`、实时 profile 配置与 argv seam |
 | [`src/resolve.ts`](src/resolve.ts) | 纯函数 `resolvePwshPath`/`candidatePwshPaths` 可执行文件解析 |
 | — | 不发布运行时不变式伴生入口；除所属 seam 强制执行的约定外，本包不公开独立的事件序列或可变数据关系。 |
 | `tests/` | 已演练的行为：预算、分类、解析、后台句柄 |
@@ -105,7 +109,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 
 ### 不变式与归属
 
-- `graceMs` 预算必须为正有限值且不大于 `MAX_TIMER_DELAY_MS`，这样 Node 就能用一个定时器表示它；无效值在写入处被拒绝。
+- `graceMs` 预算必须为正有限值且不大于 `MAX_TIMER_DELAY_MS`，这样 Node 就能用一个定时器表示它；无效值在解析下一条命令时被拒绝。
 - 环境分层固定：先是终端覆盖值，然后是调用方的 `env`，最后才是受信任的 `dshEnv` 快照；subprocess 服务独立清除环境中的凭据与继承的 `DSH_*` 名称。
 - 可执行文件解析是 `(configured, env, platform)` 的纯函数，仅当存储的 `pwshPath` 与当前可执行文件所依据的值不同时才重新探测文件系统。
 - 后台进程属于 subprocess 服务：它能在仅重载执行器后存活，并在服务 dispose 时被终止并 join。

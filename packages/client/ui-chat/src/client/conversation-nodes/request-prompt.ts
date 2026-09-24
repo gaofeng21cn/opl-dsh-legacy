@@ -3,13 +3,22 @@ import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, RequestPromptInspector,
   SystemPromptState, SystemPromptInspector,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { isRewindSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 import type { ChatNode } from '../contract/chat-nodes.ts'
+import type { SupersededBranch } from './superseded-branch.ts'
 import { chatNode } from './common.ts'
 
 declare module '../contract/chat-nodes.ts' {
   interface ChatNodeDataMap {
     /** Complete system prompt rendered for one model request, or an in-history prompt update at its own position. */
     'system-prompt': { readonly text: string; readonly update?: true }
+    /** One conversation rewind: the empty replacement that removed a prompt's branch. */
+    rewind: {
+      /** Durable seq of the replacement node itself. */
+      readonly seq: number
+      /** Branch the replacement shadowed; those rows leave the current generation. */
+      readonly replacedBranch: SupersededBranch
+    }
   }
 }
 
@@ -56,6 +65,10 @@ function stableRequestPromptAnchor(
  * their step's input; in-history updates stay at their own positions. The
  * request-prompt Definition owns replacement and later-series cards. Positional
  * replacements advance the effective prompt without changing historical cards.
+ *
+ * A rewind developer replacement is one of those replacements, but it is not a prompt
+ * card: its empty text projects to no model message, so the Definition
+ * materializes a marker row that declares the shadowed branch instead.
  * @param inspect - Pure surface interpretation supplied by uiConversation.
  * @returns The Chat system-prompt Definition.
  */
@@ -73,10 +86,18 @@ export function systemMessageDefinition(inspect: SystemPromptInspector): Convers
     },
     update: context => context.state,
     buildViewNode: (context) => {
+      const start = context.start
+      if (start === undefined) return null
+      if (start.event.type !== 'assistant/live-chunk' && isRewindSurfaceEvent(start.event)) {
+        return chatNode(context, 'rewind', start.event.seq, {
+          seq: start.event.seq,
+          replacedBranch: { startSeq: start.event.surfaceOp.startSeq, untilSeq: start.event.seq },
+        })
+      }
       const state = context.state?.introduced
       if (state === undefined || state.text === ''
-        || context.start?.event.type !== 'system/message' || context.start.event.surfaceOp !== 'append') return null
-      const anchor = state.update ? state.seq : requestPromptAnchor(context.start, undefined, true)
+        || start.event.type !== 'system/message' || start.event.surfaceOp !== 'append') return null
+      const anchor = state.update ? state.seq : requestPromptAnchor(start, undefined, true)
       return chatNode(context, 'system-prompt', anchor, { text: state.text, ...state.update ? { update: true } : {} })
     },
   }

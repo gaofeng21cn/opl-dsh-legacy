@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-system-prompt",
   "description": "System prompt assembly registry for the DeepSeek Harness",
-  "version": "0.1.7-rc.1",
+  "version": "0.1.7-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -44,6 +44,8 @@
     "@deepseek-ai/dsh-invariants": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-scope": "workspace:*",
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/cosmokit": "workspace:~"
   }
 }

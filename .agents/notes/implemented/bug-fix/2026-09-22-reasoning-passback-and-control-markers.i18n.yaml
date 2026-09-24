@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-22-reasoning-passback-and-control-markers.md
+2026-09-22-reasoning-passback-and-control-markers.md: 0a3aa96e73a213966d3ace78df7af2212b8fe0f1
+2026-09-22-reasoning-passback-and-control-markers.zh.md: b30b279219bb365a01505d5d9c18e9b7acaa5fd0

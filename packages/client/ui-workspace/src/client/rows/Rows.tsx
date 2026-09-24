@@ -554,6 +554,7 @@ export function SessionNodeItem({
   // their drop targets to fellow pinned rows.
   const draggable = drag !== undefined && !row.blank && !row.archived
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null)
   // The menu's open state, bound into the row entries' `useMenuOpenState` hook.
   const menuOpenState = useMemo((): MenuOpenState => [menuOpen, setMenuOpen], [menuOpen])
   const rowRef = useRef<HTMLDivElement>(null)
@@ -579,6 +580,11 @@ export function SessionNodeItem({
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
       onClick={() => { onOpen(node.id) }}
+      onContextMenu={row.blank ? undefined : (event) => {
+        event.preventDefault()
+        setMenuPoint({ x: event.clientX, y: event.clientY })
+        setMenuOpen(true)
+      }}
       onPointerEnter={marquee.enter}
       onPointerLeave={marquee.leave}
       draggable={draggable}
@@ -648,7 +654,8 @@ export function SessionNodeItem({
         <span className={css.rowActions} onClick={(e) => { e.stopPropagation() }}>
           <Menu
             open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
+            onClose={() => { setMenuOpen(false); setMenuPoint(null) }}
+            {...(menuPoint === null ? {} : { getAnchorRect: () => new DOMRect(menuPoint.x, menuPoint.y, 0, 0) })}
             portal
             closeOnPointerLeave
             anchor={(
@@ -656,7 +663,7 @@ export function SessionNodeItem({
                 type="button"
                 className={css.iconButton}
                 aria-label={t('actions.session.aria', { name: title })}
-                onClick={() => { setMenuOpen(v => !v) }}
+                onClick={() => { setMenuPoint(null); setMenuOpen(v => !v) }}
               >
                 <IconEllipsisOutlineRegular />
               </button>

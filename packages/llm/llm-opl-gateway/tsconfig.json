@@ -39,6 +39,9 @@
       "path": "../../settings/settings"
     },
     {
+      "path": "../../web/web"
+    },
+    {
       "path": "../../identity/anonymous-user-id"
     },
     {

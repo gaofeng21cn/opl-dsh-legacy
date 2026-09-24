@@ -142,6 +142,7 @@ export function createElectronBuilderConfig(
     ],
     asarUnpack: unpack,
     extraResources: [
+      ...(packagesWindows ? [{ from: buildPaths.wsl, to: 'wsl' }] : []),
       { from: buildPaths.runtime, to: 'runtime' },
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
     ],

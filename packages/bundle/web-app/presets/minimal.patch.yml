@@ -24,12 +24,13 @@
                 name: '@deepseek-ai/dsh-terminal'
               - id: terminal-bash
                 name: '@deepseek-ai/dsh-terminal-bash'
-                disabled: !!js process.platform === 'win32'
+                disabled: !!js process.platform === 'win32' && dshAgentShell() !== 'git-bash'
                 config:
+                  shellPath: !!js "process.platform === 'win32' ? dshGitBashPath() : undefined"
                   timeoutMs: 300000
               - id: persistent-bash
                 name: '@deepseek-ai/dsh-tool-bash-persistent'
-                disabled: !!js process.platform === 'win32'
+                disabled: !!js process.platform === 'win32' && dshAgentShell() !== 'git-bash'
                 config:
                   timeoutMs: 300000
                   description: |-
@@ -42,13 +43,13 @@
                     * Please run long lived commands in the background, e.g. 'sleep 10 &' or start a server in the background.
               - id: terminal-pwsh
                 name: '@deepseek-ai/dsh-terminal-bash'
-                disabled: !!js process.platform !== 'win32'
+                disabled: !!js process.platform !== 'win32' || dshAgentShell() !== 'powershell'
                 config:
                   shellDialect: pwsh
                   timeoutMs: 300000
               - id: persistent-pwsh
                 name: '@deepseek-ai/dsh-tool-pwsh-persistent'
-                disabled: !!js process.platform !== 'win32'
+                disabled: !!js process.platform !== 'win32' || dshAgentShell() !== 'powershell'
                 config:
                   timeoutMs: 300000
                   description: |-

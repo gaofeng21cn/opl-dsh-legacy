@@ -211,7 +211,7 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     const newer = await makeDir('newer')
     const alias = join(base, 'older-link')
     const plain = join(base, 'plain.txt')
-    await symlink(older, alias)
+    await symlink(older, alias, process.platform === 'win32' ? 'junction' : 'dir')
     await writeFile(plain, 'not a directory')
     const missing = join(base, 'missing')
     const result = await harness({
@@ -382,7 +382,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     const firstDir = await makeDir('first')
     const secondDir = await makeDir('second')
     const alias = join(base, 'first-link')
-    await symlink(firstDir, alias)
+    await symlink(firstDir, alias, process.platform === 'win32' ? 'junction' : 'dir')
     const { registry, pool } = await harness()
     const first = await registry.create(firstDir, 'Original')
     const second = await registry.create(secondDir)
@@ -777,7 +777,7 @@ describe('header-validated membership projection', () => {
       sessions: [
         header('good', owned),
         header('mismatch', elsewhere),
-        header('cwd-only', owned),
+        header('unaccounted', elsewhere),
       ],
     })
     const workspace = result.registry.list()[0]!
@@ -788,7 +788,7 @@ describe('header-validated membership projection', () => {
 
     await workspace.setTitle('pruned')
     expect(storedRecord(pool, id).sessionIds).toEqual(['good'])
-    expect(workspace.sessionIds).not.toContain('cwd-only')
+    expect(workspace.sessionIds).not.toContain('unaccounted')
   })
 
   it('rejects duplicate candidate ownership, duplicate paths, and initialized order drift', async () => {
@@ -1385,3 +1385,246 @@ declare module '@deepseek-ai/dsh-workspace/types' {
     'probe-items': true
   }
 }
+
+describe('project placement independent of execution directory', () => {
+  it('moves between projects and outside, persists placement, and preserves cwd', async () => {
+    const a = await makeDir('placement-a')
+    const b = await makeDir('placement-b')
+    const sessions = [header('placement-session', a)]
+    const first = await harness({ sessions })
+    const source = first.registry.list()[0]!
+    const target = await first.registry.create(b)
+    const id = SessionId('placement-session')
+    await first.registry.moveSession(id, target.id)
+    expect(source.sessionIds).not.toContain(id)
+    expect(target.sessionIds).toContain(id)
+    expect(sessions[0]!.cwd).toBe(a)
+    await first.registry.create(await makeDir('unrelated-project'))
+    await first.ctx.fiber.dispose()
+    const second = await harness({ pool: first.pool, sessions })
+    expect(second.registry.get(target.id)!.sessionIds).toContain(id)
+    await second.registry.moveSession(id)
+    expect(second.registry.list().flatMap(item => item.sessionIds)).not.toContain(id)
+    await second.ctx.fiber.dispose()
+    const third = await harness({ pool: first.pool, sessions })
+    expect(third.registry.list().flatMap(item => item.sessionIds)).not.toContain(id)
+    await third.registry.moveSession(id, source.id)
+    expect(third.registry.get(source.id)!.sessionIds).toContain(id)
+    expect(sessions[0]!.cwd).toBe(a)
+    await third.ctx.fiber.dispose()
+  })
+})
+
+it('rejects unknown placements and keeps membership when its durable write fails', async () => {
+  const directory = await makeDir('move-failure')
+  const sessions = [header('kept', directory)]
+  const first = await harness({ sessions })
+  const project = first.registry.list()[0]!
+  await first.ctx.fiber.dispose()
+  const second = await harness({ pool: first.pool, sessions,
+    backend: selectiveFailureBackend(first.pool, { globalAt: 1 }) })
+  await expect(second.registry.moveSession(SessionId('missing'))).rejects.toThrow()
+  await expect(second.registry.moveSession(SessionId('kept'), WorkspaceId('missing'))).rejects.toThrow()
+  await expect(second.registry.moveSession(SessionId('kept'))).rejects.toThrow(/marker failure/)
+  expect(second.registry.get(project.id)!.sessionIds).toContain(SessionId('kept'))
+  await second.registry.moveSession(SessionId('kept'))
+  expect(second.registry.get(project.id)!.sessionIds).not.toContain(SessionId('kept'))
+  await second.ctx.fiber.dispose()
+})
+
+it('keeps moved sessions outside when their destination is deleted and recreated', async () => {
+  const original = await makeDir('move-source')
+  const destination = await makeDir('move-destination')
+  const sessions = [header('moved', original)]
+  const first = await harness({ sessions })
+  const target = await first.registry.create(destination)
+  await first.registry.moveSession(SessionId('moved'), target.id)
+  await first.registry.delete(target.id)
+  const replacement = await first.registry.create(destination)
+  expect(replacement.id).not.toBe(target.id)
+  expect(first.registry.list().flatMap(project => project.sessionIds)).not.toContain(SessionId('moved'))
+  await first.ctx.fiber.dispose()
+  const restored = await harness({ pool: first.pool, sessions })
+  expect(restored.registry.list().flatMap(project => project.sessionIds)).not.toContain(SessionId('moved'))
+  await restored.ctx.fiber.dispose()
+})
+
+describe('directory adoption of unplaced sessions on start', () => {
+  it('adopts a historical session whose canonical cwd names a registered project', async () => {
+    const dir = await makeDir('adopt-history')
+    const alias = join(base, 'adopt-history-link')
+    await symlink(dir, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    const id = WorkspaceId('00000000-0000-4000-8000-000000000030')
+    const pool = storedPool([[id, record(dir, [])]], { initialized: true, workspaceIds: [id] })
+    const sessions = [header('late', alias, 300), header('early', dir, 100), header('middle', dir, 200)]
+
+    const result = await harness({ pool, sessions })
+
+    // Oldest-first adoption leaves the newest at the head, matching bootstrap
+    // and create-time order, and a symlinked cwd lands on the same project.
+    expect(result.registry.get(id)!.sessionIds).toEqual(['late', 'middle', 'early'])
+    expect(storedRecord(pool, id).sessionIds).toEqual(['late', 'middle', 'early'])
+  })
+
+  it('repeats the adoption across restarts without rewriting or touching session facts', async () => {
+    const dir = await makeDir('adopt-restart')
+    const id = WorkspaceId('00000000-0000-4000-8000-000000000031')
+    const pool = storedPool([[id, record(dir, [])]], { initialized: true, workspaceIds: [id] })
+    const sessions = [header('older', dir, 100), header('newer', dir, 200)]
+
+    const first = await harness({ pool, sessions })
+    expect(first.registry.get(id)!.sessionIds).toEqual(['newer', 'older'])
+    await first.fiber.dispose()
+
+    const second = await harness({ pool, sessions })
+    // Already-accounted sessions are not re-adopted: no write, no event.
+    expect(second.changes).toEqual([])
+    expect(second.registry.get(id)!.sessionIds).toEqual(['newer', 'older'])
+    expect(storedRecord(pool, id).sessionIds).toEqual(['newer', 'older'])
+    expect(sessions).toEqual([header('older', dir, 100), header('newer', dir, 200)])
+    await second.fiber.dispose()
+
+    const third = await harness({ pool, sessions })
+    expect(third.changes).toEqual([])
+    expect(third.registry.get(id)!.sessionIds).toEqual(['newer', 'older'])
+    await third.fiber.dispose()
+  })
+
+  it('leaves a session explicitly placed outside projects unaccounted', async () => {
+    const dir = await makeDir('adopt-explicit-null')
+    const id = WorkspaceId('00000000-0000-4000-8000-000000000032')
+    const pool = storedPool([[id, record(dir, [])]], {
+      initialized: true,
+      workspaceIds: [id],
+      sessionPlacements: { 'moved-out': null },
+    })
+
+    const result = await harness({ pool, sessions: [header('moved-out', dir, 100)] })
+
+    expect(storedRecord(pool, id).sessionIds).toEqual([])
+    expect(result.registry.get(id)!.sessionIds).toEqual([])
+    expect(result.changes).toEqual([])
+  })
+
+  it('keeps a create-time outside placement across restarts until the user moves the session', async () => {
+    const dir = await makeDir('adopt-created-outside')
+    const sessions = [header('created-outside', dir, 100)]
+    const first = await harness({ sessions })
+    const project = first.registry.list()[0]!
+
+    // What a create with no caller-named directory records instead of
+    // inferring membership.
+    await first.registry.moveSession(SessionId('created-outside'))
+    expect(project.sessionIds).toEqual([])
+    await first.ctx.fiber.dispose()
+
+    const second = await harness({ pool: first.pool, sessions })
+    expect(second.registry.list().flatMap(item => item.sessionIds)).toEqual([])
+    await second.registry.moveSession(SessionId('created-outside'), project.id)
+    expect(second.registry.get(project.id)!.sessionIds).toEqual(['created-outside'])
+    await second.ctx.fiber.dispose()
+
+    const third = await harness({ pool: first.pool, sessions })
+    expect(third.registry.get(project.id)!.sessionIds).toEqual(['created-outside'])
+    expect(sessions).toEqual([header('created-outside', dir, 100)])
+    await third.ctx.fiber.dispose()
+  })
+
+  it('leaves a session explicitly placed in another project where the user put it', async () => {
+    const own = await makeDir('adopt-own-directory')
+    const other = await makeDir('adopt-other-project')
+    const ownId = WorkspaceId('00000000-0000-4000-8000-000000000033')
+    const otherId = WorkspaceId('00000000-0000-4000-8000-000000000034')
+    const pool = storedPool([[ownId, record(own, [])], [otherId, record(other, [])]], {
+      initialized: true,
+      workspaceIds: [ownId, otherId],
+      sessionPlacements: { placed: otherId },
+    })
+
+    const result = await harness({ pool, sessions: [header('placed', own, 100)] })
+
+    expect(storedRecord(pool, ownId).sessionIds).toEqual([])
+    expect(result.registry.get(ownId)!.sessionIds).toEqual([])
+    expect(result.registry.get(otherId)!.sessionIds).toEqual(['placed'])
+  })
+
+  it('adopts an archived session without disturbing the archive set', async () => {
+    const dir = await makeDir('adopt-archived')
+    const id = WorkspaceId('00000000-0000-4000-8000-000000000035')
+    const pool = storedPool([[id, record(dir, [])]], {
+      initialized: true,
+      workspaceIds: [id],
+      archivedSessionIds: [SessionId('archived')],
+    })
+
+    const result = await harness({ pool, sessions: [header('archived', dir, 100)] })
+
+    // Accounting is what unarchiving restores a position from, so an archived
+    // session is adopted like any other and stays hidden by the archive set.
+    expect(result.registry.archivedSessionIds).toEqual(['archived'])
+    expect(storedRecord(pool, id).sessionIds).toEqual(['archived'])
+    await result.registry.unarchiveSession(SessionId('archived'))
+    expect(result.registry.get(id)!.sessionIds).toEqual(['archived'])
+  })
+
+  it('keeps unowned, missing, and cwd-less sessions outside every project', async () => {
+    const owned = await makeDir('adopt-owned-only')
+    const unowned = await makeDir('adopt-unowned')
+    const missing = join(base, 'adopt-missing')
+    const id = WorkspaceId('00000000-0000-4000-8000-000000000036')
+    const pool = storedPool([[id, record(owned, [])]], { initialized: true, workspaceIds: [id] })
+
+    const result = await harness({
+      pool,
+      sessions: [
+        header('unowned', unowned, 300),
+        header('missing', missing, 200),
+        header('no-cwd', undefined, 100),
+        header('owned', owned, 50),
+      ],
+    })
+
+    expect(result.registry.get(id)!.sessionIds).toEqual(['owned'])
+    // An unowned directory never becomes a project of its own.
+    expect(result.registry.list()).toHaveLength(1)
+    expect(storedState(pool).workspaceIds).toEqual([id])
+    expect(storedRecord(pool, id).sessionIds).toEqual(['owned'])
+  })
+
+  it('retries a failed adoption on the next start and leaves no partial account', async () => {
+    const dir = await makeDir('adopt-retry')
+    const id = WorkspaceId('00000000-0000-4000-8000-000000000037')
+    const pool = storedPool([[id, record(dir, [])]], { initialized: true, workspaceIds: [id] })
+    const sessions = [header('first', dir, 100), header('second', dir, 200)]
+
+    // Candidates attach oldest-first, so the second record write is the failure.
+    const failing = await harness({ pool, sessions, backend: selectiveFailureBackend(pool, { putAt: 2 }) })
+    expect(storedRecord(pool, id).sessionIds).toEqual(['first'])
+    expect(failing.registry.get(id)!.sessionIds).toEqual(['first'])
+    await failing.fiber.dispose()
+
+    const retried = await harness({ pool, sessions })
+    expect(retried.registry.get(id)!.sessionIds).toEqual(['second', 'first'])
+    expect(storedRecord(pool, id).sessionIds).toEqual(['second', 'first'])
+    await retried.fiber.dispose()
+  })
+
+  it('refills a deleted and re-registered directory from its sessions on the next start', async () => {
+    const dir = await makeDir('adopt-reregistered')
+    const sessions = [header('first', dir, 100), header('second', dir, 200)]
+    const first = await harness({ sessions })
+    const project = first.registry.list()[0]!
+    expect(project.sessionIds).toEqual(['second', 'first'])
+
+    await first.registry.delete(project.id)
+    const replacement = await first.registry.create(dir)
+    expect(replacement.id).not.toBe(project.id)
+    // The replacement identity starts empty for this run and fills next start.
+    expect(replacement.sessionIds).toEqual([])
+    await first.ctx.fiber.dispose()
+
+    const restarted = await harness({ pool: first.pool, sessions })
+    expect(restarted.registry.list().flatMap(item => item.sessionIds)).toEqual(['second', 'first'])
+    await restarted.ctx.fiber.dispose()
+  })
+})

@@ -391,3 +391,13 @@ export class SettingsFormModel<T> {
     for (const listener of this.listeners) listener()
   }
 }
+
+/**
+ * A setting whose draft must be one of a fixed set of stored strings.
+ * @param field - the section field to stage.
+ * @param values - the choices accepted by the Host schema.
+ * @returns the fixed-choice field specification.
+ */
+export function settingsChoiceField(field: string, values: readonly string[]): SettingsFieldSpec {
+  return { field, format: value => typeof value === 'string' ? value : '', parse: text => values.includes(text) ? { kind: 'set', value: text } : undefined }
+}

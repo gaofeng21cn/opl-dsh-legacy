@@ -130,3 +130,38 @@ it.each(['win32', 'darwin'] as const)('installs the embedded mandatory UI only i
     expect(installMandatoryUpdateOverlay).toHaveBeenCalledTimes(platform === 'win32' && url === 'dsh-app://app/' ? 1 : 0)
   }
 })
+
+it('exposes preferences and environment control only through the product bridge', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  await api.environment.status()
+  await api.environment.select({ environment: 'wsl2', distro: 'Ubuntu' })
+  await api.preferences.get()
+  await api.preferences.set({ notificationsEnabled: false, closeBehavior: 'tray' })
+  expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
+    [DESKTOP_IPC.environmentStatus], [DESKTOP_IPC.environmentSelect, { environment: 'wsl2', distro: 'Ubuntu' }],
+    [DESKTOP_IPC.preferencesGet], [DESKTOP_IPC.preferencesSet, { notificationsEnabled: false, closeBehavior: 'tray' }],
+  ])
+})
+
+it('retains an early notification activation and consumes it for the first listener', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  const activate = electron.ipcRenderer.on.mock.calls.find(
+    ([channel]) => channel === DESKTOP_IPC.notificationsActivate,
+  )?.[1] as (event: unknown, id: unknown) => void
+  activate({}, 'session-1')
+  const first = vi.fn()
+  const dispose = api.notifications.onActivate(first)
+  expect(first).toHaveBeenCalledExactlyOnceWith('session-1')
+  dispose()
+  const second = vi.fn()
+  api.notifications.onActivate(second)
+  expect(second).not.toHaveBeenCalled()
+  activate({}, 'session-2')
+  expect(second).toHaveBeenCalledExactlyOnceWith('session-2')
+  await api.notifications.report({ id: 'event-1', sessionId: 'session-2', kind: 'finished', title: 'Task' })
+  expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith(DESKTOP_IPC.notificationsReport, { id: 'event-1', sessionId: 'session-2', kind: 'finished', title: 'Task' })
+})

@@ -119,7 +119,7 @@ interface Workspace {
 
 `WorkspaceRegistry`（[签名](#ctxworkspaceregistry--workspaceregistry)）拥有注册与解析。`create(path, title?)` 要求完全限定路径并将其规范化，拒绝不存在的路径（原样传出原始 `ENOENT`）或非目录；当规范路径已被拥有时原样返回既有实体；否则创建一条标题为 `title ?? defaultWorkspaceTitle(path)` 的记录并前插到持久的注册表顺序中（不同规范路径可以共享同一显示标题，没有最终路径段时使用根路径拼写）。`get(id)` 与有序的 `list()` 是同步缓存读取；`resolveByPath(path)` 应用同一套完全限定 realpath 规范但不创建。`delete(id)` 只移除注册记录、顺序条目和会话账本——目录、用户文件、实时会话和已持久化日志一概不动，因此这些会话变为 Ungrouped（[决策](../../.agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.zh.md)）；未知 id 返回 `false`。create 与 delete 会在其两次写入（记录 + 顺序）可能分叉之前先持久写入一个待定变更标记；启动时恰好解决被标记的那次变更——通过删除被标记的表行：这会补完被中断的 delete，并回滚被中断的 create（注册可以重建，因此回滚是安全方向）——而没有标记的顺序/表不一致则作为损坏大声失败。
 
-会话的 cwd 在创建时由创建者赋予，而不是由本注册表赋予——API 网关从所选工作区的 `path` 解析新会话的 cwd（回退到显式或默认 cwd），先创建会话使 cwd 落入其不可变的 [`SessionHeader`](persistence.zh.md#sessionheader--metadata-beside-the-log)，再调用 `attachSession`，后者会把已存储的 header cwd 与工作区路径重新校验一遍。首次成功启动时，注册表仅凭已持久化的 header（`id`、`cwd`、`createdAt`——绝不读事件正文）引导历史：把规范 cwd 有效的会话按目录分组为工作区，最新的排在最前；「已初始化」标记最后写入，因此被中断的引导可以安全续跑。引导只发生这一次：没有 cwd 的历史遗留会话保持 Ungrouped，此后创建的会话只能通过 `attachSession` 加入工作区。
+会话的 cwd 在创建时由创建者赋予，而不是由本注册表赋予——API 网关从所选工作区的 `path` 解析新会话的 cwd（回退到显式或默认 cwd），先创建会话使 cwd 落入其不可变的 [`SessionHeader`](persistence.zh.md#sessionheader--metadata-beside-the-log)，再调用 `attachSession`，后者会把已存储的 header cwd 与工作区路径重新校验一遍。调用方提供的 `cwd` 若已由某个已注册工作区拥有，也以同样方式加入；无主、非目录或无法解析的 `cwd` 使会话留在项目之外，且不会创建项目。首次成功启动时，注册表仅凭已持久化的 header（`id`、`cwd`、`createdAt`——绝不读事件正文）引导历史：把规范 cwd 有效的会话按目录分组为工作区，最新的排在最前；「已初始化」标记最后写入，因此被中断的引导可以安全续跑。此后每次启动都会重新应用同一目录规则，而不是只消费一次：凡规范 cwd 指向某个已注册工作区路径、且没有任何显式 `sessionPlacements` 条目覆盖的会话，都会挂载到该工作区，最旧者先挂载，使最新者位于首位；在本「创建后挂载」流程之外产生的会话正是由此加入。该轮处理是幂等的——已记账的会话不写盘——并且逐会话原子：无法挂载的会话会被记录日志、留在项目之外，并在下次启动重试（参见[决策记录](../../.agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.zh.md)）。
 
 ## 默认工作区初始化
 
@@ -375,6 +375,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('insertSessionBefore') insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue>
 
 /**
+ * Change project membership while retaining the Session working directory.
+ * @param request - Session identity and optional destination project.
+ * @returns acknowledgement after durable placement.
+ */
+@Remote('moveSession') moveSession(request: WorkspaceMoveSessionRequest): Promise<{ moved: true }>
+
+/**
  * Hide one known Session from Workspace grouping surfaces.
  * @param request - Session identity to archive.
  * @returns the complete resulting archive set.
@@ -595,6 +602,22 @@ unpinSession(sessionId: SessionId): Promise<void>
  * @returns the workspace owning the canonical path, when one exists.
  */
 async resolveByPath(path: string): Promise<Workspace | undefined>
+
+/**
+ * Resolve explicit sidebar placement over the original directory account.
+ * @param id - destination project.
+ * @param sessions - original directory-matching members.
+ * @returns visible members, including sessions whose cwd belongs elsewhere.
+ */
+projectMembers(id: WorkspaceId, sessions: readonly SessionId[]): readonly SessionId[]
+
+/**
+ * Change project ownership with one durable write, preserving Session logs and files.
+ * @param sessionId - existing Session to place.
+ * @param workspaceId - registered destination; omitted removes project ownership.
+ * @returns committed placement; rejects unknown identities or failed storage writes.
+ */
+moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void>
 ```
 
 Types: [SessionId](core.zh.md)

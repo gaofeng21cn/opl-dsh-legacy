@@ -36,8 +36,12 @@ Choose it when a deployment needs file-level confinement for Bash commands: the 
 | Mode | File effects |
 |---|---|
 | `read-only` (default) | No writes anywhere; of `/dev`, only the `/dev/null` node is writable, so `>/dev/null` keeps working |
-| `workspace-write` | Writes only under the policy's workspace root plus `/tmp` (ephemeral under bwrap, the host `/tmp` under Landlock, `/private/tmp` plus the per-user temp dir under Seatbelt) |
+| `workspace-write` | Writes only under the policy's workspace root plus `/tmp` (ephemeral under bwrap, the host `/tmp` under Landlock, `/private/tmp` plus the per-user temp dir under Seatbelt; the workspace plus a per-session private temp directory under the Windows ACL runner) |
 | `danger-full-access` | No confinement; the provider is never consulted, and results carry `sandbox: { mode, denied: false }` |
+
+### Confined Git Bash on Windows
+
+A confined Git Bash launch is brokered: the launch directory must resolve inside the mode's granted roots (MSYS and Windows spellings, `..` traversal, drive switches, and reparse points unified into one comparison) with the inherited environment pinned to the boundary, and a capability probe runs the real backend against the real executable. The probe proves two dimensions: the MSYS runtime starts under the restricted token, and the mode's write boundary holds — an in-workspace write behaves as the mode says (created under `workspace-write`, denied under `read-only`) while a write outside every writable root is denied. A dimension the probe cannot prove fails both foreground and background confined calls with `SANDBOX_UNAVAILABLE` before spawn, and the refusal carries the observed diagnostic; on current hosts the restricted-token runner cannot initialize the MSYS runtime, so Git Bash stays available only through explicitly approved `danger-full-access`, and no automatic unconfined retry occurs. The broker translates only the mounts Git for Windows defines — `/c/…` (a drive), `/tmp/…` (the user temp directory), `//server/share/…`, and the installation root behind `/` — and refuses `/mnt/…` and `/cygdrive/…` as Windows Subsystem for Linux and Cygwin spellings that Git Bash does not mount. Use PowerShell for read-only/workspace-write, or explicitly approve danger-full-access, which uses the same resolved executable and process lifecycle as bash-local.
 
 ### Minimal configuration
 
@@ -169,6 +173,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 These limits define when this executor is not a general security boundary. They are current package constraints, not a roadmap.
 
 - **Confinement covers file effects only** — network restriction and a uniform process-visibility guarantee are absent, so the modes are not a general-purpose security sandbox.
+- **The Windows Git Bash boundary is a probed capability** — a host must prove both that MSYS starts under the restricted token and that the mode's write boundary holds before restricted Git Bash runs at all; stock hosts fail the first dimension, so read-only/workspace-write Git Bash is refused with `SANDBOX_UNAVAILABLE` and only explicitly approved `danger-full-access` runs it.
 - **Denials are inferred from failed-command stderr** — backend signatures make the inference portable, but a matching application error can be classified as a denial and a denial omitted from the retained tail can be missed.
 - **An asynchronously observed background runner failure has no immediate error channel** — it is recorded on the settled process and surfaces when the caller reads the generic task with `job_output`; a synchronous subprocess throw is contained into the same settled-killed handle, with the runner-attributed failure carried by the `result()` rejection.
 - **`danger-full-access` deliberately bypasses `ctx.sandbox`** — it is an explicit unconfined mode, not a wider sandbox profile.

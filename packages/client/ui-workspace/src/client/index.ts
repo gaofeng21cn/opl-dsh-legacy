@@ -32,7 +32,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the Session root standard-hook merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import {
-  type ArchiveSessionInjected, type ForkSessionInjected, menuOpenStateFactory, type PinSessionInjected,
+  type ArchiveSessionInjected, type ForkSessionInjected, type MoveSessionInjected, menuOpenStateFactory, type PinSessionInjected,
   type SessionArchiveConfirmInjected, type SessionArchiveConfirmRequest,
   type RenameSessionInjected, type RowToast, type RowToastInjected, type RowToastState, type SessionRenameDialogInjected,
   type SessionRenameTarget, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
@@ -43,6 +43,7 @@ import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
 import { ForkSessionMenuItem } from './session-actions/ForkSession.tsx'
+import { MoveSessionMenuItem } from './session-actions/MoveSession.tsx'
 import { PinSessionMenuItem, PinSessionRowButton } from './session-actions/PinSession.tsx'
 import { RenameSessionMenuItem, SessionRenameDialog } from './session-actions/RenameSession.tsx'
 import { RowActionToast } from './session-actions/RowActionToast.tsx'
@@ -144,6 +145,7 @@ export function apply(ctx: Context): void {
   // writes through its own injected callback and the surface reads through
   // its bound hook.
   const renameRequest = createSnapshotStore<SessionRenameTarget | null>(null)
+  const sessionMoveRequest = createSnapshotStore<SessionId | null>(null)
   const archiveRequest = createSnapshotStore<SessionArchiveConfirmRequest | null>(null)
   const requestSessionRename = (sessionId: SessionId, currentTitle: string): void => {
     renameRequest.set({ sessionId, currentTitle })
@@ -208,6 +210,7 @@ export function apply(ctx: Context): void {
       })
     },
   })
+  const moveInjected = (): MoveSessionInjected => ({ requestSessionMove: (sessionId) => { sessionMoveRequest.set(sessionId) } })
   const renameInjected = (): RenameSessionInjected => ({ requestSessionRename })
   const renameDialogInjected = (): SessionRenameDialogInjected => ({
     hooks: { renameRequest },
@@ -221,8 +224,10 @@ export function apply(ctx: Context): void {
     showArchived: () => { viewInstance.actions.setArchivedFilter('show') },
   })
   const browserInjected = (): WorkspaceBrowserInjected => ({
-    // Explicit group actions keep their target; unscoped New Session inherits
-    // the current Session Workspace before the recent-Workspace fallback.
+    // Explicit group actions keep their target; unscoped creation is independent.
+    moveSession: (sessionId, workspaceId) => workspaces.moveSession(sessionId, workspaceId),
+    settleSessionMove: () => { sessionMoveRequest.set(null) },
+    openChat: () => uiWorkspace.openChat(),
     startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
     open: openSession,
     searchSessions,
@@ -236,7 +241,7 @@ export function apply(ctx: Context): void {
     },
     unarchiveSession: async (sessionId) => { await uiWorkspace.unarchiveSession(sessionId) },
     createWorkspace: input => workspaces.create(input),
-    hooks: { directoryFlow: browserFlowSource, hostInfo },
+    hooks: { directoryFlow: browserFlowSource, hostInfo, sessionMoveRequest },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),
@@ -270,6 +275,7 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('sidebar.workspaces.session.menu.item', function* () {
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'pin', order: 100, locale: NS, inject: pinInjected }, PinSessionMenuItem)
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'rename', order: 200, locale: NS, inject: renameInjected }, RenameSessionMenuItem)
+    yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'move', order: 250, locale: NS, inject: moveInjected }, MoveSessionMenuItem)
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'fork', order: 300, locale: NS, inject: forkInjected }, ForkSessionMenuItem)
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'archive', order: 400, locale: NS, inject: archiveInjected }, ArchiveSessionMenuItem)
   })

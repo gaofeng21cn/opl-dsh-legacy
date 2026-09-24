@@ -7,6 +7,8 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
+Plain chat has a dedicated entry outside the project mode roster. The chip does not apply staged project choices to chat sessions, and the management list excludes the chat preset. Saved chat labels use the current UI language.
+
 ## Summary
 
 Choose Agent presets and the new-task default in Web, read what each mode does and what it declares. Authoring is guided to Creator mode.

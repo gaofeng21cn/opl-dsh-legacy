@@ -6,15 +6,17 @@ import SystemPrompt, {
 import type { PromptContextOrderName, PromptSectionOrderName } from '@deepseek-ai/dsh-system-prompt'
 
 /**
- * Every assembly carries the plugin's own built-ins — `harness:identity`
- * and `deployment:persona-prefix` / `deployment:persona-suffix` (from config). Tests about
- * registry MECHANICS strip them with {@link contributed} to stay focused on
- * their own sections; the built-ins' behavior is pinned by its own describe.
+ * Every assembly carries the plugin's own built-ins — `harness:identity`,
+ * `harness:output-language` (empty unless the user settings document selects a
+ * language), and `deployment:persona-prefix` / `deployment:persona-suffix`
+ * (from config). Tests about registry MECHANICS strip them with
+ * {@link contributed} to stay focused on their own sections; the built-ins'
+ * behavior is pinned by its own describe.
  */
-const BUILT_IN = ['harness:identity', 'deployment:persona-prefix', 'deployment:persona-suffix']
+const BUILT_IN = ['harness:identity', 'deployment:persona-prefix', 'harness:output-language', 'deployment:persona-suffix']
 const IDENTITY = 'You are an AI agent powered by DeepSeek Harness.'
 const SECTION_ORDER_NAMES = [
-  'HARNESS_IDENTITY', 'DEPLOYMENT_PERSONA_PREFIX',
+  'HARNESS_IDENTITY', 'DEPLOYMENT_PERSONA_PREFIX', 'OUTPUT_LANGUAGE',
   'PLAN_POLICY', 'TEAM_POLICY', 'PTC_ONLY', 'FILE_REFERENCE', 'TOOL_BASH',
   'TOOL_PWSH', 'TOOL_READ', 'TOOL_WRITE', 'TOOL_EDIT', 'TOOL_GLOB',
   'TOOL_GREP', 'TOOL_JOBS', 'TOOL_PTY', 'TOOL_WEB_SEARCH', 'TOOL_WEB_FETCH',
@@ -108,6 +110,7 @@ describe('SystemPrompt', () => {
       expect(assembly.sections.map(s => s.name)).toEqual([
         'harness:identity',
         'deployment:persona-prefix',
+        'harness:output-language',
         'deployment:persona-suffix',
       ])
       expect(renderPrompt(assembly)).toBe(`${IDENTITY}\n\nYou are DeepSeek Harness.`)
@@ -130,7 +133,7 @@ describe('SystemPrompt', () => {
       })
 
       const assembly = await ctx.systemPrompt.assemble()
-      expect(assembly.sections.map(section => section.name)).toEqual(['deployment:persona-prefix', 'deployment:persona-suffix'])
+      expect(assembly.sections.map(section => section.name)).toEqual(['deployment:persona-prefix', 'harness:output-language', 'deployment:persona-suffix'])
       expect(renderPrompt(assembly)).toBe('You are a helpful software engineer assistant.')
     })
 
@@ -173,8 +176,8 @@ describe('SystemPrompt', () => {
     ctx.systemPrompt.tools(() => ({ schemas: [{ name: 'echo', description: 'echo back', parameters: {} }] }))
 
     const assembly = await ctx.systemPrompt.assemble()
-    expect(assembly.sections.map(s => s.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'rules', 'cwd', 'deployment:persona-suffix'])
-    expect(assembly.sections.map(s => s.text)).toEqual([IDENTITY, 'You are DeepSeek Harness.', 'Be precise.', 'cwd: /tmp', ''])
+    expect(assembly.sections.map(s => s.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'rules', 'cwd', 'harness:output-language', 'deployment:persona-suffix'])
+    expect(assembly.sections.map(s => s.text)).toEqual([IDENTITY, 'You are DeepSeek Harness.', 'Be precise.', 'cwd: /tmp', '', ''])
     expect(assembly.contexts).toEqual([
       { name: 'earlier', text: 'context 1' },
       { name: 'later', text: 'context 2' },
@@ -359,8 +362,8 @@ describe('SystemPrompt', () => {
 
     const passed: AssembleContext = {}
     const assembly = await ctx.systemPrompt.assemble(passed)
-    expect(seen).toEqual([['harness:identity', 'deployment:persona-prefix', 'base', 'deployment:persona-suffix', 'from-a']])
-    expect(assembly.sections.map(s => s.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'base', 'deployment:persona-suffix', 'from-a'])
+    expect(seen).toEqual([['harness:identity', 'deployment:persona-prefix', 'base', 'harness:output-language', 'deployment:persona-suffix', 'from-a']])
+    expect(assembly.sections.map(s => s.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'base', 'harness:output-language', 'deployment:persona-suffix', 'from-a'])
     expect(contexts[0]).toBe(passed) // the caller's context reaches listeners
   })
 
@@ -420,7 +423,7 @@ describe('SystemPrompt', () => {
     firstParameters.properties['leak'] = { type: 'string' }
 
     const second = await ctx.systemPrompt.assemble()
-    expect(second.sections.map(section => section.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'base', 'deployment:persona-suffix'])
+    expect(second.sections.map(section => section.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'base', 'harness:output-language', 'deployment:persona-suffix'])
     expect(second.sections[0]!.text).toBe(IDENTITY)
     expect(second.contexts).toEqual([])
     expect(second.tools).toEqual([{ name: 't', description: 'tool', parameters: { type: 'object', properties: {} } }])

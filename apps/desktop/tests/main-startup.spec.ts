@@ -140,6 +140,7 @@ const harness = await vi.hoisted(async () => {
     getVersion: () => '1.0.0',
     getAppPath: (): string => 'desktop-test-app',
     setAppLogsPath: vi.fn(),
+    setAppUserModelId: vi.fn(),
     getPath: (name: string): string => `desktop-test-${name}`,
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
     requestSingleInstanceLock: () => true,
@@ -228,6 +229,7 @@ vi.mock('../src/policy-test-auth.ts', () => ({ DesktopPolicyTestAuth: class {
 vi.mock('electron', () => ({
   app: harness.app,
   BrowserWindow: harness.FakeWindow,
+  Notification: { isSupported: () => false },
   dialog: harness.dialog,
   shell: { openExternal: harness.openExternal },
   nativeTheme: harness.nativeTheme,
@@ -256,6 +258,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     return encoding === undefined ? original.readFile(path) : original.readFile(path, encoding)
   }) }
 })
+vi.mock('../src/tray.ts', () => ({ createDesktopTray: () => undefined }))
+vi.mock('../src/desktop-preferences.ts', async original => ({ ...await original<typeof import('../src/desktop-preferences.ts')>(), readDesktopPreferences: () => ({ notificationsEnabled: true, closeBehavior: 'ask' }), writeDesktopPreferences: vi.fn() }))
+vi.mock('../src/execution-environment-store.ts', () => ({ readStoredEnvironment: () => ({ kind: 'windows-native' }), writeStoredEnvironment: vi.fn() }))
 vi.mock('../src/runtime-tree.ts', () => ({ readDesktopRuntime: () => ({ release: { version: '1.0.0' } }) }))
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: 'desktop-test-profile' }) }))
 vi.mock('../src/project-manager.ts', () => ({

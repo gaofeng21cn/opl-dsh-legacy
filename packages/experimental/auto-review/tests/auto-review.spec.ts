@@ -38,10 +38,11 @@ import ToolRuntime, {
   defineContentToolFixture,
   RUN_CODE_NAME,
   TOOL_ABORTED_BEFORE_DISPATCH,
+  type ParameterSchemaSpec,
   type PreToolDecision,
   type ToolExecutionToken,
 } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-user-approval'
+import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import * as AutoReview from '@deepseek-ai/dsh-experimental-auto-review'
 
 const EXPECTED_REVIEW_POLICY = `REVIEW_POLICY
@@ -98,6 +99,11 @@ const PRESETS = {
   'danger-full-access': { sandbox: 'danger-full-access', approval: 'never', name: 'Full access' },
 } satisfies NonNullable<PermissionConfig['presets']>
 
+const DEFAULT_PERMISSION: PermissionConfig = { presets: PRESETS, defaultPreset: 'workspace-write' }
+
+/** Approval stand-in; the default carries no `request`, so no answerer exists. */
+const NO_ANSWERER = { config: { policy: 'ask' } }
+
 const contexts: Context[] = []
 
 afterEach(async () => {
@@ -128,7 +134,9 @@ function reasoningDecisionChunks(text: string): StreamChunk[] {
 
 async function harness(
   script: ReviewScript[],
-  permissionConfig: NonNullable<Parameters<typeof PermissionPresetService.Config>[0]> = { presets: PRESETS, defaultPreset: 'workspace-write' },
+  permissionConfig: PermissionConfig = DEFAULT_PERMISSION,
+  autoConfig: AutoReview.Config = {},
+  approval: unknown = NO_ANSWERER,
 ): Promise<{ ctx: Context; adapter: RecordingAdapter; auto: PluginFiber }> {
   const ctx = new Context()
   contexts.push(ctx)
@@ -143,11 +151,11 @@ async function harness(
     run() { throw new Error('auto-review tests do not execute shell requests') },
     start() { throw new Error('auto-review tests do not execute shell requests') },
   })
-  ctx.provide('approval', { config: { policy: 'ask' } })
+  ctx.provide('approval', approval)
   await ctx.plugin(PermissionPresetService, permissionConfig)
   const adapter = new RecordingAdapter(script)
   ctx.llm.registerAdapter(['review'], adapter)
-  const auto = await ctx.plugin(AutoReview)
+  const auto = await ctx.plugin(AutoReview, autoConfig)
   return { ctx, adapter, auto }
 }
 
@@ -213,12 +221,16 @@ function appendNativeCall(
   session.append('tool/call', { turn, step, callId, name, arguments: rawArguments })
 }
 
-function registerProbe(ctx: Context, name = 'probe'): { readonly runs: () => number } {
+function registerProbe(
+  ctx: Context,
+  name = 'probe',
+  parameters: ParameterSchemaSpec = { path: { type: 'string' } },
+): { readonly runs: () => number } {
   let runs = 0
   ctx.tools.register(defineContentToolFixture({
     name,
     description: `live ${name} description`,
-    parameters: { path: { type: 'string' } },
+    parameters,
     async execute() {
       runs += 1
       return [{ type: 'text', text: 'ran' }]
@@ -905,7 +917,17 @@ describe('native review request', () => {
           },
         },
       })
-      expect(result.isError && result.error.info).not.toHaveProperty('reason')
+      // The failure is explained to the user without the reviewer's technical
+      // detail: the reason names the stage and this deployment's missing
+      // escalation target, never the provider error text. The protocol-legal
+      // denial carries no reason of its own and must not acquire one.
+      expect(result.isError && result.error.info).toEqual({
+        name: 'AutoReviewDeniedError',
+        code: 'AUTO_REVIEW_DENIED',
+        ...id === 'valid-deny' ? {} : {
+          reason: 'the reviewer returned no usable decision; this deployment composes no approval answerer',
+        },
+      })
       expect(JSON.stringify(result)).not.toContain('provider secret')
     }
 
@@ -1446,6 +1468,510 @@ describe('cancellation and integration teardown', () => {
     const auto = await invalid.plugin(AutoReview)
     expect(invalid.permissionPresets.names).toContain(AUTO_PRESET)
     await auto.dispose()
+  })
+})
+
+/** Review script whose request never settles until the returned release is called. */
+function pendingReview(text: string): { readonly script: ReviewScript; readonly release: () => void } {
+  const released = Promise.withResolvers<undefined>()
+  return {
+    release: () => { released.resolve(undefined) },
+    script: async function* (): AsyncIterable<StreamChunk> {
+      await released.promise
+      yield* decisionChunks(text)
+    },
+  }
+}
+
+/** One Session carrying a logged native call for `name` with exactly these arguments. */
+function loggedCall(
+  session: Session,
+  callId: ToolCallId,
+  name: string,
+  args: Record<string, unknown>,
+): void {
+  const raw = JSON.stringify(args)
+  appendAssistant(session, [{ type: 'tool-call', id: callId, name, arguments: raw }])
+  appendNativeCall(session, callId, name, raw)
+}
+
+/** Tool schema one reviewer snapshot resolves for a logged native call. */
+function nativeSchema(name: string): ToolSchema {
+  return { name, description: `logged ${name} description`, parameters: { type: 'object' } }
+}
+
+describe('deterministic routing', () => {
+  it('passes every call through without a reviewer request while the gate is disabled', async () => {
+    const { ctx, adapter } = await harness([], DEFAULT_PERMISSION, { enabled: false })
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'gate-disabled')
+    appendHeader(session, [nativeSchema('probe')])
+    const callId = ToolCallId('gate-disabled-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError).toBe(false)
+    expect(probe.runs()).toBe(1)
+    expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('allows a session-local rule match without a reviewer request', async () => {
+    const { ctx, adapter } = await harness([])
+    const todo = registerProbe(ctx, 'todo_write', { items: { type: 'array' } })
+    const { session, agent } = autoSession(ctx, 'rule-session-local')
+    appendHeader(session, [nativeSchema('todo_write')])
+    const callId = ToolCallId('rule-session-local-call')
+    loggedCall(session, callId, 'todo_write', { items: [] })
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'todo_write', arguments: { items: [] }, agent,
+    })
+
+    expect(result.isError).toBe(false)
+    expect(todo.runs()).toBe(1)
+    expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('denies a catastrophic shell rule match without a reviewer request', async () => {
+    const { ctx, adapter } = await harness([])
+    const bash = registerProbe(ctx, 'bash', { command: { type: 'string' } })
+    const { session, agent } = autoSession(ctx, 'rule-filesystem')
+    appendHeader(session, [nativeSchema('bash')])
+    const callId = ToolCallId('rule-filesystem-call')
+    loggedCall(session, callId, 'bash', { command: 'rm -rf /' })
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'bash', arguments: { command: 'rm -rf /' }, agent,
+    })
+
+    expect(result).toMatchObject({
+      isError: true,
+      error: {
+        message: 'Auto review rejected tool "bash"; its body was not executed',
+        info: {
+          name: 'AutoReviewDeniedError',
+          code: 'AUTO_REVIEW_DENIED',
+          reason: 'recursive forced deletion of a filesystem root or the home directory',
+        },
+      },
+    })
+    expect(bash.runs()).toBe(0)
+    expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('escalates an unclassified action to the configured fast reviewer route', async () => {
+    const { ctx, adapter } = await harness(
+      [decisionChunks('{"risk":"low","decision":"allow"}')],
+      DEFAULT_PERMISSION,
+      { reviewProvider: 'review', reviewModel: 'fast-model' },
+    )
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'fast-route')
+    session.append('request/header', {
+      header: { config: { provider: 'review', model: 'session-model' }, tools: [nativeSchema('probe')] },
+      reason: 'initial',
+    })
+    const callId = ToolCallId('fast-route-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError).toBe(false)
+    expect(probe.runs()).toBe(1)
+    expect(adapter.requests).toHaveLength(1)
+    expect(adapter.requests[0]).toMatchObject({ provider: 'review', model: 'fast-model' })
+  })
+
+  it('sends a session-local action to the reviewer when the rules are disabled', async () => {
+    const { ctx, adapter } = await harness(
+      [decisionChunks('{"risk":"medium","decision":"deny","reason":"reviewed anyway"}')],
+      DEFAULT_PERMISSION,
+      { rules: false },
+    )
+    const todo = registerProbe(ctx, 'todo_write', { items: { type: 'array' } })
+    const { session, agent } = autoSession(ctx, 'rules-disabled')
+    appendHeader(session, [nativeSchema('todo_write')])
+    const callId = ToolCallId('rules-disabled-call')
+    loggedCall(session, callId, 'todo_write', { items: [] })
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'todo_write', arguments: { items: [] }, agent,
+    })
+
+    expect(result.isError && result.error.info?.reason).toBe('reviewed anyway')
+    expect(todo.runs()).toBe(0)
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('reviews the same action again in the next step instead of replaying a denial', async () => {
+    const denyReason = 'not authorized in this step'
+    const { ctx, adapter } = await harness([
+      decisionChunks(JSON.stringify({ risk: 'medium', decision: 'deny', reason: denyReason })),
+      decisionChunks('{"risk":"low","decision":"allow"}'),
+    ])
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'dedupe-step-window')
+    appendHeader(session, [nativeSchema('probe')])
+    const firstId = ToolCallId('dedupe-step-window-first')
+    appendAssistant(session, [{ type: 'tool-call', id: firstId, name: 'probe', arguments: '{}' }])
+    appendNativeCall(session, firstId, 'probe', '{}')
+    const signal = new AbortController().signal
+
+    const first = await ctx.tools.execute({
+      signal, callId: firstId, name: 'probe', arguments: {}, agent,
+    })
+
+    appendUser(session, 'go ahead and run it now', { kind: 'user', rpcId: 'step-window-grant' } as never)
+    const secondId = ToolCallId('dedupe-step-window-second')
+    appendAssistant(session, [{ type: 'tool-call', id: secondId, name: 'probe', arguments: '{}' }], 1, 2)
+    appendNativeCall(session, secondId, 'probe', '{}', 1, 2)
+
+    const second = await ctx.tools.execute({
+      signal, callId: secondId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(first.isError && first.error.info?.reason).toBe(denyReason)
+    expect(second.isError).toBe(false)
+    expect(probe.runs()).toBe(1)
+    expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('abandons a reviewer request that outlives its configured timeout', async () => {
+    const review = pendingReview('{"risk":"low","decision":"allow"}')
+    const { ctx } = await harness([review.script], DEFAULT_PERMISSION, { reviewTimeoutMs: 20 })
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'review-timeout')
+    appendHeader(session, [nativeSchema('probe')])
+    const callId = ToolCallId('review-timeout-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError && result.error.info?.reason).toContain('the reviewer returned no usable decision')
+    expect(probe.runs()).toBe(0)
+    review.release()
+  })
+
+  it('never falls back to the Session route when the configured fast route is unpublished', async () => {
+    const failure = async function* (): AsyncIterable<StreamChunk> {
+      throw new Error('the Session route must not be used for a configured fast route')
+    }
+    const { ctx, adapter } = await harness(
+      [decisionChunks('{"risk":"low","decision":"allow"}')],
+      DEFAULT_PERMISSION,
+      { reviewProvider: 'unpublished', reviewModel: 'fast-model' },
+    )
+    const probe = registerProbe(ctx)
+    const halves = [
+      { id: 'provider-only', config: { reviewProvider: 'review' }, reason: 'must be configured together' },
+      { id: 'model-only', config: { reviewModel: 'fast-model' }, reason: 'must be configured together' },
+    ]
+
+    for (const item of halves) {
+      const { ctx: halfCtx } = await harness([failure], DEFAULT_PERMISSION, item.config)
+      const halfProbe = registerProbe(halfCtx)
+      const { session: halfSession, agent: halfAgent } = autoSession(halfCtx, `half-route-${item.id}`)
+      appendHeader(halfSession, [nativeSchema('probe')])
+      const halfCallId = ToolCallId(`half-route-${item.id}-call`)
+      loggedCall(halfSession, halfCallId, 'probe', {})
+
+      const halfResult = await halfCtx.tools.execute({
+        signal: new AbortController().signal,
+        callId: halfCallId,
+        name: 'probe',
+        arguments: {},
+        agent: halfAgent,
+      })
+
+      expect(halfResult.isError && halfResult.error.info?.reason).toContain(item.reason)
+      expect(halfProbe.runs()).toBe(0)
+    }
+
+    const { session, agent } = autoSession(ctx, 'unpublished-route')
+    appendHeader(session, [nativeSchema('probe')])
+    const callId = ToolCallId('unpublished-route-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError && result.error.info?.reason).toContain(
+      'reviewProvider "unpublished" is not published by a live adapter',
+    )
+    expect(probe.runs()).toBe(0)
+    expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('asks the approval answerer after a failed review and runs only on allowed-once', async () => {
+    const asked: ApprovalRequest[] = []
+    const approval = {
+      config: { policy: 'ask' },
+      request: (request: ApprovalRequest) => {
+        asked.push(request)
+        return Promise.resolve('allowed-once' as const)
+      },
+    }
+    const failure = async function* (): AsyncIterable<StreamChunk> {
+      throw new Error('reviewer transport down')
+    }
+    const { ctx, adapter } = await harness([failure], DEFAULT_PERMISSION, {}, approval)
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'human-allowed-once')
+    appendHeader(session, [nativeSchema('probe')])
+    const callId = ToolCallId('human-allowed-once-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError).toBe(false)
+    expect(probe.runs()).toBe(1)
+    expect(adapter.requests).toHaveLength(1)
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toMatchObject({ toolName: 'probe', callId })
+  })
+
+  it('denies a failed review when the answerer rejects, is unavailable, or is absent', async () => {
+    const failure = async function* (): AsyncIterable<StreamChunk> {
+      throw new Error('reviewer transport down')
+    }
+    const outcomes = [
+      { outcome: 'rejected', reason: 'the approval request was rejected or left unanswered' },
+      { outcome: 'unavailable', reason: 'no approval answerer could decide it' },
+    ] as const
+
+    for (const item of outcomes) {
+      const { ctx } = await harness(
+        [failure],
+        DEFAULT_PERMISSION,
+        {},
+        { request: () => Promise.resolve(item.outcome), config: { policy: 'ask' } },
+      )
+      const probe = registerProbe(ctx)
+      const { session, agent } = autoSession(ctx, `human-${item.outcome}`)
+      appendHeader(session, [nativeSchema('probe')])
+      const callId = ToolCallId(`human-${item.outcome}-call`)
+      loggedCall(session, callId, 'probe', {})
+
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+      })
+
+      expect(result.isError && result.error.info?.reason).toContain(item.reason)
+      expect(probe.runs()).toBe(0)
+    }
+
+    const { ctx: withoutAnswerer } = await harness([failure])
+    const probe = registerProbe(withoutAnswerer)
+    const { session, agent } = autoSession(withoutAnswerer, 'human-absent')
+    appendHeader(session, [nativeSchema('probe')])
+    const callId = ToolCallId('human-absent-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await withoutAnswerer.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError && result.error.info?.reason).toContain(
+      'this deployment composes no approval answerer',
+    )
+    expect(probe.runs()).toBe(0)
+  })
+
+  it('honors a withdrawn question, an unrecordable one, and a rogue outcome as fail-closed', async () => {
+    const failure = async function* (): AsyncIterable<StreamChunk> {
+      throw new Error('reviewer transport down')
+    }
+    const cases = [
+      { id: 'withdrawn', approval: { request: () => Promise.resolve('cancelled') }, reason: undefined },
+      { id: 'unrecordable', approval: { request: () => Promise.reject(new Error('no open turn')) }, reason: 'the approval request could not be recorded' },
+      { id: 'rogue-outcome', approval: { request: () => Promise.resolve('approved-forever') }, reason: undefined },
+    ]
+
+    for (const item of cases) {
+      const { ctx } = await harness([failure], DEFAULT_PERMISSION, {}, {
+        ...item.approval,
+        config: { policy: 'ask' },
+      })
+      const probe = registerProbe(ctx)
+      const { session, agent } = autoSession(ctx, `human-${item.id}`)
+      appendHeader(session, [nativeSchema('probe')])
+      const callId = ToolCallId(`human-${item.id}-call`)
+      loggedCall(session, callId, 'probe', {})
+
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+      })
+
+      expect(result.isError).toBe(true)
+      if (item.reason !== undefined) expect(result.isError && result.error.info?.reason).toContain(item.reason)
+      // A withdrawn question is a cancellation, not a grant; a rogue answerer
+      // return is contained by the caller's fail-closed catch.
+      expect(probe.runs()).toBe(0)
+    }
+  })
+
+  it('rejects without asking when the deployment disables the answerer route', async () => {
+    const asked: ApprovalRequest[] = []
+    const failure = async function* (): AsyncIterable<StreamChunk> {
+      throw new Error('reviewer transport down')
+    }
+    const { ctx } = await harness([failure], DEFAULT_PERMISSION, { unresolved: 'deny' }, {
+      config: { policy: 'ask' },
+      request: (request: ApprovalRequest) => {
+        asked.push(request)
+        return Promise.resolve('allowed-once' as const)
+      },
+    })
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'unresolved-deny')
+    appendHeader(session, [nativeSchema('probe')])
+    const callId = ToolCallId('unresolved-deny-call')
+    loggedCall(session, callId, 'probe', {})
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal, callId, name: 'probe', arguments: {}, agent,
+    })
+
+    expect(result.isError && result.error.info?.reason).toContain(
+      'this deployment does not escalate to an approval answerer',
+    )
+    expect(asked).toHaveLength(0)
+    expect(probe.runs()).toBe(0)
+  })
+
+  it('joins concurrently pending identical reviews into one reviewer request', async () => {
+    const review = pendingReview('{"risk":"low","decision":"allow"}')
+    const { ctx, adapter } = await harness([review.script])
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'inflight-join')
+    appendHeader(session, [nativeSchema('probe')])
+    const firstId = ToolCallId('inflight-join-first')
+    const secondId = ToolCallId('inflight-join-second')
+    appendAssistant(session, [
+      { type: 'tool-call', id: firstId, name: 'probe', arguments: '{}' },
+      { type: 'tool-call', id: secondId, name: 'probe', arguments: '{}' },
+    ])
+    appendNativeCall(session, firstId, 'probe', '{}')
+    appendNativeCall(session, secondId, 'probe', '{}')
+    const signal = new AbortController().signal
+
+    const first = ctx.tools.execute({ signal, callId: firstId, name: 'probe', arguments: {}, agent })
+    await until(() => adapter.requests.length === 1)
+    const second = ctx.tools.execute({ signal, callId: secondId, name: 'probe', arguments: {}, agent })
+    review.release()
+
+    await expect(first).resolves.toMatchObject({ isError: false })
+    await expect(second).resolves.toMatchObject({ isError: false })
+    expect(probe.runs()).toBe(2)
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('replays the denial already recorded for the same action in the open step', async () => {
+    const denyReason = 'deletion of a pre-existing object needs a current authorization'
+    const { ctx, adapter } = await harness([
+      decisionChunks(JSON.stringify({ risk: 'medium', decision: 'deny', reason: denyReason })),
+    ])
+    const probe = registerProbe(ctx)
+    const { session, agent } = autoSession(ctx, 'dedupe-denial')
+    appendHeader(session, [nativeSchema('probe')])
+    const firstId = ToolCallId('dedupe-denial-first')
+    const secondId = ToolCallId('dedupe-denial-second')
+    appendAssistant(session, [
+      { type: 'tool-call', id: firstId, name: 'probe', arguments: '{"path":"target"}' },
+      { type: 'tool-call', id: secondId, name: 'probe', arguments: '{"path":"target"}' },
+    ])
+    appendNativeCall(session, firstId, 'probe', '{"path":"target"}')
+    appendNativeCall(session, secondId, 'probe', '{"path":"target"}')
+    const signal = new AbortController().signal
+
+    const first = await ctx.tools.execute({
+      signal, callId: firstId, name: 'probe', arguments: { path: 'target' }, agent,
+    })
+    const second = await ctx.tools.execute({
+      signal, callId: secondId, name: 'probe', arguments: { path: 'target' }, agent,
+    })
+
+    expect(first.isError && first.error.info).toEqual({
+      name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: denyReason,
+    })
+    expect(second.isError && second.error.info).toEqual({
+      name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: denyReason,
+    })
+    expect(probe.runs()).toBe(0)
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('traces the deciding stage and never reports a decision it did not receive', async () => {
+    const lines: string[] = []
+    const { ctx } = await harness([
+      decisionChunks('{"risk":"medium","decision":"deny","reason":"exact reviewer reason"}'),
+      decisionChunks('{"risk":"high","decision":"allow"}'),
+    ])
+    vi.spyOn(ctx.logger, 'info').mockImplementation((...args: unknown[]) => {
+      lines.push(String(args[1]))
+    })
+    const probe = registerProbe(ctx)
+    const bash = registerProbe(ctx, 'bash', { command: { type: 'string' } })
+    const signal = new AbortController().signal
+
+    const ruled = autoSession(ctx, 'trace-rules')
+    appendHeader(ruled.session, [nativeSchema('bash')])
+    const ruledId = ToolCallId('trace-rules-call')
+    loggedCall(ruled.session, ruledId, 'bash', { command: 'rm -rf ~' })
+    await ctx.tools.execute({
+      signal, callId: ruledId, name: 'bash', arguments: { command: 'rm -rf ~' }, agent: ruled.agent,
+    })
+
+    const reviewed = autoSession(ctx, 'trace-model')
+    appendHeader(reviewed.session, [nativeSchema('probe')])
+    const reviewedId = ToolCallId('trace-model-call')
+    loggedCall(reviewed.session, reviewedId, 'probe', {})
+    const reviewedResult = await ctx.tools.execute({
+      signal, callId: reviewedId, name: 'probe', arguments: {}, agent: reviewed.agent,
+    })
+
+    const illegal = autoSession(ctx, 'trace-illegal')
+    appendHeader(illegal.session, [nativeSchema('probe')])
+    const illegalId = ToolCallId('trace-illegal-call')
+    loggedCall(illegal.session, illegalId, 'probe', {})
+    const illegalResult = await ctx.tools.execute({
+      signal, callId: illegalId, name: 'probe', arguments: {}, agent: illegal.agent,
+    })
+
+    expect(lines).toEqual([
+      expect.stringContaining(
+        'auto-review deny source=rules rule=filesystem-destruction tool=bash',
+      ),
+      expect.stringContaining(
+        'auto-review deny source=model tool=probe',
+      ),
+      expect.stringContaining(
+        'auto-review deny source=unavailable tool=probe',
+      ),
+    ])
+    expect(lines[1]).not.toContain('rule=')
+    expect(reviewedResult.isError && reviewedResult.error.info?.reason).toBe('exact reviewer reason')
+    expect(illegalResult.isError && illegalResult.error.info?.reason).toBe(
+      'the reviewer returned no usable decision; this deployment composes no approval answerer',
+    )
+    // The reviewer's risk class is never promoted into the trace, the denial
+    // metadata, or the model-facing result, and the reason stays in the durable
+    // tool error instead of a log line whose length a reviewer controls.
+    expect(lines.join('\n')).not.toContain('risk=')
+    expect(lines.join('\n')).not.toContain('exact reviewer reason')
+    expect(JSON.stringify(illegalResult)).not.toContain('high')
+    expect(probe.runs()).toBe(0)
+    expect(bash.runs()).toBe(0)
   })
 })
 

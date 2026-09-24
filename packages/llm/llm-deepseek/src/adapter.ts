@@ -15,6 +15,8 @@ import { serialize } from './serialize.ts'
 import { parseSse } from './sse.ts'
 import { translate } from './translate.ts'
 import { providerError, providerErrorDetail } from './transport.ts'
+import { attemptAnomaly, controlMarkerFamilies, describeAttemptAnomaly, WireObserver } from './protocol-anomaly.ts'
+import { ReasoningTrace } from './reasoning-trace.ts'
 
 /** DeepSeek provider using Messages content and native thinking replay. */
 export class DeepSeekAdapter extends LlmAdapter {
@@ -50,14 +52,22 @@ export class DeepSeekAdapter extends LlmAdapter {
   }
 
   private async * generate(options: GenerateOptions, connection: Connection): AsyncGenerator<StreamChunk> {
+    const trace = ReasoningTrace.open()
+    try { yield* this.generateTraced(options, connection, trace) } finally { trace?.safely(() => { trace.close() }) }
+  }
+
+  private async * generateTraced(
+    options: GenerateOptions, connection: Connection, trace: ReasoningTrace | undefined,
+  ): AsyncGenerator<StreamChunk> {
     const consumer = new AbortController()
     const signal = options.signal === undefined ? consumer.signal : AbortSignal.any([consumer.signal, options.signal])
     using watchdog = idleWatchdog(signal, connection.streamIdleTimeoutMs, 'MESSAGES_IDLE')
-    const iterator = this.request(options, connection, watchdog.signal, () => { watchdog.pulse() })
+    const iterator = this.request(options, connection, watchdog.signal, () => { watchdog.pulse() }, trace)
     try {
       while (true) {
         const next = await watchdog.next(iterator)
         if (next.done) return
+        trace?.safely(() => { trace.chunk(next.value) })
         yield next.value
       }
     } catch (error) {
@@ -74,7 +84,7 @@ export class DeepSeekAdapter extends LlmAdapter {
   }
 
   private async * request(
-    options: GenerateOptions, connection: Connection, signal: AbortSignal, activity: () => void,
+    options: GenerateOptions, connection: Connection, signal: AbortSignal, activity: () => void, trace: ReasoningTrace | undefined,
   ): AsyncGenerator<StreamChunk> {
     signal.throwIfAborted()
     const { messages, versions } = await prepareImages(
@@ -104,6 +114,7 @@ export class DeepSeekAdapter extends LlmAdapter {
       const body = serialize(options, connection, history, versions, this.imageAccess, (reason) => {
         this.dependencies.onReplayDegrade?.({ provider: options.provider, model: options.model, reason })
       }, fileIds)
+      trace?.safely(() => { trace.request(options, body) })
       const extensions = await prepareRequestExtensions(body as Readonly<Record<string, DeepSeekLlmApiJson>>, {
         signal,
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
@@ -123,6 +134,8 @@ export class DeepSeekAdapter extends LlmAdapter {
           ...options.purpose === 'compaction' ? { 'x-deepseek-harness-compact': '1' } : {},
         },
       })
+      const requestId = response.headers.get('request-id') ?? response.headers.get('x-request-id') ?? undefined
+      trace?.safely(() => { trace.response(response.status, requestId) })
       if (!response.ok) {
         const text = await response.text()
         let raw: unknown
@@ -137,8 +150,62 @@ export class DeepSeekAdapter extends LlmAdapter {
       }
       await extensions.accept()
       if (response.body === null) throw new LlmError('DeepSeek Messages returned no response body', 'EMPTY_RESPONSE')
-      yield* translate(parseSse(response.body, activity), options.model)
+      yield* this.observeAttempt(parseSse(response.body, activity), options, requestId, trace)
       return
+    }
+  }
+
+  private async * observeAttempt(
+    events: AsyncIterable<Record<string, unknown>>, options: GenerateOptions,
+    requestId: string | undefined, trace: ReasoningTrace | undefined,
+  ): AsyncGenerator<StreamChunk> {
+    const wire = this.dependencies.onProtocolAnomaly === undefined ? undefined : new WireObserver()
+    async function* observed() {
+      for await (const event of events) {
+        wire?.observe(event)
+        trace?.safely(() => { trace.payload(event) })
+        yield event
+      }
+    }
+    let textChars = 0
+    let reasoningChars = 0
+    let structuredToolCalls = 0
+    let finishReason = 'none'
+    const textMarkers = new Set<string>()
+    const reasoningMarkers = new Set<string>()
+    try {
+      for await (const chunk of translate(observed(), options.model)) {
+        if (wire !== undefined && chunk.type === 'block-end') {
+          if (chunk.block.type === 'tool-call') structuredToolCalls += 1
+          if (chunk.block.type === 'text') {
+            textChars += chunk.block.text.length
+            for (const family of controlMarkerFamilies(chunk.block.text)) textMarkers.add(family)
+          }
+          if (chunk.block.type === 'reasoning') {
+            reasoningChars += chunk.block.text.length
+            for (const family of controlMarkerFamilies(chunk.block.text)) reasoningMarkers.add(family)
+          }
+        }
+        if (chunk.type === 'finish') finishReason = chunk.reason.kind
+        yield chunk
+      }
+    } finally {
+      if (wire !== undefined) {
+        try {
+          const anomaly = attemptAnomaly({
+            wire: wire.facts(),
+            blocks: { textChars, reasoningChars, structuredToolCalls, finishReason,
+              textMarkers: [...textMarkers], reasoningMarkers: [...reasoningMarkers] },
+            ...requestId === undefined ? {} : { requestId },
+          })
+          if (anomaly !== undefined) this.dependencies.onProtocolAnomaly?.({
+            provider: options.provider, model: options.model,
+            report: describeAttemptAnomaly('messages', anomaly),
+          })
+        } catch (_diagnosticFailure) {
+          // Optional diagnostics cannot replace the provider's outcome.
+        }
+      }
     }
   }
 }

@@ -10,6 +10,7 @@ import {
   Win32Error,
 } from '../src/index.ts'
 import {
+  CREATE_NO_WINDOW,
   CREATE_SUSPENDED,
   CREATE_UNICODE_ENVIRONMENT,
   JOBOBJECT_BASIC_ACCOUNTING_ACTIVE_PROCESSES_OFFSET,
@@ -149,13 +150,17 @@ describe('ordinary Job process operations', () => {
       },
     }))).toEqual({ pid: 1234, process: 60n, job: 50n })
     const environment = createProcessW.mock.calls[0]?.[6] as Buffer
+    // CREATE_NO_WINDOW is the console fact: the runner may be a GUI-subsystem
+    // image with no console to pass on, so an ordinary target that allocates
+    // its own console is what a default terminal application renders as a
+    // window over the user's foreground.
     expect(createProcessW).toHaveBeenCalledWith(
       'C:\\resolved\\probe.exe',
       'probe.exe "literal $VALUE" "a b"',
       null,
       null,
       1,
-      CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+      CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
       environment,
       'C:\\work',
       expect.anything(),

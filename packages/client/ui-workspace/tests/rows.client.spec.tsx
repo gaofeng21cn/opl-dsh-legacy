@@ -79,6 +79,21 @@ function fireDrag(row: HTMLElement, kind: 'dragOver' | 'drop', clientY: number):
 }
 
 describe('workspace browser rows', () => {
+  it('opens the row action menu on right-click without changing the current Session', () => {
+    const onOpen = vi.fn()
+    const node: SessionNode = {
+      id: sid('context'), title: 'Context Session', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
+      pinned: false, archived: false,
+    }
+    const renderSlot: RowRenderSlot = name => name === 'sidebar.workspaces.session.menu.item'
+      ? <MenuItemButton onSelect={() => {}}>Project action</MenuItemButton> : null
+    render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} renderSlot={renderSlot} t={t} />)
+    fireEvent.contextMenu(screen.getByRole('treeitem'), { clientX: 80, clientY: 60 })
+    expect(screen.getByRole('menuitem', { name: 'Project action' })).toBeTruthy()
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it('omits only an empty leading status slot in the hierarchy-free flat list', () => {
     const idle: SessionNode = {
       id: sid('flat'), title: 'Flat Session', blank: false, running: false,

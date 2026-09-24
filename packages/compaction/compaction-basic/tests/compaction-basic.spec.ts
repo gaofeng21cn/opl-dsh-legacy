@@ -8,9 +8,11 @@ import { frameSummary } from '@deepseek-ai/dsh-compaction-basic/src/summarizer.t
 import type { SummarizationInput, SummaryResult } from '@deepseek-ai/dsh-compaction-basic/src/summarizer.ts'
 import { CompactionId, toolPairingBalancedAfter, toolPairingBalancedBefore } from '@deepseek-ai/dsh-compaction'
 import {
+  PressureCompactionError,
   resolveCompactSpec,
   resolveConfig,
   resolveTargetPolicy,
+  StepInputBudgetError,
 } from '@deepseek-ai/dsh-compaction-basic/src/config.ts'
 import type { CompactionResult } from '@deepseek-ai/dsh-compaction'
 import LlmRuntime, { createUserMessage, ToolCallId, CONTEXT_WINDOW_EXCEEDED_CODE, createSystemMessage, createToolResultMessage, LlmAdapter , createMessage } from '@deepseek-ai/dsh-llm'
@@ -575,6 +577,203 @@ describe('compact configuration and defaults', () => {
 
 })
 
+describe('effective input budget', () => {
+  const target = { provider: MODEL, model: MODEL }
+
+  it('scales the trigger and the retained tail from the budget, not the nominal capacity', () => {
+    const policy = resolveTargetPolicy(resolveConfig({
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 258_400,
+      thresholdTokens: 244_800,
+      retainRatio: 0.16,
+    }), target)
+
+    // The 1M route keeps its nominal capacity; the 0.16 tail is 41344 tokens
+    // of the deployment budget instead of 160000 of the nominal window.
+    expect(resolveCompactSpec(policy, 1_000_000)).toMatchObject({
+      contextWindow: 1_000_000,
+      inputBudget: 258_400,
+      thresholdTokens: 244_800,
+      retainTokens: 41_344,
+    })
+  })
+
+  it('caps a configured budget and absolute trigger by the output reservation and headroom', () => {
+    const policy = resolveTargetPolicy(resolveConfig({
+      inputBudget: 900_000,
+      thresholdTokens: 850_000,
+      headroomTokens: 65_536,
+    }), target)
+    expect(resolveCompactSpec(policy, 1_000_000, 256_000)).toMatchObject({
+      contextWindow: 1_000_000,
+      inputBudget: 744_000,
+      thresholdTokens: 678_464,
+      retainTokens: 119_040,
+    })
+  })
+
+  it('keeps a model smaller than the deployment budget at its own capacity', () => {
+    const policy = resolveTargetPolicy(resolveConfig({
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 258_400,
+      thresholdRatio: 0.9,
+      retainRatio: 0.16,
+    }), target)
+
+    expect(resolveCompactSpec(policy, 1_000_000)).toMatchObject({
+      inputBudget: 258_400,
+      thresholdTokens: 232_560,
+      retainTokens: 41_344,
+    })
+    expect(resolveCompactSpec(policy, 64_000)).toMatchObject({
+      inputBudget: 64_000,
+      thresholdTokens: 57_600,
+      retainTokens: 10_240,
+    })
+  })
+
+  it('clamps an absolute trigger to a smaller model window instead of failing it', () => {
+    const policy = resolveTargetPolicy(resolveConfig({
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 258_400,
+      thresholdTokens: 244_800,
+      retainRatio: 0.16,
+    }), target)
+
+    expect(resolveCompactSpec(policy, 1_000_000)).toMatchObject({
+      inputBudget: 258_400,
+      thresholdTokens: 244_800,
+      retainTokens: 41_344,
+    })
+    expect(resolveCompactSpec(policy, 64_000)).toMatchObject({
+      inputBudget: 64_000,
+      thresholdTokens: 64_000,
+      retainTokens: 10_240,
+    })
+  })
+
+  it('accepts a capacity exactly at the configured budget', () => {
+    const policy = resolveTargetPolicy(resolveConfig({ inputBudget: 258_400, headroomTokens: 0, maxTokens: 8192 }), target)
+
+    expect(resolveCompactSpec(policy, 258_400)).toMatchObject({
+      inputBudget: 258_400,
+      thresholdTokens: 206_720,
+      retainTokens: 41_344,
+    })
+  })
+
+  it('validates budget, trigger, and retention configuration', () => {
+    const bad = [
+      [{ inputBudget: 0 }, /inputBudget \(0\) must be a positive integer/],
+      [{ inputBudget: 1.5 }, /inputBudget \(1.5\) must be a positive integer/],
+      [{ thresholdTokens: 0 }, /thresholdTokens \(0\) must be a positive integer/],
+      [
+        { thresholdRatio: 0.5, thresholdTokens: 100 },
+        /thresholdRatio and thresholdTokens are mutually exclusive/,
+      ],
+      [
+        { thresholdTokens: 1_000, retainTokens: 1_000 },
+        /retainTokens \(1000\) must be less than the resolved thresholdTokens \(1000\)/,
+      ],
+      [
+        { modelPolicies: [{ provider: MODEL, model: MODEL, inputBudget: 0 }] },
+        /modelPolicies\[0\]\.inputBudget \(0\) must be a positive integer/,
+      ],
+      [
+        { modelPolicies: [{ provider: MODEL, model: MODEL, thresholdRatio: 0.5, thresholdTokens: 100 }] },
+        /modelPolicies\[0\]: thresholdRatio and thresholdTokens are mutually exclusive/,
+      ],
+      [
+        { inputBudget: 1_000, thresholdRatio: 0.5, retainTokens: 500 },
+        /the configured inputBudget \(1000\) retains 500 tokens at a 500-token trigger/,
+      ],
+      [
+        { inputBudget: 1_000, thresholdTokens: 900, retainRatio: 0.95 },
+        /the configured inputBudget \(1000\) retains 950 tokens at a 900-token trigger/,
+      ],
+      [
+        {
+          inputBudget: 1_000,
+          thresholdRatio: 0.5,
+          modelPolicies: [{ provider: MODEL, model: MODEL, retainTokens: 900 }],
+        },
+        /modelPolicies\[0\]: the configured inputBudget \(1000\) retains 900 tokens at a 500-token trigger/,
+      ],
+    ] as Array<[unknown, RegExp]>
+
+    for (const [config, pattern] of bad) {
+      expect(() => resolveConfig(config as BasicCompactionConfig)).toThrow(pattern)
+    }
+
+    // A budget-consistent absolute tail is accepted at load because the budget
+    // decides the trigger without the routed capacity.
+    const budgetedTail = resolveTargetPolicy(resolveConfig({
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 1_000,
+      thresholdRatio: 0.5,
+      retainTokens: 400,
+    }), target)
+    expect(resolveCompactSpec(budgetedTail, 1_000)).toMatchObject({
+      inputBudget: 1_000,
+      thresholdTokens: 500,
+      retainTokens: 400,
+    })
+
+    // An absolute trigger is capped by the routed effective budget, so the same
+    // configuration serves a 1M route and a route with a smaller window.
+    const absoluteTrigger = resolveTargetPolicy(resolveConfig({
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 1_000,
+      thresholdTokens: 900,
+      retainTokens: 100,
+    }), target)
+    expect(resolveCompactSpec(absoluteTrigger, 500)).toMatchObject({
+      inputBudget: 500,
+      thresholdTokens: 500,
+      retainTokens: 100,
+    })
+  })
+
+  it('keeps per-model budgets and absolute retention independent of the defaults', () => {
+    const config = resolveConfig({
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 258_400,
+      thresholdRatio: 0.8,
+      retainRatio: 0.16,
+      modelPolicies: [{
+        provider: 'local',
+        model: 'small-context',
+        inputBudget: 32_000,
+        thresholdRatio: 0.9,
+        retainTokens: 2_048,
+      }],
+    })
+
+    expect(resolveCompactSpec(resolveTargetPolicy(config, {
+      provider: 'local',
+      model: 'small-context',
+    }), 1_000_000)).toMatchObject({
+      inputBudget: 32_000,
+      thresholdTokens: 28_800,
+      retainTokens: 2_048,
+    })
+    expect(resolveCompactSpec(resolveTargetPolicy(config, {
+      provider: 'local',
+      model: 'other-model',
+    }), 1_000_000)).toMatchObject({
+      inputBudget: 258_400,
+      thresholdTokens: 206_720,
+      retainTokens: 41_344,
+    })
+  })
+})
+
 describe('pressure measurement and retention', () => {
   const compactConfig: BasicCompactionConfig = {
     auto: false,
@@ -830,7 +1029,8 @@ describe('pressure measurement and retention', () => {
     expect(measure.mock.calls[0]).toEqual([session])
   })
 
-  it('declines when envelope pressure is high but the surface has no compactable range', async () => {
+  it('reports a reached trigger that has no safe range to condense', async () => {
+    const ctx = createContext()
     const compact = service(compactConfig)
     const bulkTools = [{ name: 'bulk', description: 'x'.repeat(100_000), parameters: { type: 'object' } }]
     const empty = Session.create(SessionId('empty'))
@@ -839,14 +1039,22 @@ describe('pressure measurement and retention', () => {
       header: { config: { provider: MODEL, model: MODEL }, tools: bulkTools },
       reason: 'initial',
     })
-    expect(await compactIfNeeded(compact, empty)).toBeNull()
+    await expect(compactIfNeeded(compact, empty)).rejects.toBeInstanceOf(PressureCompactionError)
 
     const retained = conversation(1)
     retained.append('request/header', {
       header: { config: { provider: MODEL, model: MODEL }, tools: bulkTools },
       reason: 'resume',
     })
-    expect(await compactIfNeeded(compact, retained)).toBeNull()
+    await expect(compactIfNeeded(compact, retained)).rejects.toBeInstanceOf(PressureCompactionError)
+
+    // The report carries the measured input, the reached trigger, and the
+    // effective budget so the caller can price its admission decision.
+    const reported = await compactIfNeeded(compact, retained).catch((error: unknown) => error)
+    expect(reported).toBeInstanceOf(PressureCompactionError)
+    expect(ctx.tokenMeter.measure(retained).totalTokens).toBeGreaterThanOrEqual(
+      (reported as PressureCompactionError).thresholdTokens,
+    )
   })
 
   it('uses one unified measurement for each pressure-and-retention decision', async () => {
@@ -860,7 +1068,7 @@ describe('pressure measurement and retention', () => {
     expect(measure).toHaveBeenCalledTimes(1)
   })
 
-  it('bounds retries when a shrinking checkpoint remains above threshold', async () => {
+  it('bounds retries and reports a checkpoint that remains above threshold', async () => {
     const compact = service({
       auto: false,
       compactionRetries: 0,
@@ -872,8 +1080,44 @@ describe('pressure measurement and retention', () => {
       text: `summary ${index}`,
     }))
 
-    await expect(compactIfNeeded(compact, conversation(4)))
-      .rejects.toThrow(/still above threshold after 1 compaction attempts/)
+    const reported = await compactIfNeeded(compact, conversation(4)).catch((error: unknown) => error)
+    expect(reported).toBeInstanceOf(PressureCompactionError)
+    expect((reported as Error).message)
+      .toMatch(/at or above the 300-token compaction trigger of the 1000-token input budget after 1 compaction attempts/)
+  })
+
+  it('prices the retained tail from the effective input budget and keeps tool pairs intact', async () => {
+    const ctx = createContext(1_000_000)
+    const compact = service({
+      auto: false,
+      inputBudget: 6_000,
+      thresholdRatio: 0.5,
+      retainRatio: 0.16,
+    }, ctx)
+    const spec = resolveCompactSpec(
+      resolveTargetPolicy(compact.config, { provider: MODEL, model: MODEL }),
+      1_000_000,
+    )
+    expect(spec).toMatchObject({ inputBudget: 6_000, thresholdTokens: 3_000, retainTokens: 960 })
+
+    const session = toolConversation()
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThanOrEqual(spec.thresholdTokens)
+    const result = await compactIfNeeded(compact, session)
+    expect(result).not.toBeNull()
+
+    const after = ctx.tokenMeter.measure(session)
+    expect(after.totalTokens).toBeLessThan(spec.thresholdTokens)
+    // The verbatim tail covers the budget-derived retention, not 0.16 of 1M.
+    expect(after.surfaceTokens).toBeGreaterThanOrEqual(spec.retainTokens)
+    expect(after.surfaceTokens).toBeLessThan(160_000)
+
+    const calls = new Set<string>()
+    for (const message of session.deriveMessages()) {
+      for (const block of message.content) {
+        if (block.type === 'tool-call') calls.add(block.id)
+        if (block.type === 'tool-result') expect(calls.has(block.toolCallId)).toBe(true)
+      }
+    }
   })
 
   it('rounds a retention cut head-ward to preserve tool-call/result pairing', async () => {
@@ -1459,6 +1703,28 @@ describe('default one-shot summarizer', () => {
     expect(instruction?.type === 'text' ? instruction.text : '').toContain('## Primary Request and Intent')
   })
 
+  it('directs the checkpoint to preserve goals, constraints, completed work, paths, verification, and open tool work', async () => {
+    const { adapter, compact } = await summarizerHarness([{ type: 'text', text: 'summary' }])
+    await compact.runSummarize(promptInput('transcript'), agent(conversation(1), MODEL), SIGNAL)
+
+    const instruction = (adapter.lastOptions?.messages.at(-1)?.content ?? [])
+      .map(block => (block.type === 'text' ? block.text : ''))
+      .join('')
+    for (const section of [
+      '## Primary Request and Intent',
+      '## Files and Code',
+      '## Completed Work',
+      '## Verification',
+      '## Pending Jobs',
+      '## Next Step',
+      '## Critical Context',
+    ]) {
+      expect(instruction).toContain(section)
+    }
+    expect(instruction).toContain('constraints, user preferences')
+    expect(instruction).toContain('A call whose result is not in this conversation is unfinished')
+  })
+
   it('replays the conversation prefix and appends the instruction as the final message', async () => {
     const { adapter, compact } = await summarizerHarness([{ type: 'text', text: 'summary' }])
     const tools = [{ name: 'do_thing', description: 'd', parameters: { type: 'object' } }]
@@ -1735,8 +2001,30 @@ describe('automatic listener and loader composition', () => {
     expect(pressured.snapshotEvents().some(event => event.type === 'compaction/start')).toBe(false)
   })
 
-  it('warns and continues after operational failures, including non-Errors', async () => {
-    const ctx = createContext()
+  it('warns and continues after a compaction failure that leaves the request within budget', async () => {
+    const ctx = createContext(10_000)
+    const warnings: string[] = []
+    ctx.logger.warn = ((message: string) => void warnings.push(message)) as typeof ctx.logger.warn
+    const compact = new TestCompactionEngine(ctx, {
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 5_000,
+      thresholdRatio: 0.5,
+      retainTokens: 180,
+    })
+    compact.error = 'temporary failure'
+    const session = conversation(4, 'x'.repeat(2_000))
+    const measured = ctx.tokenMeter.measure(session).totalTokens
+    expect(measured).toBeGreaterThanOrEqual(2_500)
+    expect(measured).toBeLessThanOrEqual(5_000)
+
+    await expect(preStep(ctx, agent(session, MODEL))).resolves.toEqual({ kind: 'enter', messages: [] })
+    expect(warnings).toContainEqual(expect.stringContaining('temporary failure'))
+    expect(session.snapshotEvents().some(event => event.type === 'compaction/summary')).toBe(false)
+  })
+
+  it('never refuses an unconfigured budget and keeps the provider overflow recovery', async () => {
+    const ctx = createContext(1_000)
     const warnings: string[] = []
     ctx.logger.warn = ((message: string) => void warnings.push(message)) as typeof ctx.logger.warn
     const compact = new TestCompactionEngine(ctx, {
@@ -1745,12 +2033,156 @@ describe('automatic listener and loader composition', () => {
       thresholdRatio: 0.5,
       retainTokens: 180,
     })
-    compact.error = 'temporary failure'
+    compact.error = new Error('summary unavailable')
+    const session = conversation(4, 'x'.repeat(2_000))
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThan(1_000)
+
+    // No configured budget means the routed capacity is the only ceiling, so a
+    // failed condensation is reported and the step still enters.
+    await expect(preStep(ctx, agent(session, MODEL))).resolves.toEqual({ kind: 'enter', messages: [] })
+    expect(warnings).toContainEqual(expect.stringContaining('summary unavailable'))
+    expect(session.snapshotEvents().some(event => event.type === 'compaction/summary')).toBe(false)
+
+    // The provider's own confirmed overflow still drives the documented recovery.
+    compact.error = undefined
+    const generation = session.surface.replaceGeneration
+    expect(await recover(ctx, agent(session, MODEL), overflow())).toBe(true)
+    expect(session.surface.replaceGeneration).toBeGreaterThan(generation)
+  })
+
+  it('warns and continues when the trigger is reached but the request fits the input budget', async () => {
+    const ctx = createContext(1_000_000)
+    const warnings: string[] = []
+    ctx.logger.warn = ((message: string) => void warnings.push(message)) as typeof ctx.logger.warn
+    void new TestCompactionEngine(ctx, {
+      inputBudget: 9_000,
+      thresholdRatio: 0.5,
+      retainTokens: 180,
+    })
+    const session = oversizedToolResult(30_000)
+    const measured = ctx.tokenMeter.measure(session).totalTokens
+    expect(measured).toBeGreaterThanOrEqual(4_500)
+    expect(measured).toBeLessThanOrEqual(9_000)
+
+    await expect(preStep(ctx, agent(session, MODEL))).resolves.toEqual({ kind: 'enter', messages: [] })
+    expect(warnings).toContainEqual(expect.stringContaining('no safe range can be condensed'))
+    expect(warnings).toContainEqual(
+      expect.stringContaining('continuing the turn within the routed input budget'),
+    )
+    expect(session.snapshotEvents().some(event => event.type === 'compaction/start')).toBe(false)
+  })
+
+  it('refuses the step when condensation cannot bring the request within the input budget', async () => {
+    const ctx = createContext(30_000)
+    void new TestCompactionEngine(ctx, {
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 5_000,
+      thresholdRatio: 0.5,
+      retainTokens: 180,
+    })
+    const session = conversation(1)
+    session.append('request/header', {
+      header: {
+        config: { provider: MODEL, model: MODEL },
+        tools: [{ name: 'bulk', description: 'x'.repeat(100_000), parameters: { type: 'object' } }],
+      },
+      reason: 'resume',
+    })
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThan(5_000)
+
+    const refusal = await preStep(ctx, agent(session, MODEL)).catch((error: unknown) => error)
+    expect(refusal).toBeInstanceOf(StepInputBudgetError)
+    expect(refusal).toMatchObject({ targetKey: `${MODEL}/${MODEL}`, inputBudget: 5_000 })
+    expect((refusal as StepInputBudgetError).cause).toBeInstanceOf(PressureCompactionError)
+    expect(session.snapshotEvents().some(event => event.type === 'compaction/start')).toBe(false)
+  })
+
+  it('refuses the step when compaction fails and the request exceeds the input budget', async () => {
+    const ctx = createContext(10_000)
+    const compact = new TestCompactionEngine(ctx, {
+      headroomTokens: 0,
+      maxTokens: 8192,
+      inputBudget: 3_500,
+      thresholdRatio: 0.5,
+      retainTokens: 180,
+    })
+    compact.error = new Error('summary unavailable')
+    const session = conversation(4, 'x'.repeat(2_000))
+
+    const refusal = await preStep(ctx, agent(session, MODEL)).catch((error: unknown) => error)
+    expect(refusal).toBeInstanceOf(StepInputBudgetError)
+    expect((refusal as Error).cause).toBe(compact.error)
+  })
+
+  it('keeps a still-above-trigger request that the input budget still admits', async () => {
+    const ctx = createContext(1_000)
+    const warnings: string[] = []
+    ctx.logger.warn = ((message: string) => void warnings.push(message)) as typeof ctx.logger.warn
+    const compact = new TestCompactionEngine(ctx, {
+      headroomTokens: 0,
+      maxTokens: 8192,
+      compactionRetries: 0,
+      thresholdRatio: 0.3,
+      retainTokens: 180,
+    })
+    compact.summary = Array.from({ length: 7 }, (_, index) => ({
+      type: 'text',
+      text: `summary ${index}`,
+    }))
     const session = conversation(4)
 
     await expect(preStep(ctx, agent(session, MODEL))).resolves.toEqual({ kind: 'enter', messages: [] })
-    expect(warnings).toContainEqual(expect.stringContaining('temporary failure'))
-    expect(session.snapshotEvents().some(event => event.type === 'compaction/summary')).toBe(false)
+    expect(compact.calls.length).toBeGreaterThan(0)
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeLessThanOrEqual(1_000)
+    expect(warnings).toContainEqual(
+      expect.stringContaining('continuing the turn within the routed input budget'),
+    )
+  })
+
+  it('condenses at exactly the resolved trigger and leaves a step one token below it alone', async () => {
+    const measuredSession = conversation(4)
+    const measured = createContext(1_000_000).tokenMeter.measure(measuredSession).totalTokens
+
+    const atCtx = createContext(1_000_000)
+    const atSession = conversation(4)
+    void new TestCompactionEngine(atCtx, {
+      inputBudget: measured + 1,
+      thresholdTokens: measured,
+      retainTokens: 180,
+    })
+    await preStep(atCtx, agent(atSession, MODEL))
+    expect(atSession.snapshotEvents().some(event => event.type === 'compaction/summary')).toBe(true)
+
+    const belowCtx = createContext(1_000_000)
+    const belowSession = conversation(4)
+    void new TestCompactionEngine(belowCtx, {
+      inputBudget: measured + 1,
+      thresholdTokens: measured + 1,
+      retainTokens: 180,
+    })
+    await preStep(belowCtx, agent(belowSession, MODEL))
+    expect(belowSession.snapshotEvents().some(event => event.type === 'compaction/start')).toBe(false)
+  })
+
+  it('warns once and continues when the session compaction lock is already held', async () => {
+    const ctx = createContext(1_000_000)
+    const warnings: string[] = []
+    ctx.logger.warn = ((message: string) => void warnings.push(message)) as typeof ctx.logger.warn
+    void new TestCompactionEngine(ctx, {
+      inputBudget: 9_000,
+      thresholdRatio: 0.5,
+      retainTokens: 180,
+    })
+    const session = conversation(4)
+    session.append('compaction/start', { compactionId: CompactionId('held-lock'), turn: 1 })
+
+    await expect(preStep(ctx, agent(session, MODEL))).resolves.toEqual({ kind: 'enter', messages: [] })
+    await expect(preStep(ctx, agent(session, MODEL))).resolves.toEqual({ kind: 'enter', messages: [] })
+
+    expect(warnings).toEqual([
+      expect.stringContaining('compaction already in progress'),
+    ])
   })
 
   it('warns once per routed target when proactive pressure has no context metadata', async () => {
@@ -1776,6 +2208,35 @@ describe('automatic listener and loader composition', () => {
     expect(warnings).toEqual([
       expect.stringContaining(`no context capacity for ${MODEL}/${MODEL}`),
     ])
+  })
+
+  it('enforces a configured input budget when the adapter publishes no capacity', async () => {
+    const ctx = createContext()
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockImplementation((provider, model) => Promise.resolve({
+      provider,
+      id: model,
+      name: model,
+    }))
+    void new TestCompactionEngine(ctx, {
+      inputBudget: 9_000,
+      thresholdRatio: 0.5,
+      retainTokens: 180,
+    })
+    const session = conversation(1)
+    session.append('request/header', {
+      header: {
+        config: { provider: MODEL, model: MODEL },
+        tools: [{ name: 'bulk', description: 'x'.repeat(100_000), parameters: { type: 'object' } }],
+      },
+      reason: 'resume',
+    })
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThan(9_000)
+
+    // The deployment's own ceiling does not need adapter capacity, so the
+    // unavailable-capacity warning must not admit an over-budget request.
+    const refusal = await preStep(ctx, agent(session, MODEL)).catch((error: unknown) => error)
+    expect(refusal).toBeInstanceOf(StepInputBudgetError)
+    expect(refusal).toMatchObject({ targetKey: `${MODEL}/${MODEL}`, inputBudget: 9_000 })
   })
 
   it('warns once per routed target when absolute retention exceeds its resolved threshold', async () => {
@@ -2124,16 +2585,20 @@ describe('automatic listener and loader composition', () => {
     expect(session.snapshotEvents().filter(event => event.type === 'compaction/summary')).toHaveLength(summaries)
   })
 
-  it('auto:false installs neither automatic listener', async () => {
-    const ctx = createContext()
+  it('auto:false installs neither automatic listener even with a configured input budget', async () => {
+    const ctx = createContext(1_000)
     void new TestCompactionEngine(ctx, {
       headroomTokens: 0,
       maxTokens: 8192,
       auto: false,
+      inputBudget: 100,
       thresholdRatio: 0.5,
-      retainTokens: 180,
+      retainTokens: 10,
     })
     const session = conversation(4)
+    // The configured ceiling exceeds this request, so a mounted admission
+    // listener would refuse the step instead of entering it.
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeGreaterThan(100)
     await preStep(ctx, agent(session, MODEL))
     expect(session.snapshotEvents().some(event => event.type === 'compaction/start')).toBe(false)
     expect(await recover(ctx, agent(session, MODEL), overflow())).toBe(false)

@@ -22,6 +22,7 @@
     { "path": "../../jobs/jobs" },
     { "path": "../../llm/llm" },
     { "path": "../../session/session-projection" },
+    { "path": "../../session/session-rewind-files" },
     { "path": "../../session/session-title" },
     { "path": "../../subagent/subagent" },
     { "path": "../../util/brand" },

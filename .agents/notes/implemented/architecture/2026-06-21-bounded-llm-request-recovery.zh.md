@@ -35,10 +35,16 @@ interface LlmFailure {
   status?: number
   providerRetryAfterMs?: number
   requestId?: ProviderRequestId
+  offloadImages?: number
+  transportStage?: 'request' | 'response-body'
+  causeName?: string
+  causeCode?: string
 }
 ```
 
 `code` 仍是 `HarnessError` 建立的 provider-neutral 机器路由分类；新字段是在 provider 边界观测到的事实。`ProviderRequestId` 由 `dsh-llm` 拥有并构造，序列化后是 provider 发放的字符串。该 payload 有意不包含 `retryable`、`failover`、`partialOutput`、provider、model、phase 或 route id。是否可重试属于 policy，provider/model 已位于持久 request header 中，部分输出由失败 attempt 的嵌入式 stream 保留。
+
+`offloadImages` 属于图片省略投影，三个 `TRANSPORT` 诊断字段来自 [thinking 模式 CoT 回传与控制标记报告](../bug-fix/2026-09-22-reasoning-passback-and-control-markers.zh.md)。这四个字段与 `status`、`requestId` 同属结构化 provider 事实，因此扩展本载荷而不是引入并行的失败形状；`transportStage`、`causeName` 与 `causeCode` 只保存固定词表而不保存渲染后的消息，凭据、请求正文与思考文本因此不会进入持久化记录。
 
 `LlmError` 携带 `failure: LlmFailure`，并保持 `failure.code === error.code`。`FinishReasonMap.error` 和 `FinishReasonMap.aborted` 携带同一载荷，而不是并行的失败形状。最终适配器边界会从适配器抛出值中分离这些事实，并发出相应的终止 finish；未知 SDK 异常会获得 `UNKNOWN` 载荷。精确的抛出对象身份不会跨越 LLM 流 seam。
 

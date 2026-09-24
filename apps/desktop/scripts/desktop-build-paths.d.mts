@@ -6,6 +6,8 @@ export interface DesktopTargetBuildPaths {
   readonly artifacts: string
   readonly unsignedArtifacts: string
   readonly runtime: string
+  /** Linux payload a Windows package carries for its WSL2 execution environment. */
+  readonly wsl: string
   readonly packageSet: string
   readonly dsh: string
   readonly dshPnpm: string

@@ -106,6 +106,43 @@ export function isReplacementSurfaceEvent(
 }
 
 /**
+ * Producer kind a conversation-rewind replacement records on its marker message.
+ *
+ * A rewind shadows the branch one prompt opened and leaves an empty developer node
+ * at that prompt's surface position, so the model-visible history returns to
+ * the state before the prompt while every original event stays in the log.
+ * Producers and consumers identify the marker through
+ * {@link isRewindSurfaceEvent} rather than by re-spelling this name.
+ */
+export const REWIND_SURFACE_PLUGIN = 'rewind'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Empty developer marker removing the last direct prompt and its branch. */
+    rewind: { readonly kind: 'rewind' }
+  }
+}
+
+/**
+ * Narrow an event to a conversation-rewind replacement: the empty developer node
+ * that removed one prompt's whole branch from the model-visible surface.
+ *
+ * The marker is an ordinary surface replacement, so a reader that predates
+ * rewinds still folds the log correctly — it derives no message from the empty
+ * node — and only loses the ability to label the removal. The shadowed events
+ * are named by {@link SessionEvent.sourceEventSeqs} and remain in the log.
+ * @param event - event to test.
+ * @returns true when the event is a rewind replacement over a shadowed range.
+ */
+export function isRewindSurfaceEvent(
+  event: SessionEvent,
+): event is SurfaceEvent & { surfaceOp: Extract<SurfaceOp, { op: 'replace' }> } {
+  if (!isReplacementSurfaceEvent(event) || event.type !== 'developer/message') return false
+  const { message } = event.data
+  return message.content.length === 0 && message.source.kind === REWIND_SURFACE_PLUGIN
+}
+
+/**
  * Project a single event into the LLM message it derives to, or null when it
  * produces none — a non-surface event (attempt, boundary, log-only record) or an
  * empty-content system, developer, or assistant message. A caller

@@ -24,10 +24,10 @@ import { bundlePatchPaths, composeEntries, initProfile, loadProfile, PROFILES_DI
  * The effective disabled state of one row on one platform: a `!!js` expression
  * evaluates with a platform-scoped `process` so both outcomes pin on any host.
  */
-function disabledOn(row: { disabled?: unknown }, platform: 'win32' | 'linux'): boolean {
+function disabledOn(row: { disabled?: unknown }, platform: 'win32' | 'linux', shell = 'powershell'): boolean {
   const value = row.disabled
   if (value !== null && typeof value === 'object' && '__jsExpr' in value) {
-    return Boolean(evaluate({ process: { platform } }, (value as { __jsExpr: string }).__jsExpr))
+    return Boolean(evaluate({ process: { platform }, dshAgentShell: () => shell }, (value as { __jsExpr: string }).__jsExpr))
   }
   return value === true
 }
@@ -58,6 +58,11 @@ describe('the shipped shell composition (real bundle layers)', () => {
     expect(disabledOn(byId.get('bash-sandbox')!, 'linux'), 'bash-sandbox on linux').toBe(false)
     expect(disabledOn(byId.get('pwsh-sandbox')!, 'win32'), 'pwsh-sandbox on win32').toBe(false)
     expect(disabledOn(byId.get('pwsh-sandbox')!, 'linux'), 'pwsh-sandbox on linux').toBe(true)
+    // Every win32 bash command runs through the sandbox-consuming executor, so
+    // the Git Bash broker is the only launch site: no shipped row mounts the
+    // unconfined `dsh-bash-local` provider.
+    expect(byId.get('bash-sandbox')?.name).toBe('@deepseek-ai/dsh-bash-sandbox')
+    expect(rows.filter(row => row.name === '@deepseek-ai/dsh-bash-local')).toEqual([])
     // Host shell-tool rows are disabled on every platform; sessions mount
     // their own rows instead.
     expect(byId.get('tool-bash')?.disabled).toBe(true)
@@ -74,6 +79,9 @@ describe('the shipped shell composition (real bundle layers)', () => {
     const cliManifest = JSON.parse(readFileSync(anchor, 'utf8')) as { dependencies?: Record<string, string> }
     for (const name of ['@deepseek-ai/dsh-pwsh-sandbox', '@deepseek-ai/dsh-tool-pwsh']) {
       expect(cliManifest.dependencies?.[name], `cold-start closure must reach ${name}`).toBeDefined()
+    }
+    for (const id of ['bash-sandbox', 'pwsh-sandbox']) {
+      expect(disabledOn(byId.get(id)!, 'win32', 'git-bash')).toBe(id === 'pwsh-sandbox')
     }
     expect(warnings).toEqual([])
   })
@@ -96,6 +104,9 @@ describe('the shipped shell composition (real bundle layers)', () => {
     expect(disabledOn(byId.get('tool-bash')!, 'linux'), 'tool-bash on linux').toBe(false)
     expect(disabledOn(byId.get('tool-pwsh')!, 'win32'), 'tool-pwsh on win32').toBe(false)
     expect(disabledOn(byId.get('tool-pwsh')!, 'linux'), 'tool-pwsh on linux').toBe(true)
+    for (const id of ['bash-sandbox', 'pwsh-sandbox']) {
+      expect(disabledOn(byId.get(id)!, 'win32', 'git-bash')).toBe(id === 'pwsh-sandbox')
+    }
     expect(warnings).toEqual([])
   })
 })
@@ -119,7 +130,8 @@ describe('shipped agent presets gate both shell tools by platform', () => {
       expect(row.disabled).toMatchObject({ __jsExpr: expect.any(String) as string })
       // A platform-scoped context pins both outcomes on every host.
       const expression = (row.disabled as { __jsExpr: string }).__jsExpr
-      expect(Boolean(evaluate({ process: { platform: 'win32' } }, expression)), `${id} on win32`).toBe(win32)
+      expect(Boolean(evaluate({ process: { platform: 'win32' }, dshAgentShell: () => 'powershell' }, expression)), `${id} on win32`).toBe(win32)
+      expect(disabledOn(row, 'win32', 'git-bash'), id + ' with Git Bash').toBe(!win32)
       expect(Boolean(evaluate({ process: { platform: 'linux' } }, expression)), `${id} on linux`).toBe(!win32)
     }
   })
@@ -152,6 +164,15 @@ describe('shipped agent presets gate both shell tools by platform', () => {
       expect(disabledOn(byId.get(id)!, 'win32'), `${id} on win32`).toBe(false)
       expect(disabledOn(byId.get(id)!, 'linux'), `${id} on linux`).toBe(true)
     }
+    for (const id of ['terminal-bash', 'persistent-bash', 'terminal-pwsh', 'persistent-pwsh']) {
+      expect(disabledOn(byId.get(id)!, 'win32', 'git-bash')).toBe(id.endsWith('pwsh'))
+    }
     expect(byId.get('terminal-pwsh')?.config).toMatchObject({ shellDialect: 'pwsh' })
+    const bashConfig = byId.get('terminal-bash')?.config as { shellPath: { __jsExpr: string } }
+    expect(bashConfig.shellPath).toMatchObject({ __jsExpr: expect.any(String) as string })
+    expect(evaluate({ process: { platform: 'win32' }, dshGitBashPath: () => 'D:/工具/Git/bin/bash.exe' },
+      bashConfig.shellPath.__jsExpr)).toBe('D:/工具/Git/bin/bash.exe')
+    expect(evaluate({ process: { platform: 'linux' } }, bashConfig.shellPath.__jsExpr)).toBeUndefined()
+
   })
 })

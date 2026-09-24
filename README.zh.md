@@ -10,10 +10,11 @@ OPL 维护的 DeepSeek Harness fork：本仓库持续维护 OPL Gateway 接入�
 
 ## 下载与安装
 
-从 [Releases](https://github.com/gaofeng21cn/opl-dsh/releases) 下载 `opl-dsh-<版本>-mac-arm64.dmg`，打开后把 **OPL DSH** 拖进「应用程序」。
+从 [Releases](https://github.com/gaofeng21cn/opl-dsh/releases) 下载 macOS 的 `opl-dsh-<版本>-mac-arm64.dmg` 或 Windows 的 `opl-dsh-<版本>-win-x64-setup.exe`。macOS 打开镜像后把 **OPL DSH** 拖进「应用程序」；Windows 直接运行安装程序。
 
 - 已签名并通过 Apple 公证，首次打开无需额外步骤。
 - 支持 Apple Silicon（arm64），要求 macOS 13 或更高。
+- Windows 10 或 11 x64。安装程序未签名，首次打开时 SmartScreen 会提示。
 - 需要一个 OPL Gateway 账号，无需安装其他软件。
 
 ## 开始使用
@@ -28,11 +29,11 @@ OPL 维护的 DeepSeek Harness fork：本仓库持续维护 OPL Gateway 接入�
 
 ## 你的数据
 
-会话、设置与凭据保存在 `~/.dsh-opl`。登录只保存用于自动续期的会话令牌，不保存密码。模型请求直接发往 OPL Gateway（默认 `https://gateway.medopl.com/v1`）。
+macOS 的会话、设置与凭据保存在 `~/.dsh-opl`，Windows 保存在 `%APPDATA%\\@deepseek-ai\\dsh-desktop\\dsh-home`；可用 `DSH_OPL_HOME` 在任一平台迁移该目录。登录只保存用于自动续期的会话令牌，不保存密码。模型请求直接发往 OPL Gateway（默认 `https://gateway.medopl.com/v1`）。
 
 ## 已知限制
 
-- 目前只提供 macOS（Apple Silicon）版本。
+- Windows 版本未配置代码签名证书，首次打开时 SmartScreen 会提示一次。
 - 若账号需要交互式验证（人机校验或两步验证），请先在该流程中完成；本应用只处理邮箱与密码。
 
 ## 面向开发者
@@ -68,11 +69,38 @@ pnpm exec electron-builder --config electron-builder.opl.mjs --mac --arm64 --pub
 
 用 `apps/desktop/opl/install-macos.sh` 安装本地构建。它要求目标位置为空：`ditto` 会向已存在的 bundle 合并，留下签名未覆盖的资源，macOS 随后报 `a sealed resource is missing or invalid`。
 
+### 构建 Windows 应用
+
+需要 Windows 10 或 11 x64、Node.js >= 22.19、pnpm、Python，以及用于编译原生模块的 Visual C++ Build Tools。
+
+```sh
+pnpm install
+pnpm run typecheck
+pnpm exec vitest run apps/desktop packages/llm/llm-opl-gateway \
+  packages/client/ui-settings-opl-gateway packages/util/home-paths
+
+DSH_DESKTOP_APP_ID=com.onepersonlab.dsh \
+pnpm run package:opl:desktop:win:x64:unsigned
+```
+
+产物位于 `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/`，包括未签名 NSIS 安装程序和便携版可执行文件。`pnpm run package:opl:desktop:win:x64:dir:unsigned` 只生成 `win-unpacked/` 目录，适合快速启动调试。用 `apps/desktop/opl/install-windows.ps1` 安装本地构建。
+
+### 在 Windows shell 中调用 DeepSeek
+
+仓库提供与桌面应用共用 OPL Gateway 配置的无头入口：
+
+```powershell
+.\\scripts\\opl-dsh.cmd "list the files in the current workspace"
+```
+
+它使用 `opl-headless` profile 并以 JSON 输出最终回答；传入 `--session-id <session-id>` 可继续已有会话。默认 Harness home 为 `%APPDATA%\\@deepseek-ai\\dsh-desktop\\dsh-home`，可设置 `DSH_OPL_HOME` 将状态移到其他位置。
+
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
 | `DSH_OPL_HOME` | `~/.dsh-opl` | 会话、设置与凭据所在的 Harness home；必须使用可移植路径（例如 `~/.dsh-opl`） |
 | `DSH_OPL_NOTARIZE` | 未设置 | 设为 `1` 时在打包过程中公证磁盘映像 |
 | `OPL_GATEWAY_STATE_ROOT` | 自动探测 | OPL App 状态目录，仅在沿用既有登录时读取 |
+| `DSH_DESKTOP_BUILDER_CONFIG` | `electron-builder.config.mjs` | 打包脚本使用的 electron-builder 配置 |
 
 ### 本仓库增加了什么
 
@@ -81,9 +109,10 @@ pnpm exec electron-builder --config electron-builder.opl.mjs --mac --arm64 --pub
 | OPL Gateway 提供方路由 | `packages/llm/llm-opl-gateway` |
 | OPL Gateway 账号页 | `packages/client/ui-settings-opl-gateway` |
 | OPL 打包身份与安装脚本 | `apps/desktop/electron-builder.opl.mjs`、`apps/desktop/opl/` |
+| Windows x64 打包与安装 | `apps/desktop/opl/install-windows.ps1`、`apps/desktop/opl/verify-opl-package.mjs` |
 | 发布门禁对下游 npm scope 的支持 | `scripts/package-scope.ts` |
 
-网关插件直接对接 OPL Gateway 的 HTTP API，不调用命令行，因此运行时不需要 `opl connect gateway …`，在没有安装 OPL 的机器上也能使用；若 OPL App 已登录过，则沿用它记录的账号与已绑定的密钥，无需再次登录。
+网关插件直接对接 OPL Gateway 的 HTTP API，不调用命令行，因此运行时不需要 `opl connect gateway …`，在没有安装 OPL 的机器上也能使用。它只会申请或复用 OPL Gateway `DeepSeek` 分组中的 key；OPL App 的 `Codex` 或 `AGI` 分组 key 不会被接受。
 
 ### 本 fork 维护的两处平台修复
 

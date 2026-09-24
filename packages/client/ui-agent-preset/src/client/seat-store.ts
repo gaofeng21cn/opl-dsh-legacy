@@ -200,6 +200,11 @@ export class AgentPresetSeatController {
     if (this.store.getSnapshot().busy) return
     const staged = this.staged.id
     const session = this.currentSession()
+    if (presetOf(session) === 'chat') {
+      this.clearStage()
+      this.set({ current: 'chat', busy: false, error: null })
+      return
+    }
     if (staged === undefined) {
       const current = session === undefined ? this.fallback : presetOf(session) ?? ''
       if (current !== this.store.getSnapshot().current) this.set({ current })

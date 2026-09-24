@@ -37,7 +37,31 @@ export type {
   UserMessage,
 } from './message.ts'
 
-/** Serializable provider or transport failure facts; policy decides whether they are retryable. */
+/**
+ * Machine-readable transport failure classes a request can end in.
+ *
+ * A `TRANSPORT` failure is one code covering several distinct causes, and the
+ * operator-facing difference matters: a refused connection is a network or
+ * endpoint problem, an abandoned read is a timeout, and neither is a provider
+ * rejection. The adapter that owns the connection reports which one it saw.
+ */
+export type LlmTransportStage =
+  /**
+   * `fetch` itself rejected: DNS, TCP, TLS, or waiting for the response
+   * headers. Which of those it was is carried by {@link LlmFailure.causeCode}.
+   */
+  | 'request'
+  /** The response arrived and its body failed part-way through the stream. */
+  | 'response-body'
+
+/**
+ * Serializable provider or transport failure facts; policy decides whether they are retryable.
+ *
+ * Everything here reaches durable session events, so it must stay free of
+ * credentials, request bodies, and provider reasoning text: a transport
+ * diagnostic is a class name, an errno-style code, and a stage — never a
+ * rendered request.
+ */
 export interface LlmFailure {
   /** Human-readable provider or transport failure. */
   readonly message: string
@@ -56,6 +80,23 @@ export interface LlmFailure {
    * selected occurrences in an `image/offload` event and retries the step.
    */
   readonly offloadImages?: number
+  /**
+   * With code `TRANSPORT`: which phase of the request failed. Absent when the
+   * adapter cannot attribute the failure to one phase.
+   */
+  readonly transportStage?: LlmTransportStage
+  /**
+   * With code `TRANSPORT`: the underlying platform error's `name` (for example
+   * `TypeError` from a failed fetch) — a fixed vocabulary rather than a
+   * rendered message, so it carries no endpoint, header, or credential.
+   */
+  readonly causeName?: string
+  /**
+   * With code `TRANSPORT`: the underlying platform error's `code` when it has
+   * one (`ECONNREFUSED`, `UND_ERR_CONNECT_TIMEOUT`, `ENOTFOUND`, …). This is
+   * what separates "the network refused us" from "the gateway answered badly".
+   */
+  readonly causeCode?: string
 }
 
 /** Plain text visible to the end user. */

@@ -100,6 +100,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
         XDG_STATE_HOME: join(PNPM_BUILD_STATE, 'state'),
       },
       stdio: 'inherit',
+      windowsHide: true,
     })
     child.once('error', reject)
     child.once('close', (code, signal) => {

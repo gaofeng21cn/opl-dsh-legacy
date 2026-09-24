@@ -17,9 +17,11 @@ import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
 // Type-only: makes the optional sibling service available to `ctx.get()`.
 import type {} from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import {
+  PressureCompactionError,
   resolveCompactSpec,
   resolveConfig,
   resolveTargetPolicy,
+  StepInputBudgetError,
   TargetPressureConfigError,
 } from './config.ts'
 import {
@@ -43,7 +45,9 @@ export type {
   ResolvedConfig,
   ResolvedRetention,
   ResolvedTargetPolicy,
+  ResolvedThreshold,
 } from './types.ts'
+export { PressureCompactionError, StepInputBudgetError, TargetPressureConfigError } from './config.ts'
 
 /** Resolve the exact provider/model durably routed for the latest request. */
 function routedTarget(
@@ -78,8 +82,41 @@ function conversationTarget(
   return { provider: agent.options.provider, model: agent.options.model }
 }
 
+/**
+ * Whether an effective input budget binds below the routed capacity. A budget
+ * at or above capacity leaves the provider's own context-overflow recovery in
+ * charge, so the step is never refused locally for it.
+ * @param inputBudget - resolved effective input budget for the route.
+ * @param contextWindow - adapter-owned capacity for the same route.
+ * @returns whether exceeding the budget can refuse a step.
+ */
+function bindsBelowCapacity(inputBudget: number, contextWindow: number): boolean {
+  return inputBudget < contextWindow
+}
+
+/**
+ * Key under which a pressure-compaction failure means condensation cannot run
+ * now rather than this request's budget being refused: an adapter publishing no
+ * capacity for the route, a policy that cannot be scaled, or the session
+ * compaction lock already held. These keep the warn-once-and-continue behavior
+ * instead of refusing the step.
+ * @param error - failure raised by one pressure compaction attempt.
+ * @param agent - agent whose durable route keys the warning.
+ * @returns the warning key, or `undefined` when the failure must refuse the step.
+ */
+function unavailableCompactionKey(error: unknown, agent: Agent): string | undefined {
+  if (error instanceof TargetPressureConfigError) return error.targetKey
+  if (error instanceof ManualCompactionError && error.code === 'busy') {
+    const config = agent.session.requestHeader()?.config
+    return config === undefined ? 'compaction-lock' : `${config.provider}/${config.model}`
+  }
+  return undefined
+}
+
 const thresholdRatioSchema = z.number()
 const headroomTokensSchema = z.number().step(1).min(0)
+const thresholdTokensSchema = z.number().step(1).min(1)
+const inputBudgetSchema = z.number().step(1).min(1)
 const retainRatioSchema = z.number()
 const retainTokensSchema = z.number().step(1).min(0)
 const summarizationProviderSchema = z.string()
@@ -93,6 +130,8 @@ const modelPolicy: z<ModelCompactPolicyConfig> = z.object({
   model: z.string().required(),
   thresholdRatio: thresholdRatioSchema,
   headroomTokens: headroomTokensSchema,
+  thresholdTokens: thresholdTokensSchema,
+  inputBudget: inputBudgetSchema,
   retainRatio: retainRatioSchema,
   retainTokens: retainTokensSchema,
   summarizationProvider: summarizationProviderSchema,
@@ -116,6 +155,8 @@ export class BasicCompactionEngine extends CompactionEngine {
   static Config: z<BasicCompactionConfig> = z.object({
     thresholdRatio: thresholdRatioSchema,
     headroomTokens: headroomTokensSchema,
+    thresholdTokens: thresholdTokensSchema,
+    inputBudget: inputBudgetSchema,
     retainRatio: retainRatioSchema,
     retainTokens: retainTokensSchema,
     summarizationProvider: summarizationProviderSchema,
@@ -164,12 +205,29 @@ export class BasicCompactionEngine extends CompactionEngine {
           const result = await this.compactIfNeeded(agent, 'pressure', signal)
           if (result !== null) logResult(result, 'step pressure')
         } catch (error: unknown) {
-          if (error instanceof TargetPressureConfigError) {
-            if (this.warnedPressureConfigTargets.has(error.targetKey)) return next()
-            this.warnedPressureConfigTargets.add(error.targetKey)
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- the signal can abort while compaction is awaited.
+          if (signal.aborted) throw error
+          // The effective input budget is this listener's admission ceiling: a
+          // step whose priced request still exceeds it is refused rather than
+          // sent. Condensation failures that leave the request within budget are
+          // reported and the step proceeds, because the configuration admits it.
+          const refusal = await this.stepRefusal(agent, error, signal)
+          if (refusal !== undefined) throw refusal
+          const unavailableKey = unavailableCompactionKey(error, agent)
+          if (unavailableKey !== undefined) {
+            if (!this.warnedPressureConfigTargets.has(unavailableKey)) {
+              this.warnedPressureConfigTargets.add(unavailableKey)
+              ctx.logger.warn(
+                `step compaction unavailable: ${error instanceof Error ? error.message : String(error)}; `
+                + 'continuing with the full history',
+              )
+            }
+            return next()
           }
-          const message = error instanceof Error ? error.message : String(error)
-          ctx.logger.warn(`step compaction failed: ${message}; continuing the turn`)
+          ctx.logger.warn(
+            `step compaction failed: ${error instanceof Error ? error.message : String(error)}; `
+            + 'continuing the turn within the routed input budget',
+          )
         }
       }
       return next()
@@ -265,6 +323,10 @@ export class BasicCompactionEngine extends CompactionEngine {
    * @param trigger - normal step-boundary pressure or context-overflow recovery.
    * @param signal - live turn cancellation signal forwarded to summarization.
    * @returns the latest summary compaction result, or `null` when no summary ran.
+   * @throws PressureCompactionError when the priced request reaches the routed
+   *   trigger and no compaction pass brings it back below that trigger.
+   * @throws TargetPressureConfigError when the routed target publishes no
+   *   capacity or its policy cannot be scaled for that capacity.
    */
   override async compactIfNeeded(
     agent: Agent,
@@ -330,9 +392,19 @@ export class BasicCompactionEngine extends CompactionEngine {
     for (let attempt = 0; attempt <= spec.compactionRetries; attempt += 1) {
       const range = selectCompactableRange(agent.session, measurement, spec.retainTokens)
       if (range === null) {
-        /* v8 ignore else -- concrete replacement preserves a compactable checkpoint; subclass hooks cannot mutate it. */
-        if (result === null) return null
-        /* v8 ignore next -- paired with the defensive post-success branch above. */
+        if (result === null) {
+          throw new PressureCompactionError(
+            targetKey,
+            measurement.totalTokens,
+            spec.thresholdTokens,
+            spec.inputBudget,
+            spec.contextWindow,
+            `compaction-basic: ${targetKey} input is at ${measurement.totalTokens} estimated tokens, `
+            + `at or above the ${spec.thresholdTokens}-token compaction trigger, but no safe range can be `
+            + `condensed within the ${spec.inputBudget}-token input budget`,
+          )
+        }
+        /* v8 ignore next -- a landed checkpoint can leave a surface whose only remaining span is an indivisible tool pair */
         break
       }
       result = await this.compactRegion(range.start, range.end, agent, signal)
@@ -340,9 +412,15 @@ export class BasicCompactionEngine extends CompactionEngine {
       if (measurement.totalTokens < spec.thresholdTokens) return result
     }
 
-    throw new Error(
-      `compaction still above threshold after ${spec.compactionRetries + 1} compaction attempts `
-      + `(${measurement.totalTokens} estimated tokens >= threshold ${spec.thresholdTokens})`,
+    throw new PressureCompactionError(
+      targetKey,
+      measurement.totalTokens,
+      spec.thresholdTokens,
+      spec.inputBudget,
+      spec.contextWindow,
+      `compaction-basic: ${targetKey} input is still at ${measurement.totalTokens} estimated tokens, at or `
+      + `above the ${spec.thresholdTokens}-token compaction trigger of the ${spec.inputBudget}-token input budget `
+      + `after ${spec.compactionRetries + 1} compaction attempts`,
     )
   }
 
@@ -432,6 +510,70 @@ export class BasicCompactionEngine extends CompactionEngine {
         { cause: error },
       )
     }
+  }
+
+  /**
+   * Decide whether one failed pre-step condensation refuses the step. The
+   * refusal exists only while the priced request exceeds an effective input
+   * budget that binds below the routed capacity: a deployment that configures
+   * no smaller budget keeps the provider's own overflow recovery, and a failure
+   * within the budget is reported by the caller while the step proceeds. A
+   * configured budget is enforced even when the adapter publishes no capacity
+   * for the route, because the deployment's own ceiling does not need one.
+   * @param agent - agent whose latest durable routed request is priced.
+   * @param error - failure raised by the condensation attempt.
+   * @param signal - live turn cancellation signal forwarded to capacity resolution.
+   * @returns the refusal, or `undefined` when the request fits the input budget.
+   */
+  private async stepRefusal(
+    agent: Agent,
+    error: unknown,
+    signal: AbortSignal,
+  ): Promise<StepInputBudgetError | undefined> {
+    const target = routedTarget(agent.session)
+    if (target === undefined) return undefined
+    const configured = resolveTargetPolicy(this.config, target).inputBudget
+    if (configured === undefined) return undefined
+    if (error instanceof PressureCompactionError) {
+      if (!bindsBelowCapacity(configured, error.contextWindow)) return undefined
+      return this.stepBudgetRefusal(agent, error, error.inputBudget, error.targetKey)
+    }
+    const info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)
+    const capacity = info.context?.contextWindow
+    // An explicit deployment ceiling remains enforceable without model metadata.
+    if (capacity === undefined) {
+      return this.stepBudgetRefusal(agent, error, configured, `${target.provider}/${target.model}`)
+    }
+    if (!bindsBelowCapacity(configured, capacity)) return undefined
+    const inputBudget = Math.min(capacity - reservedCompletionTokens(agent, info.defaultMaxTokens), configured)
+    return this.stepBudgetRefusal(agent, error, inputBudget, `${target.provider}/${target.model}`)
+  }
+
+  /**
+   * Refuse a step whose priced request exceeds its admission budget, keeping the
+   * original condensation failure as the cause.
+   * @param agent - agent whose latest durable routed request is priced.
+   * @param error - failure raised by the condensation attempt.
+   * @param inputBudget - resolved effective input budget for the route.
+   * @param targetKey - exact provider/model route used in the refusal detail.
+   * @returns the refusal, or `undefined` when the priced request fits the budget.
+   */
+  private stepBudgetRefusal(
+    agent: Agent,
+    error: unknown,
+    inputBudget: number,
+    targetKey: string,
+  ): StepInputBudgetError | undefined {
+    const measuredTokens = this.ctx.tokenMeter.measure(agent.session).totalTokens
+    if (measuredTokens <= inputBudget) return undefined
+    return new StepInputBudgetError(
+      targetKey,
+      measuredTokens,
+      inputBudget,
+      `compaction-basic: ${targetKey} step refused: ${measuredTokens} estimated input tokens still exceed `
+      + `the ${inputBudget}-token input budget after pre-step compaction`,
+      { cause: error },
+    )
   }
 
   /** Bind the effective token meter and dynamically dispatched summarizer hook. */

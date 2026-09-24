@@ -10,6 +10,7 @@ import {
 } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionBehaviorOverrides } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
   apply as applyConversation, inject as injectConversation,
   type GroupKey,
@@ -47,6 +48,10 @@ function sessionFakeFor() {
     })),
     prompt: vi.fn<ISession['prompt']>(() => Promise.resolve({ ok: true, value: { accepted: true } })),
     cancel: vi.fn<ISession['cancel']>(() => Promise.resolve({ ok: true, value: { accepted: true } })),
+    rewind: vi.fn<ISession['rewind']>(() => Promise.resolve({
+      ok: true,
+      value: { accepted: true, seq: 12, shadowedSeqs: [11], discarded: [], files: [] },
+    })),
   } satisfies SessionBehaviorOverrides
 }
 
@@ -369,6 +374,35 @@ describe('Chat inject API', () => {
     // An absolute path outside every known root still names its Session.
     await injected.openFile('/abs/a.ts')
     expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/root-2//abs/a.ts')
+    await b.runtime.dispose()
+  })
+
+  it('rewinds through the Session Controller and restores the prompt into an empty composer', async () => {
+    const b = await bench()
+    const { injected } = b.chatViewApi(ROOT)
+    const input = b.runtime.ctx.get('conversation')!.input.for(b.runtime.sessions.scope(ROOT)!)
+    expect(input.state.getSnapshot().draft).toBe('')
+
+    expect(await injected.rewindPrompt(11, 'second question')).toBeNull()
+    expect(b.session.rewind).toHaveBeenCalledWith(11)
+    // The rolled-back prompt returns to where it was before the send.
+    expect(input.state.getSnapshot().draft).toBe('second question')
+
+    // A draft the user typed since is newer input, so the rewind keeps it.
+    input.setDraft('typed later')
+    await injected.rewindPrompt(9, 'first question')
+    expect(input.state.getSnapshot().draft).toBe('typed later')
+
+    // The Host refusal reaches the row verbatim.
+    b.session.rewind.mockResolvedValueOnce({
+      ok: false,
+      error: new RemoteError('session/rewind-unavailable', 'still running', {
+        sessionId: ROOT,
+        reason: 'busy',
+      }),
+    })
+    expect(await injected.rewindPrompt(9, 'first question'))
+      .toEqual({ code: 'session/rewind-unavailable', reason: 'busy' })
     await b.runtime.dispose()
   })
 

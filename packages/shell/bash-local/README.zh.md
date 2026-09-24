@@ -27,9 +27,13 @@ kind: "package-reference"
 
 当组合需要在 POSIX 上执行 Bash 命令且不需要隔离时，挂载此执行器。它注册为 `ctx.shell`，面向模型的 `bash` 工具会立即基于它工作：agent（智能体）调用工具，命令即以全新 `bash -c` 进程按下面的预算运行。
 
+### Windows Native 下的 Git Bash
+
+在 Windows Native 下，本执行器使用 [shell 设置](../shell/README.zh.md)中经过验证的 Git for Windows 可执行文件。路径在首次使用时解析；编辑非 volatile 的 Git Bash 路径会重新挂载执行器。Windows 子进程沿用受管理的取消及隐藏控制台启动。Git Bash 对 Windows 程序采用 MSYS 路径转换；它不是 Linux 执行环境。本执行器在任何平台都不隔离命令，因此需要文件隔离的 Windows 组合应挂载 `dsh-bash-sandbox`，由其中的 Git Bash broker 决定每次受限启动。
+
 ### 最小配置
 
-按你需要的预算加载执行器；每个字段都有默认值，因此最小的组合就是单独一个插件条目。当组合了设置提供方时，用户段会叠加在该条目之上，预算无需重载即可在运行时变更（见[运行时调整预算](#adjusting-budgets-at-runtime)）。
+按你需要的预算加载执行器；每个字段都有默认值，因此最小的组合就是单独一个插件条目。插件页面编辑这个 profile 条目，volatile 预算无需重载即可在运行时变更（见[运行时调整预算](#adjusting-budgets-at-runtime)）。
 
 ```yaml
 - id: bash
@@ -67,7 +71,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 <a id="adjusting-budgets-at-runtime"></a>
 ### 运行时调整预算
 
-执行预算是解析每条命令时读取的 volatile Config 字段。插件页面编辑当前执行器的 profile 条目。完整 Config 验证在表单写入磁盘前拒绝无效数字和定时器上限。
+执行预算是解析每条命令时读取的 volatile Config 字段。插件页面编辑当前执行器的 profile 条目。执行器在解析下一条命令时拒绝非正预算和不可用的定时器上限。
 
 -----
 
@@ -87,20 +91,20 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：`LocalBashExecutor`、`Config`、设置段接线 |
+| [`src/index.ts`](src/index.ts) | 插件入口：`LocalBashExecutor`、`Config`、实时 profile 配置 |
 | — | 不发布运行时不变式伴生入口；除由所属 seam 强制执行的约定外，本包不公开独立的事件序列或可变数据关系。 |
 | `tests/executor.spec.ts` | 已演练的行为：预算、分类、后台句柄、归属 |
-| `tests/settings.spec.ts` | 设置段叠加在组合条目之上 |
+| `tests/settings.spec.ts` | Loader 更新 volatile 预算 |
 
 ### 主要流程
 
-一次调用分三步：`resolve()` 从配置与请求填充 `workdir`/`timeoutMs`/`onExpiry`/`stdoutMaxBytes`（并限制每次调用的覆盖值）；`execute` 按到期策略布置 deadline——`'kill'` 把钳位后的超时与调用方的中止信号融合为一个 deadline，`'none'` 不布置任何 deadline——再以显式字节上限与 `graceMs` 通过 `ctx.subprocess` spawn `['bash', '-c', command]`；结算的 subprocess 结果被分类——只有执行器自身的超时报告 `timedOut`，上游取消报告 `aborted`，自身因信号终止的命令两者皆不报告——并投影为带收集输出的 `ShellRunResult`。
+一次调用分三步：`resolve()` 从配置与请求填充 `workdir`/`timeoutMs`/`onExpiry`/`stdoutMaxBytes`（并限制每次调用的覆盖值）；`execute` 按到期策略布置 deadline——`'kill'` 把钳位后的超时与调用方的中止信号融合为一个 deadline，`'none'` 不布置任何 deadline——再以显式字节上限与 `graceMs` 通过 `ctx.subprocess` spawn `[bashPath, '-c', command]`；结算的 subprocess 结果被分类——只有执行器自身的超时报告 `timedOut`，上游取消报告 `aborted`，自身因信号终止的命令两者皆不报告——并投影为带收集输出的 `ShellRunResult`。
 
 前台 deadline 从 argv 准备开始，并在准备与执行之间保持同一信号和剩余预算。准备阶段超时返回空输出、`timedOut: true`，且 `exitCode` 和 `signal` 均为 `null`；调用方在发布进程前取消仍会拒绝调用。准备晚到的成功或失败不会触发 spawn。
 
 ### 不变式与归属
 
-- `graceMs` 预算必须为正有限值且不大于 `MAX_TIMER_DELAY_MS`，这样 Node 就能用一个定时器表示它；无效值在写入处被拒绝。
+- `graceMs` 预算必须为正有限值且不大于 `MAX_TIMER_DELAY_MS`，这样 Node 就能用一个定时器表示它；无效值在解析下一条命令时被拒绝。
 - 环境分层固定：先是终端覆盖值，然后是调用方的 `env`，最后才是受信任的 `dshEnv` 快照；subprocess 服务独立清除环境中的凭据与继承的 `DSH_*` 名称。
 - 后台进程属于 subprocess 服务：它能在仅重载执行器后存活，并在服务 dispose 时被终止且等待退出。
 

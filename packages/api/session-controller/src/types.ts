@@ -9,6 +9,7 @@ import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { TextBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
+import type { FileRestoreAction, SessionRewindFileReason } from '@deepseek-ai/dsh-session-rewind-files/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
@@ -212,6 +213,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
+    /**
+     * The Session exists, but the create-time decision that it belongs to no
+     * project could not be recorded; without that placement the registry's next
+     * start could adopt it into whatever project owns its directory.
+     */
+    'session/membership-unrecorded': { readonly sessionId: SessionId }
     'agent-preset/conflict': {
       readonly sessionId: SessionId
       readonly requestedPreset: string
@@ -220,8 +227,48 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/attachment-invalid': { readonly reason: string }
     'session/queue-item-not-found': { readonly itemId: MessageId }
     'session/steer-unavailable': { readonly itemId: MessageId }
+    /**
+     * The Session cannot rewrite and resend a user message; `reason` is the
+     * stable discrimination a client switches on, and nothing changed.
+     */
+    'session/edit-unavailable': {
+      readonly sessionId: SessionId
+      readonly reason: SessionEditUnavailableReason
+    }
+    /**
+     * The Session cannot roll the conversation back past a prompt; `reason` is
+     * the stable discrimination a client switches on, and nothing changed.
+     */
+    'session/rewind-unavailable': {
+      readonly sessionId: SessionId
+      readonly reason: SessionRewindUnavailableReason
+      /**
+       * Specific file-restoration condition, present exactly when `reason` is
+       * `file-unavailable`; the workspace-relative path that refused, when one
+       * path is responsible.
+       */
+      readonly fileReason?: SessionRewindFileReason
+      readonly path?: string
+    }
     'session/title-invalid': { readonly sessionId: SessionId }
     'session/fork-unavailable': { readonly sessionId: SessionId }
+    'session/permissions-unknown-preset': { readonly preset: string; readonly available: readonly string[] }
+    /**
+     * A switch the caller must not make while the Session is running: the
+     * target permission is wider than the effective one and a turn is active.
+     */
+    'session/permissions-busy': {
+      readonly sessionId: SessionId
+      readonly preset: string
+      readonly currentPreset: string
+      readonly turn?: number
+    }
+    /** The permission service refused or failed the switch; nothing changed. */
+    'session/permissions-unavailable': {
+      readonly sessionId: SessionId
+      readonly preset: string
+      readonly reason: string
+    }
     'subagent/not-found': {
       readonly parentSessionId: SessionId
       readonly childSessionId: SessionId
@@ -281,16 +328,26 @@ export interface SessionSearchValue {
 
 /** Session creation or explicit-id adoption request. */
 export interface SessionCreateRequest {
+  /** Allocate a private working directory for a project-free task. */
+  readonly standalone?: boolean
   readonly workspaceId?: WorkspaceId
   readonly cwd?: string
   readonly sessionId?: SessionId
   readonly agentPreset?: string
+  /**
+   * Permission preset installed before the Session's first model turn.
+   * Validated before anything is created; omission keeps the deployment
+   * default, which the response still reports.
+   */
+  readonly permissionPreset?: string
 }
 
 /** Session creation response value. */
 export interface SessionCreateValue {
   readonly sessionId: SessionId
   readonly agentPreset?: string
+  /** Permission effective for the created Session; absent without a permission service. */
+  readonly permissions?: SessionPermissionsValue
 }
 
 /** Session model-selection request. */
@@ -301,6 +358,50 @@ export interface SessionSelectModelRequest extends ModelSelection {
 /** Accepted model selection after Host resolution. */
 export interface SessionSelectModelValue {
   readonly selected: ModelSelection
+}
+
+/** Sandbox mode as it crosses this Remote boundary; mirrors the permission domain's `SandboxMode`. */
+export type SessionPermissionSandbox = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+/** Approval policy as it crosses this Remote boundary; mirrors the permission domain's `ApprovalPolicy`. */
+export type SessionPermissionApproval = 'ask' | 'never'
+
+/** Session permission query request. */
+export interface SessionPermissionsRequest {
+  readonly sessionId: SessionId
+}
+
+/** Effective permission of one Session together with the presets this deployment offers. */
+export interface SessionPermissionsValue {
+  readonly sessionId: SessionId
+  /** Effective preset key, or `custom` when the resolved knobs match no offered preset. */
+  readonly preset: string
+  /** Sandbox mode the Session's next confined call resolves. */
+  readonly sandbox: SessionPermissionSandbox
+  /** Approval policy the Session's next approval request resolves. */
+  readonly approval: SessionPermissionApproval
+  /** Every preset this deployment offers, in declaration order. */
+  readonly available: readonly string[]
+  /** Preset a newly created Session receives when its creation names none. */
+  readonly defaultPreset: string
+  /** Whether the Session's driver is running at read time. */
+  readonly running: boolean
+  /** Turn open at read time, or null when none is open. */
+  readonly turn: number | null
+}
+
+/** Session permission switch request. */
+export interface SessionSelectPermissionsRequest {
+  readonly sessionId: SessionId
+  /** Preset key to install. Unknown keys are rejected before any state changes. */
+  readonly preset: string
+}
+
+/** Accepted permission switch and the permission now effective for the Session. */
+export interface SessionSelectPermissionsValue {
+  readonly permissions: SessionPermissionsValue
+  /** When the switched knobs reach execution: the Session's next confined call. */
+  readonly appliesFrom: 'next-confined-call'
 }
 
 /** Session rename request. */
@@ -343,6 +444,115 @@ export interface SessionPromptValue {
   readonly accepted: true
 }
 
+/**
+ * Why an edit-and-resend was refused. Closed union: a client switches on it to
+ * explain the refusal, and every arm leaves the Session log and inbox unchanged.
+ */
+export type SessionEditUnavailableReason =
+  /** The Session is archived; archived Sessions accept no new work. */
+  | 'archived'
+  /** The Session holds no direct human prompt to edit. */
+  | 'no-user-message'
+  /** The addressed surface event is not the last editable user message. */
+  | 'not-last'
+  /** A turn is active, so the last user message may still be claimed or settling. */
+  | 'busy'
+
+/**
+ * Last-user-message rewrite request: replace the branch the addressed prompt
+ * opened with edited content, then resend it as a new turn.
+ */
+export interface SessionEditPromptRequest {
+  /** Client-minted identity persisted on the exact replacement user message. */
+  readonly requestId: SessionRequestId
+  readonly sessionId: SessionId
+  /**
+   * Event seq of the user message the client is editing. It must be the last
+   * editable user message on the current surface; a stale client that names any
+   * other event is refused with `session/edit-unavailable`.
+   */
+  readonly seq: number
+  /** At least one non-whitespace text part or attachment. */
+  readonly content: readonly PromptContentPart[]
+  readonly clientTimeZone?: string
+}
+
+/** Receipt after one rewritten prompt replaced its branch and entered the Agent inbox. */
+export interface SessionEditPromptValue {
+  readonly accepted: true
+  /** Event seq of the replacement `user/message` now carrying the edited content. */
+  readonly seq: number
+}
+
+/**
+ * Why a conversation rewind was refused. Closed union: a client switches on it
+ * to explain the refusal, and every arm leaves the Session log and inbox
+ * unchanged.
+ */
+export type SessionRewindUnavailableReason =
+  /** The Session is archived; archived Sessions accept no new work. */
+  | 'archived'
+  /** The Session holds no direct human prompt to roll back past. */
+  | 'no-user-message'
+  /** The addressed surface event is not the last direct human prompt. */
+  | 'not-last'
+  /** A turn is active, so the branch may still be growing. */
+  | 'busy'
+  /** The addressed prompt's turn never closed, so no completed turn exists to undo. */
+  | 'turn-open'
+  /**
+   * The turn's recorded workspace writes cannot be put back, so nothing was
+   * changed. `details.fileReason` names the specific condition and
+   * `details.path` the responsible workspace-relative path when one exists.
+   */
+  | 'file-unavailable'
+
+/**
+ * Why a rewind refused to restore the rolled-back turn's workspace files. Every
+ * arm means nothing was written: the whole restore is verified before the first
+ * replacement, so a refusal always leaves the workspace as it found it. Owned by
+ * `@deepseek-ai/dsh-session-rewind-files`; re-exported here as the wire's
+ * vocabulary so a producer and this union cannot drift.
+ */
+export type { SessionRewindFileReason }
+
+/**
+ * Conversation rewind request: remove the branch the addressed prompt opened
+ * from the model-visible surface without deleting any durable event.
+ */
+export interface SessionRewindRequest {
+  readonly sessionId: SessionId
+  /**
+   * Event seq of the direct human prompt to roll back past. It must be the last
+   * such prompt on the current surface; a stale client that names any other
+   * event is refused with `session/rewind-unavailable`.
+   */
+  readonly seq: number
+}
+
+/**
+ * Receipt after one rewind committed. A retried request that already landed
+ * answers with the same replacement seq and removes nothing further.
+ */
+export interface SessionRewindValue {
+  readonly accepted: true
+  /** Event seq of the empty replacement node now holding the rewound prompt's surface position. */
+  readonly seq: number
+  /** Surface node seqs the replacement shadowed, in surface order; all remain in the log. */
+  readonly shadowedSeqs: readonly number[]
+  /** Pending inbox message identities this rewind discarded, in removal order. */
+  readonly discarded: readonly MessageId[]
+  /**
+   * Workspace files this rewind put back, in restore order. Empty when the turn
+   * wrote nothing, and empty again on a retry: restoration happens once, with
+   * the replacement it belongs to.
+   */
+  readonly files: readonly SessionRewindFileAction[]
+}
+
+/** One workspace path a rewind restored to its pre-turn state. */
+export type SessionRewindFileAction = FileRestoreAction
+
 /** Durable image read request. */
 export interface SessionAttachmentRequest {
   readonly sessionId: SessionId
@@ -375,6 +585,35 @@ export interface SessionCancelRequest {
 /** Receipt after cancellation is admitted to the live Agent. */
 export interface SessionCancelValue {
   readonly accepted: true
+}
+
+/** One Session wait request. */
+export interface SessionWaitRequest {
+  readonly sessionId: SessionId
+  /** Exact turn to await; omission waits on the turn that is open when the call arrives. */
+  readonly turn?: number
+}
+
+/** Why a wait stopped waiting. Closed union. */
+export type SessionWaitOutcome =
+  | { readonly kind: 'completed' }
+  | { readonly kind: 'failed'; readonly message: string; readonly code?: string }
+  | { readonly kind: 'cancelled'; readonly cause: string }
+  | { readonly kind: 'needs-input'; readonly request: SessionInputRequest }
+
+/** The interactive request that a `needs-input` outcome reports. */
+export interface SessionInputRequest {
+  readonly sessionId: SessionId
+  /** Pending approval identity, when the pause is a tool approval. */
+  readonly approvalId?: string
+  /** Tool whose operation is awaiting a decision. */
+  readonly toolName?: string
+}
+
+/** One settled wait: the outcome and the turn it belongs to. */
+export interface SessionWaitValue {
+  readonly turn: number
+  readonly outcome: SessionWaitOutcome
 }
 
 /** Request to open one path prepared by a Session-aware caller on the Host desktop. */
