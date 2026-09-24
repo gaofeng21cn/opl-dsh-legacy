@@ -1,0 +1,46 @@
+name: OPL CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  validate:
+    if: github.repository == 'gaofeng21cn/opl-dsh'
+    name: Typecheck and OPL regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck host and client
+        run: pnpm run typecheck
+      - name: Check OPL account, settings, and home paths
+        run: >-
+          pnpm exec vitest run
+          packages/llm/llm-opl-gateway
+          packages/client/ui-settings-opl-gateway
+          packages/util/home-paths
+      - name: Check expected filenames
+        run: bash scripts/check-expected-filenames.sh
