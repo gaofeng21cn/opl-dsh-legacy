@@ -71,6 +71,7 @@ The catalog contains all supported historical readers directly. A profile cannot
 - [Released v1 to v2 edge](../session-format-v1-to-v2/README.md) — Assistant stream embedding and cardinality-changing reference remapping.
 - [Released V2 to V3 specification](../session-format-v2-to-v3/README.md#v2-to-v3-specification) — transformations, preservation, and refusal.
 - [V3 to V4 specification](../session-format-v3-to-v4/README.md#v3-to-v4-specification) — conversion, reference remapping, and delivery-generation validation.
+- [V4 to V5 migration](../session-format-v4-to-v5/README.md) — identity migration for the current message-source vocabulary.
 - [JSONL persistence](../session-persistence-jsonl/README.md) — immutable generation naming and exclusive publication.
 
 -----
