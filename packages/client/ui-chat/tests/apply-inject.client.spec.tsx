@@ -379,7 +379,7 @@ describe('Chat inject API', () => {
 
   it('rewinds through the Session Controller and restores the prompt into an empty composer', async () => {
     const b = await bench()
-    const { injected } = b.chatViewApi(ROOT)
+    const { injected } = b.chatViewApi(b.rootReference)
     const input = b.runtime.ctx.get('conversation')!.input.for(b.runtime.sessions.scope(ROOT)!)
     expect(input.state.getSnapshot().draft).toBe('')
 

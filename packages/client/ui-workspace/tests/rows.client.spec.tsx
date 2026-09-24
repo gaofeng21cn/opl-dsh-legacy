@@ -86,7 +86,7 @@ describe('workspace browser rows', () => {
       runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
       pinned: false, archived: false,
     }
-    const renderSlot: RowRenderSlot = name => name === 'sidebar.workspaces.session.menu.item'
+    const renderSlot: RowRenderSlot = (name: string) => name === 'sidebar.workspaces.session.menu.item'
       ? <MenuItemButton onSelect={() => {}}>Project action</MenuItemButton> : null
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen} renderSlot={renderSlot} t={t} />)
     fireEvent.contextMenu(screen.getByRole('treeitem'), { clientX: 80, clientY: 60 })

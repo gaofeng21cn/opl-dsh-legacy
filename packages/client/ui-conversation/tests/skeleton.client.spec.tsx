@@ -345,6 +345,7 @@ function mount(
       renderSlotChain,
       renderFactorySlot,
       openWorkingDirectory: async () => {},
+      openChat: async () => {},
       selectWorkspace: retargetWorkspace,
       t,
     }

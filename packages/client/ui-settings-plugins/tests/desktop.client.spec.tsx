@@ -23,7 +23,10 @@ function bridge() {
     environment: {
       status: vi.fn(async () => environment),
       select: vi.fn(async (selection: { environment: 'windows-native' | 'wsl2'; distro?: string }) => ({
-        ...environment, selected: selection.environment, selectedDistro: selection.distro, restartRequired: true,
+        ...environment,
+        selected: selection.environment,
+        ...(selection.distro === undefined ? {} : { selectedDistro: selection.distro }),
+        restartRequired: true,
       })),
     },
   }
