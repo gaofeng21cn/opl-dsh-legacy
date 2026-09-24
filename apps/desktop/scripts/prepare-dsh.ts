@@ -88,7 +88,10 @@ function runPnpm(args: readonly string[]): Promise<void> {
       cwd: BUILD_ROOT,
       env: {
         ...Object.fromEntries(Object.entries(process.env).filter(([name]) => (
-          name !== 'NODE_OPTIONS' && name !== 'NODE_PATH' && !/^DSH_DESKTOP_/u.test(name) && !/^(?:npm|pnpm|corepack)_/iu.test(name)
+          name !== 'NODE_OPTIONS' && name !== 'NODE_PATH'
+          && !(/^DSH_DESKTOP_/u.test(name)
+            && !/^DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNING_PROBE)$/u.test(name))
+          && !/^(?:npm|pnpm|corepack)_/iu.test(name)
         ))),
         NPM_CONFIG_REGISTRY: registry,
         NPM_CONFIG_STORE_DIR: STORE_ROOT,
