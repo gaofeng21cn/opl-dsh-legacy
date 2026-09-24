@@ -16,7 +16,7 @@ export interface DesktopElectronBuilderConfig {
     { readonly from: string, readonly to: 'dsh', readonly filter: readonly ['**/*'] },
     { readonly from: string, readonly to: 'dsh/node_modules', readonly filter: readonly ['**/*'] },
   ]
-  readonly extraMetadata: { readonly dshDesktopAppId: string }
+  readonly extraMetadata: { readonly dshDesktopAppId: string; readonly dshMandatoryUpdatePolicy: object | undefined }
   readonly asarUnpack: readonly string[]
   readonly extraResources: readonly [
     { readonly from: string, readonly to: 'runtime' },
@@ -26,6 +26,7 @@ export interface DesktopElectronBuilderConfig {
     readonly extendInfo: { readonly NSMicrophoneUsageDescription: string }
     readonly identity: string | undefined
     readonly forceCodeSigning: boolean
+    readonly hardenedRuntime: boolean
     readonly notarize: boolean
     readonly signIgnore: readonly string[]
   }
@@ -64,6 +65,7 @@ export interface DesktopElectronBuilderConfig {
  * @param hostArch - Build-host architecture used when no explicit target is present.
  * @param preparedRuntime - Verified private qualification runtime; ordinary releases use target-owned resources.
  * @param preparedRuntimeVersion - Version that private runtime declares, which qualification rewrites away from the product version.
+ * @param manualUpdates - Downstream distribution owns updates outside the upstream services.
  * @returns electron-builder configuration.
  */
 export function createElectronBuilderConfig(
@@ -72,6 +74,7 @@ export function createElectronBuilderConfig(
   hostArch?: string,
   preparedRuntime?: string,
   preparedRuntimeVersion?: string,
+  manualUpdates?: boolean,
 ): DesktopElectronBuilderConfig
 
 declare const electronBuilderConfig: DesktopElectronBuilderConfig

@@ -50,7 +50,7 @@ Choose it when the people using the harness hold OPL accounts and the deployment
 | `streamIdleTimeoutMs` | DeepSeek adapter default | Maximum provider idle time while one stream read is outstanding. |
 | `retryPolicy` | Normal mode, five retries | Retry policy for model requests. |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#one-person-labdsh-llm-opl-gateway) is the exhaustive source for every accepted field and its JSDoc. The `llm-opl-gateway:` settings section overrides this row without a restart, and the Models page writes that section.
+The generated [configuration catalog](../../../docs/config-catalog.md) is the exhaustive source for every accepted field and its JSDoc. The `llm-opl-gateway:` settings section overrides this row without a restart, and the Models page writes that section.
 
 -----
 

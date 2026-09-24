@@ -50,7 +50,7 @@ kind: "package-reference"
 | `streamIdleTimeoutMs` | DeepSeek 适配器默认值 | 单次流读取未完成时的最大空闲时长。 |
 | `retryPolicy` | 普通模式，五次重试 | 模型请求的重试策略。 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#one-person-labdsh-llm-opl-gateway)是每个可接受字段及其 JSDoc 的完整来源。`llm-opl-gateway:` 设置分节可在不重启的情况下覆盖该行，Models 页面写入的正是该分节。
+生成的[配置目录](../../../docs/config-catalog.zh.md)是每个可接受字段及其 JSDoc 的完整来源。`llm-opl-gateway:` 设置分节可在不重启的情况下覆盖该行，Models 页面写入的正是该分节。
 
 -----
 
