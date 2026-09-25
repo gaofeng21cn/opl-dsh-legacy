@@ -28,6 +28,7 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/windows-desktop.yml'
   pull_request:
+    branches: [main]
     paths:
       - 'apps/desktop/**'
       - 'packages/llm/llm-opl-gateway/**'
