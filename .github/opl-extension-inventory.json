@@ -84,10 +84,10 @@
     "documentation-ci": {
       "title": "文档、决策和 fork CI 政策",
       "disposition": "保留历史并改为插件维护文档",
-      "pathCount": 133
+      "pathCount": 142
     }
   },
-  "pathCount": 679,
+  "pathCount": 688,
   "paths": [
     {
       "path": ".agents/notes/implemented/architecture/2026-06-21-bounded-llm-request-recovery.i18n.yaml",
@@ -500,8 +500,53 @@
       "area": "coordination"
     },
     {
+      "path": ".github/AGENTS.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/FORK-MAINTENANCE.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
       "path": ".github/opl-extension-inventory.json",
       "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/e2e.yml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/node-addon-system-release.yml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/node-addon-system.yml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/opl-ci.yml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/python-release.yml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/release-publish.yml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/release-vendor-publish.yml",
+      "change": "M",
       "area": "documentation-ci"
     },
     {
