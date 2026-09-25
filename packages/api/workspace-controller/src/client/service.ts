@@ -4,7 +4,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WorkspaceInitializeDefaultRequest, WorkspaceView } from '../types.ts'
+import type { WorkspaceView } from '../types.ts'
 import type { ClientWorkspaceModel, WorkspaceSnapshot } from './model.ts'
 
 /** Structured create failure for callers that distinguish Host business errors. */
@@ -47,7 +47,10 @@ export interface WorkspaceSource {
 export interface IWorkspaces {
   /** Host-authoritative Workspace rows, order, archive set, and follow lifecycle. */
   readonly list: WorkspaceSource
-  /** Move project ownership without changing the execution directory. */
+  /** Move project ownership without changing the execution directory.
+   * @param sessionId - Session to move.
+   * @param workspaceId - Target project, or undefined to move outside projects.
+   */
   moveSession(sessionId: SessionId, workspaceId?: WorkspaceId): Promise<void>
   /**
    * Register an existing path as a Workspace.
@@ -57,11 +60,10 @@ export interface IWorkspaces {
   create(input: { path: string }): Promise<WorkspaceView>
   /**
    * Initialize or reuse the default Workspace.
-   * @param request - initial directory name and title.
    * @param signal - caller lifetime.
    * @returns the prepared Workspace, or undefined when first-use initialization is ineligible; rejects on preparation failure.
    */
-  initializeDefault(request: WorkspaceInitializeDefaultRequest, signal?: AbortSignal): Promise<WorkspaceView | undefined>
+  initializeDefault(signal?: AbortSignal): Promise<WorkspaceView | undefined>
   /**
    * Rename a Workspace.
    * @param workspaceId - target Workspace.
@@ -142,8 +144,8 @@ export class WorkspaceController extends Service implements IWorkspaces {
     return result.value.workspace
   }
 
-  async initializeDefault(request: WorkspaceInitializeDefaultRequest, signal?: AbortSignal): Promise<WorkspaceView | undefined> {
-    const result = await this.model.initializeDefault(request, signal)
+  async initializeDefault(signal?: AbortSignal): Promise<WorkspaceView | undefined> {
+    const result = await this.model.initializeDefault(signal)
     if (!result.ok) throw new WorkspaceCreateError(result.error)
     return result.value?.workspace
   }

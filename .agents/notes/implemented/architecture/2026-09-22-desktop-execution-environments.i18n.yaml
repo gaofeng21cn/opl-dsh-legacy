@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-22-desktop-execution-environments.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-22-desktop-execution-environments.md
-2026-09-22-desktop-execution-environments.md: a2a12ad124782ca92702402f2e9097555629b553
-2026-09-22-desktop-execution-environments.zh.md: dfb612acff698bb3b36e8d70c60f5aa01d859afd
+/agent-note-desktop-execution-environments-and-event-driven-session-waiting:
+  en: 325c0bc605bddcbb
+  zh: 64ce98a0e0e5139e
+/agent-note-desktop-execution-environments-and-event-driven-session-waiting/problem:
+  en: 7920b04034880e33
+  zh: ca6319956bdcbcdd
+/agent-note-desktop-execution-environments-and-event-driven-session-waiting/decision:
+  en: 55b27e2370e9def9
+  zh: dea5f1e821ebd8dd
+/agent-note-desktop-execution-environments-and-event-driven-session-waiting/alternatives-considered:
+  en: 7d6377a781736a66
+  zh: 92f1f19c18f4bf21
+/agent-note-desktop-execution-environments-and-event-driven-session-waiting/consequences:
+  en: 5d25a616c3323335
+  zh: 3c0920f70f1ef9ca
+/agent-note-desktop-execution-environments-and-event-driven-session-waiting/verification:
+  en: 870c7af5fb61e2a3
+  zh: acba6b2b3a4a140d

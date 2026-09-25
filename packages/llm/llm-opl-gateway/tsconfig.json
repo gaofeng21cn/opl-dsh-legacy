@@ -46,6 +46,12 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../llm-pi-ai"
+    },
+    {
+      "path": "../llm-deepseek-api-key"
     }
   ]
 }

@@ -52,6 +52,12 @@ export interface GatewayAccountStatus {
   readonly endpoint: string
   /** Whether the credential reference the adapter resolves currently resolves. */
   readonly keyReady: boolean
+  /** Independent Codex-group key for OpenAI fallback. */
+  readonly codexKeyReady?: boolean
+  /** Last channel that returned model output in this process. */
+  readonly activeChannel?: 'deepseek' | 'codex' | undefined
+  /** Provisioning failure of the optional compatibility channel. */
+  readonly channelError?: string | undefined
   /** Models this route serves, so the account page can name what it provides. */
   readonly models: readonly GatewayAccountModel[]
   /**

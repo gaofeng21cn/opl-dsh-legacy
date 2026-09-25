@@ -9,9 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-settings-opl-gateway` contributes the OPL Gateway account page to Settings: users sign in with the account's email and password, then read the balance, today's and all-time usage, and the state of the inference key. The page is what makes the `opl-gateway` model route's credential resolve, so signing in here is that route's setup step. Facts come from the same account surface the adapter reads, and an observation past its freshness window is marked as stale rather than shown as current.
-
-DSH requests its own API key in the Gateway **DeepSeek** group and uses the official DeepSeek adapter. An existing OPL account session can supply the sign-in state; the Codex-group inference key used by OPL App is not the DSH key. The separate **Search** page preserves the cloud or local search selection, test action, and local usage statistics.
+Provides the OPL Gateway account and search settings pages. Users sign in once, inspect usage and channel readiness, and manage search preferences. The Host owns authentication, independent DeepSeek and Codex keys, and automatic model-request failover; the page renders those facts without storing secrets.
 
 ## Table of Contents
 
@@ -26,6 +24,10 @@ DSH requests its own API key in the Gateway **DeepSeek** group and uses the offi
 
 <a id="use-this-package"></a>
 ## Use this package
+
+`dsh-client-ui-settings-opl-gateway` contributes the OPL Gateway account page to Settings: users sign in with the account's email and password, then read the balance, today's and all-time usage, and the state of the inference key. The page is what makes the `opl-gateway` model route's credential resolve, so signing in here is that route's setup step. Facts come from the same account surface the adapter reads, and an observation past its freshness window is marked as stale rather than shown as current.
+
+DSH requests its own API key in the Gateway **DeepSeek** group and uses the official DeepSeek adapter. An existing OPL account session can supply the sign-in state; the Codex-group inference key used by OPL App is not the DSH key. The separate **Search** page preserves the cloud or local search selection, test action, and local usage statistics.
 
 Open Settings and choose **OPL Gateway** to sign in, refresh the account facts, or sign out of this machine.
 
@@ -83,11 +85,19 @@ Read these pages when the package-level contract is not enough.
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as the package is a browser-side Settings page over the gateway account Remote and registers nothing model-facing.
+### Settings and notifications
+
+#### What the model sees
+
+The page adds no prompt or tool to `GenerateOptions`. Account configuration selects the next model route; notifications present existing task state.
+
+#### Token effect
+
+The page and notifications make no additional model calls.
 
 #### KV Cache effect
 
-None; this package neither assembles nor sends a provider request.
+No direct cache changes. A route switch follows the selected adapter’s cache behavior.
 
 ## Known Limitations and Deferred Work
 

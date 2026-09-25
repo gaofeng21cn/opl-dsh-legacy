@@ -108,6 +108,7 @@ async function controllerHarness(): Promise<{
   // a provider it can route to and a selected model, exactly as configured.
   ctx.provide('llm', {
     listProviders: () => [{ id: 'fixture', name: 'Fixture' }],
+    listModels: async () => [{ provider: 'fixture', id: 'fixture-model', name: 'Fixture' }],
     resolveModelInfo: () => Promise.resolve({ provider: 'fixture', id: 'fixture-model', name: 'Fixture' }),
   } as never)
   ctx.provide('attachments', {

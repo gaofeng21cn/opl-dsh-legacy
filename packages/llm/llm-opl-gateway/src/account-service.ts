@@ -14,6 +14,8 @@
 import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { CODEX_API_KEY_REF } from './config.ts'
 import type { CredentialProvider, CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { GatewayAccountFacts, GatewayAccountModel, GatewayAccountStatus, GatewaySignInResult } from './types.ts'
@@ -72,20 +74,21 @@ function describe(error: unknown): { code: string; message: string } {
  * Named after the machine so an operator reading the gateway's key list can
  * tell which client holds which key — the same convention the OPL application
  * uses for its own managed key.
+ * @param group - Gateway group whose independent key is named.
  * @returns the canonical key name.
  */
-export function gatewayKeyName(): string {
-  return `OPL DSH · ${hostname()} · DeepSeek`
+export function gatewayKeyName(group: 'DeepSeek' | 'Codex' = 'DeepSeek'): string {
+  return `OPL DSH · ${hostname()} · ${group}`
 }
 
 /** Resolve the explicit DeepSeek group before issuing an inference key. */
-function preferredGroup(groups: readonly { id: string; label: string }[]): string {
-  const matches = groups.filter(group => group.label.trim().toLowerCase() === 'deepseek')
+function preferredGroup(groups: readonly { id: string; label: string }[], name: 'DeepSeek' | 'Codex'): string {
+  const matches = groups.filter(group => group.label.trim().toLowerCase() === name.toLowerCase())
   if (matches.length !== 1) {
-    throw new GatewayControlError('group_selection_required', 'This account needs one available DeepSeek key group')
+    throw new GatewayControlError('group_selection_required', `This account needs one available ${name} key group`)
   }
   const match = matches[0]
-  if (match === undefined) throw new GatewayControlError('group_selection_required', 'This account needs one available DeepSeek key group')
+  if (match === undefined) throw new GatewayControlError('group_selection_required', `This account needs one available ${name} key group`)
   return match.id
 }
 
@@ -96,6 +99,9 @@ export class OplGatewayAccountService extends TypertRemoteService {
   private source: 'session' | 'opl' | undefined
   private failure: { code: string; message: string } | undefined
   private key: GatewayManagedKey | undefined
+  private codexKey: GatewayManagedKey | undefined
+  private channelFailure: string | undefined
+  private pending: Promise<unknown> = Promise.resolve()
   private defaultControl: GatewayControlClient | undefined
 
   constructor(
@@ -111,11 +117,19 @@ export class OplGatewayAccountService extends TypertRemoteService {
       readonly stateDirectory?: () => string | readonly string[]
       /** Control transport override, for tests. */
       readonly control?: GatewayControlClient
+      /** Last successful channel, for the account page. */
+      readonly activeChannel?: () => 'deepseek' | 'codex' | undefined
     },
   ) {
     // The Typert analyzer reads the service key from this call site, so it must
     // be the literal that also names the Remote namespace.
     super(ctx, 'oplGatewayAccount')
+  }
+
+  private serialize<T>(action: () => Promise<T>): Promise<T> {
+    const operation = this.pending.then(action)
+    this.pending = operation.catch(() => undefined)
+    return operation
   }
 
   private control(): GatewayControlClient {
@@ -227,10 +241,14 @@ export class OplGatewayAccountService extends TypertRemoteService {
    */
   @Remote
   async status(): Promise<GatewayAccountStatus> {
+    const codexCredential = await this.credentials()?.resolve(credentialRef(CODEX_API_KEY_REF))
     const base = {
       endpoint: this.options.endpoint(),
       keyReady: await this.keyReady(),
       models: this.options.models(),
+      codexKeyReady: codexCredential !== undefined && codexCredential.value.length > 0,
+      activeChannel: this.options.activeChannel?.(),
+      channelError: this.channelFailure,
     }
     if (this.facts !== undefined) {
       return { ...base, phase: 'connected', source: this.source ?? 'session', account: this.facts }
@@ -295,6 +313,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
    */
   @Remote
   async signIn(email: string, password: string): Promise<GatewaySignInResult> {
+    return this.serialize(() => this.signInOnce(email, password))
+  }
+
+  private async signInOnce(email: string, password: string): Promise<GatewaySignInResult> {
     if (email.trim() === '' || password === '') {
       throw new RemoteError('gateway/bad-request', 'An email address and password are required', {})
     }
@@ -312,13 +334,14 @@ export class OplGatewayAccountService extends TypertRemoteService {
         this.control().usage(accessToken).catch(() => undefined),
         this.control().groups(accessToken),
       ])
-      const { key, created } = await this.ensureKey(accessToken, groups)
+      const { key, created } = await this.ensureKey(accessToken, groups, 'DeepSeek')
       await credentials.set(this.options.credentialRef(), key.key)
       await writeSession(credentials, session.refreshToken)
       // Recording the adoption lets a later sign-out know this key is ours to
       // remove, and leaves a key the operator typed on the Models page alone.
       writeAdoptedFingerprint(this.home(), keyFingerprint(key.key))
       this.key = key
+      await this.ensureCodexKey(accessToken, groups, credentials, true)
       this.facts = this.factsFrom(profile, usage, key.name)
       this.source = 'session'
       writeFacts(this.home(), this.facts, new Date().toISOString())
@@ -344,13 +367,34 @@ export class OplGatewayAccountService extends TypertRemoteService {
   private async ensureKey(
     accessToken: string,
     groups: readonly { id: string; label: string }[],
+    group: 'DeepSeek' | 'Codex',
   ): Promise<{ key: GatewayManagedKey; created: boolean }> {
-    const name = gatewayKeyName()
-    const groupId = preferredGroup(groups)
+    const name = gatewayKeyName(group)
+    const groupId = preferredGroup(groups, group)
     const existing = await this.control().keys(accessToken, name)
     const match = existing.find(entry => entry.name === name && entry.groupId === groupId && entry.status === 'active')
     if (match !== undefined) return { key: match, created: false }
     return { key: await this.control().createKey(accessToken, name, groupId), created: true }
+  }
+
+  private async ensureCodexKey(
+    accessToken: string, groups: readonly { id: string; label: string }[],
+    credentials: CredentialProvider, replacingAccount = false,
+  ): Promise<void> {
+    try {
+      const { key } = await this.ensureKey(accessToken, groups, 'Codex')
+      await credentials.set(credentialRef(CODEX_API_KEY_REF), key.key)
+      writeAdoptedFingerprint(this.home(), keyFingerprint(key.key), 'codex')
+      this.codexKey = key
+      this.channelFailure = undefined
+    } catch (error) {
+      const ref = credentialRef(CODEX_API_KEY_REF)
+      const stored = await credentials.resolve(ref)
+      if ((replacingAccount || error instanceof GatewayControlError && error.code === 'group_selection_required')
+        && stored !== undefined && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), 'codex')) await credentials.unset(ref)
+      this.codexKey = undefined
+      this.channelFailure = 'Codex compatibility channel is unavailable; refresh the account to retry provisioning.'
+    }
   }
 
   /**
@@ -359,6 +403,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
    */
   @Remote
   async refresh(): Promise<GatewayAccountStatus> {
+    return this.serialize(() => this.refreshOnce())
+  }
+
+  private async refreshOnce(): Promise<GatewayAccountStatus> {
     if (this.session === undefined) {
       const credentials = this.credentials()
       if (credentials === undefined) return this.status()
@@ -383,10 +431,19 @@ export class OplGatewayAccountService extends TypertRemoteService {
     }
     try {
       const accessToken = this.session.accessToken
-      const [profile, usage] = await Promise.all([
+      const [profile, usage, groups] = await Promise.all([
         this.control().profile(accessToken),
         this.control().usage(accessToken).catch(() => undefined),
+        this.control().groups(accessToken),
       ])
+      const credentials = this.credentials()
+      if (credentials !== undefined) {
+        const { key } = await this.ensureKey(accessToken, groups, 'DeepSeek')
+        await credentials.set(this.options.credentialRef(), key.key)
+        writeAdoptedFingerprint(this.home(), keyFingerprint(key.key))
+        this.key = key
+        await this.ensureCodexKey(accessToken, groups, credentials)
+      }
       this.facts = this.factsFrom(profile, usage, this.facts?.keyName ?? this.key?.name ?? null)
       this.source = 'session'
       this.failure = undefined
@@ -410,6 +467,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
    */
   @Remote
   async signOut(): Promise<GatewayAccountStatus> {
+    return this.serialize(() => this.signOutOnce())
+  }
+
+  private async signOutOnce(): Promise<GatewayAccountStatus> {
     const credentials = this.credentials()
     const ref = this.options.credentialRef()
     if (credentials !== undefined) {
@@ -418,6 +479,16 @@ export class OplGatewayAccountService extends TypertRemoteService {
       if (fingerprint !== undefined && fingerprint === readAdoptedFingerprint(this.home())) {
         await credentials.unset(ref).catch(() => undefined)
       }
+    }
+    if (credentials !== undefined) {
+      const ref = credentialRef(CODEX_API_KEY_REF)
+      const stored = await credentials.resolve(ref)
+      if (stored !== undefined && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), 'codex')) {
+        await credentials.unset(ref)
+      }
+    }
+    if (this.session !== undefined && this.codexKey !== undefined) {
+      await this.control().setKeyStatus(this.session.accessToken, this.codexKey, 'disabled').catch(() => undefined)
     }
     if (this.session !== undefined && this.key !== undefined) {
       // Best effort: the local session ends either way, and an unreachable
@@ -430,6 +501,8 @@ export class OplGatewayAccountService extends TypertRemoteService {
     this.facts = undefined
     this.source = undefined
     this.key = undefined
+    this.codexKey = undefined
+    this.channelFailure = undefined
     this.failure = undefined
     return this.status()
   }

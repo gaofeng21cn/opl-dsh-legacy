@@ -1,6 +1,6 @@
 import { setImmediate } from 'node:timers/promises'
 import { Context } from '@deepseek-ai/cordis'
-import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   ISessions, SessionListState, SessionReference, SessionSummary,
@@ -267,7 +267,6 @@ class FakeDirectoryPicker {
 }
 
 interface BenchOptions {
-  readonly language?: string
   readonly configureWorkspaces?: (workspaces: FakeWorkspaces) => void
   readonly workspaces?: WorkspaceSnapshot
   readonly sessions?: SessionListState
@@ -277,15 +276,11 @@ interface BenchOptions {
 function bench(options: BenchOptions = {}) {
   const ctx = new Context()
   contexts.push(ctx)
-  const locale = new LocaleRuntime(ctx)
-  if (options.language === 'fr') locale.addLanguage({ id: 'fr', label: 'Français', fallback: 'en' })
-  locale.setLocale(options.language ?? 'en')
-  ctx.provide('locale', locale)
   const layout = new LayoutController({
     selectPanel: vi.fn(), retainMainPanels: vi.fn(),
     setSidebar: vi.fn(), toggleSidebar: vi.fn(), setViewportWidth: vi.fn(),
     setRightbar: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn(),
-  }, () => true)
+  }, () => true, createSnapshotStore({ activePanelId: null }))
   const selectPanel = vi.spyOn(layout, 'selectPanel')
   ctx.provide('layout', layout)
   ctx.effect(() => () => { layout.dispose() })
@@ -640,6 +635,17 @@ describe('UiWorkspaceService', () => {
       expect(b.sessions.retain).toHaveBeenLastCalledWith(sid('created-none'), { source: 'mainView' })
     })
     expect(b.sessions.create).toHaveBeenLastCalledWith({ standalone: true })
+  })
+
+  it('creates an independent Session when no Workspace is available', async () => {
+    const b = bench()
+
+    b.uiWorkspace.startSession()
+
+    await vi.waitFor(() => {
+      expect(b.sessions.retain).toHaveBeenLastCalledWith(sid('created-none'), { source: 'mainView' })
+    })
+    expect(b.sessions.create).toHaveBeenCalledWith({ standalone: true })
   })
 
   it('releases a prepared Workspace target when synchronous preparation supersedes it', async () => {

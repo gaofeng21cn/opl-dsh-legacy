@@ -9,9 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use the **Built-in plugins** settings section to inspect the plugins this deployment ships. The section is a shell: it owns the navigation entry and the tab row, and every tab in it is registered by another plugin — the read-only inventory ships one. Configuring a built-in plugin happens on the sidebar's Plugins page, where each official plugin's own companion package registers its page.
-
-This fork also contributes **Output language** to Plugins while the Host serves `system-prompt`; its three choices update `outputLanguage` through the shared configuration form and affect the next request. In the desktop app, **Desktop** settings call the Electron preload bridge to persist notifications, window-close behavior, and the Windows Native or WSL2 execution environment. Environment changes require a restart.
+Provides plugin settings and optional desktop controls through the shared Settings surface. Each control reads and updates its owning service; the page does not maintain a second configuration store.
 
 ## Table of Contents
 
@@ -26,6 +24,10 @@ This fork also contributes **Output language** to Plugins while the Host serves 
 
 <a id="use-this-package"></a>
 ## Use this package
+
+Use the **Built-in plugins** settings section to inspect the plugins this deployment ships. The section is a shell: it owns the navigation entry and the tab row, and every tab in it is registered by another plugin — the read-only inventory ships one. Configuring a built-in plugin happens on the sidebar's Plugins page, where each official plugin's own companion package registers its page.
+
+This fork also contributes **Output language** to Plugins while the Host serves `system-prompt`; its three choices update `outputLanguage` through the shared configuration form and affect the next request. In the desktop app, **Desktop** settings call the Electron preload bridge to persist notifications, window-close behavior, and the Windows Native or WSL2 execution environment. Environment changes require a restart.
 
 Open **Built-in plugins** in Settings. [ui-settings-plugin-inventory](../ui-settings-plugin-inventory/README.md) contributes the inventory as the section's one tab, shown as the page itself; a second registered tab turns the row into tabs. A deployment whose composition contributes no tab shows the section's empty line.
 

@@ -136,7 +136,7 @@ interface SessionEventMap {
   'request/header': {
     header: EpochHeader
     reason: RequestHeaderReason
-    /** A changed header also begins a distinct model-message series. */
+    /** This request begins a distinct model-message series, independently of the header reason. */
     startsSeries?: true
   }
   /**
@@ -180,7 +180,7 @@ interface SessionEventMap {
 
 ### 请求头事件：`request/header`
 
-请求信封（即 `EpochHeader`：调用配置 + 适配器所提供默认值的标记 + 已组装的工具 schema）会作为会话状态写入日志，因此每个对话请求都是日志的纯函数（见可重建性 Agent Note）。渲染后的系统提示词不属于请求头：它是派生历史，即 surface 第 0 号节点上的 `system/message` 事件以及任何后续的历史内系统节点（[决策](../../.agents/notes/implemented/architecture/2026-09-02-system-prompt-as-surface-node.zh.md)），因此提示词变更替换或追加一个系统节点，而请求头保持不变。带有 reason `'initial'` 或 `'resume'` 的完整 `request/header` 快照记录每个 agent loop 实例的边界；请求变化时会追加 reason 为 `'change'` 的快照；未变的信封显式开启消息序列或跟随 surface 替换时，会追加 reason 为 `'series'` 的快照。如果发生变化的快照所属请求同时开启序列，它会携带 `startsSeries: true`。普通的仅追加后续 Turn，以及同一模型消息序列内的后续 Step 与重试沿用最新快照。`foldRequestHeader(events)` 通过选择最新快照重建请求头。该事件不是 `SurfaceEventType`，不产生 LLM 消息。
+请求信封（即 `EpochHeader`：调用配置 + 适配器所提供默认值的标记 + 已组装的工具 schema）会作为会话状态写入日志，因此每个对话请求都是日志的纯函数（见可重建性 Agent Note）。渲染后的系统提示词不属于请求头：它是派生历史，即 surface 第 0 号节点上的 `system/message` 事件以及任何后续的历史内系统节点（[决策](../../.agents/notes/implemented/architecture/2026-09-02-system-prompt-as-surface-node.zh.md)），因此提示词变更替换或追加一个系统节点，而请求头保持不变。带有 reason `'initial'` 或 `'resume'` 的完整 `request/header` 快照记录每个 agent loop 实例的边界；请求变化时会追加 reason 为 `'change'` 的快照；未变的信封显式开启消息序列或跟随 surface 替换时，会追加 reason 为 `'series'` 的快照。如果 `'initial'`、`'resume'` 或 `'change'` 快照所属请求同时开启序列，它会携带 `startsSeries: true`；reason `'series'` 已记录这一事实。普通的仅追加后续 Turn，以及同一模型消息序列内的后续 Step 与重试沿用最新快照。`foldRequestHeader(events)` 通过选择最新快照重建请求头。该事件不是 `SurfaceEventType`，不产生 LLM 消息。
 
 ```ts type-equiv
 /**
@@ -631,6 +631,12 @@ declare class Session {
    */
   requestContext(): RequestContext | undefined;
   /**
+   * Fold unseen committed events into capability-independent tool history.
+   * Initial access reconstructs inherited history; later reads consume only new events.
+   * @returns an immutable snapshot for LLM request projection, including historical addition definitions.
+   */
+  toolHistory(): ToolHistory;
+  /**
    * Derive the LLM message history by walking the ordered sequences of
    * message-producing events maintained by `surfaceOp` markers. The
    * surface is the single source of derived history: every message-producing
@@ -772,6 +778,92 @@ interface TurnEndReasonMap {
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxfilejournal--filejournal"></a>
+
+### `ctx.fileJournal` — `FileJournal`
+
+The `ctx.fileJournal` service: per-turn workspace baselines, per-execution change records, and the restore a rewind runs.
+
+One instance serves every session. Live state is keyed by session identity and rebuilt from the log after a restart, so replay produces the same records without relying on anything held only in memory.
+
+```ts cordis-catalog
+/**
+ * Capture the addressed turn's workspace baseline when it has none.
+ *
+ * Call this before dispatching a possibly-writing tool, so the baseline holds
+ * the content those writes are about to replace.
+ * @param session - the session whose workspace is journaled.
+ * @param turn - the turn the baseline belongs to.
+ * @param promptSeq - the user prompt that opened `turn`.
+ * @returns resolution after the baseline exists, or immediately when one does.
+ */
+async ensureCheckpoint(session: Session, turn: number, promptSeq: SessionSeq): Promise<void>
+
+/**
+ * Diff the session workspace against the journal's known state and append one
+ * `file/change` event for what moved.
+ *
+ * A no-op unless the turn already has a baseline: an execution the journal did
+ * not plan for must not claim coverage it never captured.
+ * @param session - the session whose workspace is journaled.
+ * @param turn - the turn the execution belongs to.
+ * @param step - the step the execution belongs to.
+ * @returns resolution after any change event is appended.
+ */
+async recordToolExecution(session: Session, turn: number, step: number): Promise<void>
+
+/**
+ * Record a filesystem write that a rewind cannot undo.
+ *
+ * Two signals compose here. The intent waterfalls fire before every
+ * `ctx.fs` mutation, which is the only point where an out-of-workspace target
+ * is knowable; the `fs/observed` emission confirms the mutation landed. A path
+ * inside the workspace is left to the differential rescan, which holds its
+ * prior content. A confirmed path outside the workspace is unreachable for
+ * every later scan, so it refuses the turn: a rewind must not report success
+ * while a write it cannot see remains in place.
+ * @param session - the session that owns the write.
+ * @param target - the resolved filesystem target that was written.
+ * @param phase - `'intent'` before the mutation, `'observed'` after it landed.
+ */
+noteFilesystemWrite(session: Session, target: FsTarget, phase: 'intent' | 'observed'): void
+
+/**
+ * Plan and perform the restore of one ended turn's recorded file changes.
+ *
+ * The complete plan is verified before anything is written: every recorded
+ * path must currently hold the state the journal recorded AFTER the turn's
+ * last change to it. A path that moved since — an edit by the user or by a
+ * later turn — refuses the whole rewind, so nothing is half-restored.
+ * @param session - the session whose turn is being rewound.
+ * @param turn - the ended turn to restore.
+ * @returns the restore receipt, or the reason the turn cannot be restored.
+ */
+async restoreTurn(session: Session, turn: number): Promise<RestoreOutcome>
+
+/**
+ * Mark one turn unrestorable after a record attempt failed.
+ *
+ * The in-memory diff is the only place the missing record is visible; without
+ * this mark a rewind would restore the changes it did record and leave the
+ * failed execution's writes behind.
+ * @param session - the session whose turn failed to record.
+ * @param turn - the turn that failed.
+ */
+noteRecordingFailure(session: Session, turn: number): void
+
+/**
+ * Drop a session's in-memory turn state. The recorded events stay in the log,
+ * so replaying the session reconstructs the same journal state.
+ * @param session - the session whose state is dropped.
+ */
+forget(session: Session): void
+```
+
+Types: [FsTarget](filesystem.zh.md) · [RestoreOutcome](../../packages/session/session-rewind-files/README.zh.md)
+
+Source: [`packages/session/session-rewind-files/src/journal.ts`](../../packages/session/session-rewind-files/src/journal.ts)
+
 <a id="ctxsessioncontroller--sessioncontroller"></a>
 
 ### `ctx.sessionController` — `SessionController`
@@ -812,17 +904,38 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspectio
 
 /**
  * Create or idempotently adopt one ordinary Session.
- * @param request - requested identity, location, and Agent preset.
- * @returns the Session identity and resolved preset when configured.
+ * @param request - requested identity, location, Agent preset, and permission preset.
+ * @returns the Session identity, resolved preset when configured, and effective permission.
  */
 @Remote('create') create(request: SessionCreateRequest): Promise<SessionCreateValue>
 
 /**
- * Select one Session-local model after explicitly resuming the Session.
+ * Select one Session-local model after explicitly resuming the Session; save the default in the background.
  * @param request - Session identity and requested model selection.
- * @returns the normalized selection installed for the Session.
+ * @returns the normalized selection installed for the Session, without waiting for default persistence.
  */
 @Remote('selectModel') selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue>
+
+/**
+ * Read one attached Session's effective permission and the offered presets.
+ * @param request - Session whose permission is read.
+ * @returns the effective permission, the catalog, and the driver's activity.
+ */
+@Remote('permissions') permissions(request: SessionPermissionsRequest): SessionPermissionsValue
+
+/**
+ * Install one permission preset on an attached Session, refusing a widening
+ * switch while the Session is running.
+ * @param request - Session identity and the preset to install.
+ * @returns the permission now effective and when it reaches execution.
+ */
+@Remote('selectPermissions') selectPermissions(request: SessionSelectPermissionsRequest): SessionSelectPermissionsValue
+
+/**
+ * Select the first available account model after login when no provider API key is configured.
+ * @returns after saving the first available model or retaining the existing default.
+ */
+@Remote async initializeDefaultModel(): Promise<void>
 
 /**
  * Describe every currently routable model for Host-generation selectors.
@@ -883,6 +996,22 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
  * @returns acknowledgement that the Agent accepted the prompt.
  */
 @Remote('prompt') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>
+
+/**
+ * Rewrite the last editable user message and resend it as a new turn.
+ * @param request - Session identity, addressed user message, edited content, and source metadata.
+ * @param signal - caller cancellation before edit admission begins.
+ * @returns acknowledgement with the replacement message's durable event seq.
+ */
+@Remote('editPrompt') editPrompt(request: SessionEditPromptRequest, signal: AbortSignal): Promise<SessionEditPromptValue>
+
+/**
+ * Roll the conversation back to the state before its last direct human prompt.
+ * @param request - Session identity and the addressed prompt's event seq.
+ * @param signal - caller cancellation before the rewind appends anything.
+ * @returns the committed replacement, the shadowed surface range, and the discarded queue identities.
+ */
+@Remote('rewind') rewind(request: SessionRewindRequest, signal: AbortSignal): Promise<SessionRewindValue>
 
 /**
  * Read one image proven reachable from the addressed Session log.
@@ -1099,6 +1228,167 @@ fork(source: SessionForkSource, boundary?: SessionSeq, childSessionId?: SessionI
 Types: [CreateSessionOptions](persistence.zh.md) · [PrepareSessionOptions](persistence.zh.md) · [SessionId](core.zh.md)
 
 Source: [`packages/core/session/src/index.ts`](../../packages/core/session/src/index.ts)
+
+<a id="ctxtaskfeedback--taskfeedbackservice"></a>
+
+### `ctx.taskFeedback` — `TaskFeedbackService`
+
+One dispatched task's follow-up notification outbox.
+
+Mount it where the dispatched Sessions run. A deployment whose transport cannot reach a target leaves the default adapter in place: deliveries then stay `enqueued` and `wake()` reports the missing capability instead of a success.
+
+```ts cordis-catalog
+/**
+ * Install the transport that hands notifications to target Sessions.
+ * @param adapter - the transport, replacing the refusing default.
+ */
+setWakeAdapter(adapter: WakeAdapter): void
+
+/**
+ * Wait for every durable write the watcher has started.
+ *
+ * The watcher cannot be awaited from a Session event, so this is the point a
+ * caller (or the flush below) observes a quiescent registry.
+ * @returns nothing once no write is outstanding.
+ */
+async settled(): Promise<void>
+
+/**
+ * Register one dispatched task, durably and idempotently.
+ *
+ * Re-registering the same `taskId` returns the stored task unchanged: the id
+ * is the caller's idempotency key, so a retried dispatch never doubles a task
+ * or its notifications.
+ * @param request - identity, bound Session and turn, target, acceptance, and cursor.
+ * @returns the stored task.
+ * @throws RemoteError when the request cannot describe a watchable task.
+ */
+@Remote('register') async register(request: TaskRegistration): Promise<TaskRegistrationValue>
+
+/**
+ * Read one task.
+ * @param request - the caller's task identity.
+ * @returns the stored task.
+ * @throws RemoteError when no such task is registered.
+ */
+@Remote('task') task(request: TaskLookupRequest): TaskRecord
+
+/**
+ * List every registered task in registration order.
+ * @returns the stored tasks.
+ */
+@Remote('tasks') tasks(): readonly TaskRecord[]
+
+/**
+ * List the notification outbox in insertion order.
+ * @returns every stored delivery.
+ */
+@Remote('outbox') deliveries(): readonly DeliveryRecord[]
+
+/**
+ * Probe whether the configured wake executable can start.
+ *
+ * The status is the adapter's bounded probe result, not a configured
+ * constant: an adapter that cannot start its executable reports
+ * `not-connected` with what the probe observed. `executable-started` means
+ * exactly that and no more: the probe cannot prove that a target thread exists
+ * or that a queued message reaches it.
+ * @returns the adapter identity, the probed status, and the observed detail.
+ */
+@Remote('wake') async wake(): Promise<WakeStatus>
+
+/**
+ * Acknowledge one delivery at the stage the receiving Session reports.
+ *
+ * Acknowledging an earlier stage again, or acknowledging a delivery twice,
+ * changes nothing: the stage is monotonic. This is delivery progress only;
+ * the receiver's separate consumption ledger is what makes a repeated review
+ * avoidable, so a receiver should claim through {@link receive} first.
+ * @param request - delivery identity and the reported stage.
+ * @returns the delivery as it now stands.
+ * @throws RemoteError when the delivery is unknown or belongs to another task.
+ */
+@Remote('ack') async ack(request: TaskAckRequest): Promise<TaskAckValue>
+
+/**
+ * Claim one delivery for review, with an explicit owner and lease.
+ *
+ * This is the receiver's entry point. It durably records the claim and its
+ * owner before the review starts and answers what to do with a message that
+ * arrives again. A first claim asks for a review; a consumer that owns an
+ * unfinished claim is answered `resume`; a different consumer facing a live
+ * claim is answered `busy`, so it does not start a second review; a claim
+ * whose lease expired is reclaimed by the new consumer, which is how a
+ * crashed receiver's work is taken over. A finished claim is answered `skip`.
+ * Duplicates are therefore decided from the durable ledger and its ownership,
+ * never from whether a second message arrived.
+ * @param request - the delivery and the receiving consumer's stable identity.
+ * @returns the next action and the durable receipt behind it.
+ * @throws RemoteError when the delivery is unknown, retired, or another task's.
+ */
+@Remote('receive') async receive(request: TaskReceiveRequest): Promise<TaskReceiveValue>
+
+/**
+ * List the receiver's consumption ledger.
+ *
+ * A receiver that restarts reads this to find claims it never finished:
+ * every entry whose status is not `consumed` is a review still owed, and
+ * re-claiming it answers `resume` rather than starting a second one.
+ * @returns every receipt, in insertion order.
+ */
+@Remote('receipts') receipts(): readonly TaskReceipt[]
+
+/**
+ * Mark one claimed delivery consumed after its review finished.
+ *
+ * This is the last step of the receiver's flow and the only state that makes
+ * a repeated message answer `skip`. The claim generation is checked, so a
+ * consumer whose claim was reclaimed by a newer owner cannot finish a review
+ * that owner now holds.
+ * @param request - the delivery whose review finished and the claim it was given.
+ * @returns the receipt as it now stands.
+ * @throws RemoteError when no claim exists, or the caller no longer owns it.
+ */
+@Remote('consume') async consume(request: TaskConsumeRequest): Promise<TaskConsumeValue>
+
+/**
+ * Submit at most one bounded automatic resume for an eligible failure.
+ *
+ * One call performs the whole deterministic flow: claim the failure delivery,
+ * confirm the failed turn is still the target, and either submit one durable
+ * user instruction in the original Session or report why it must not. A
+ * duplicate notification or a crash replay presents the same attempt and
+ * request id, so at most one instruction is submitted per attempt.
+ * @param request - the failure delivery and the receiving consumer's identity.
+ * @returns the decision, why it was reached, and the new attempt when one was submitted.
+ * @throws RemoteError when the delivery is unknown, or the resume surface is not mounted.
+ */
+@Remote('resumeFailed') async resumeFailed(request: TaskResumeRequest): Promise<TaskResumeValue>
+
+/**
+ * Settle the watcher's writes, then attempt every due delivery once.
+ *
+ * A refused attempt is retried with a capped exponential delay until the
+ * attempt budget is spent; an exhausted delivery stays pending and
+ * unacknowledged, so nothing is dropped silently.
+ * @returns how many were attempted, delivered, still pending, and exhausted.
+ */
+@Remote('flush') async flush(): Promise<TaskFlushValue>
+
+/**
+ * Wait until no delivery pass is in flight.
+ *
+ * The scheduled pump runs from a timer, so a caller that must observe a
+ * quiescent outbox — a test, or an orderly shutdown step — needs a point to
+ * await rather than a delay to guess.
+ * @returns nothing once the last started pass has settled.
+ */
+async idle(): Promise<void>
+```
+
+Types: [DeliveryRecord](../../packages/api/task-feedback/README.zh.md) · [TaskAckRequest](../../packages/api/task-feedback/README.zh.md) · [TaskAckValue](../../packages/api/task-feedback/README.zh.md) · [TaskConsumeRequest](../../packages/api/task-feedback/README.zh.md) · [TaskConsumeValue](../../packages/api/task-feedback/README.zh.md) · [TaskFlushValue](../../packages/api/task-feedback/README.zh.md) · [TaskLookupRequest](../../packages/api/task-feedback/README.zh.md) · [TaskReceipt](../../packages/api/task-feedback/README.zh.md) · [TaskReceiveRequest](../../packages/api/task-feedback/README.zh.md) · [TaskReceiveValue](../../packages/api/task-feedback/README.zh.md) · [TaskRecord](../../packages/api/task-feedback/README.zh.md) · [TaskRegistration](../../packages/api/task-feedback/README.zh.md) · [TaskRegistrationValue](../../packages/api/task-feedback/README.zh.md) · [TaskResumeRequest](../../packages/api/task-feedback/README.zh.md) · [TaskResumeValue](../../packages/api/task-feedback/README.zh.md) · [WakeAdapter](../../packages/api/task-feedback/README.zh.md) · [WakeStatus](../../packages/api/task-feedback/README.zh.md)
+
+Source: [`packages/api/task-feedback/src/index.ts`](../../packages/api/task-feedback/src/index.ts)
 
 <a id="api-session-events"></a>
 

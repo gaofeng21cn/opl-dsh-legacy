@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-23-desktop-notifications-tray.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-23-desktop-notifications-tray.md
-2026-09-23-desktop-notifications-tray.md: 8483fbb70aeb483650180def0718823e9d39344b
-2026-09-23-desktop-notifications-tray.zh.md: 4272f5a95dbdc5418c03f4e2c623b2b020b07659
+/agent-note-desktop-task-notifications-and-window-close-behavior:
+  en: 38878fcc3b40fc34
+  zh: 3c60b8124d830b82
+/agent-note-desktop-task-notifications-and-window-close-behavior/problem:
+  en: 24c813b6b164be57
+  zh: b3d8486376eebb29
+/agent-note-desktop-task-notifications-and-window-close-behavior/decision:
+  en: d7745f165d72d394
+  zh: 75de85bed7d1d4a7
+/agent-note-desktop-task-notifications-and-window-close-behavior/alternatives-considered:
+  en: 53eec10590e09437
+  zh: a8996b1d846555d4
+/agent-note-desktop-task-notifications-and-window-close-behavior/consequences:
+  en: 74ba789f12e13d53
+  zh: 06b3f6fa1782d4e2
+/agent-note-desktop-task-notifications-and-window-close-behavior/verification:
+  en: bc92f58d26d3190e
+  zh: b2ba9e1e8e2d74b2

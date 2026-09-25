@@ -9,9 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Add Auto review to the current-session permission pickers in a Web or desktop profile. Before each native or PTC inner tool call, deterministic rules decide the obvious ends of the fixed policy, the configured fast reviewer decides the rest, and a call no reviewer decided goes to the deployment's approval answerers. Default Web keeps its three permission modes until this layer is explicitly installed. Auto review is experimental: it can allow unsafe actions, deny useful work, and spend additional tokens.
-
-Full access is not a security review. The Auto preset bundles the same sandbox mode and approval policy as Full access, so an allowed call runs unbounded and unconfirmed; the review decision is the only control Auto adds to that bundle.
+Adds automatic tool-call review to the Auto permission preset. Deterministic rules, the configured reviewer, and available user approval handlers decide whether each guarded call may execute. Unusable review results cannot silently grant permission.
 
 ## Table of Contents
 
@@ -28,6 +26,10 @@ Full access is not a security review. The Auto preset bundles the same sandbox m
 
 <a id="use-this-package"></a>
 ## Use this package
+
+Add Auto review to the current-session permission pickers in a Web or desktop profile. Before each native or PTC inner tool call, deterministic rules decide the obvious ends of the fixed policy, the configured fast reviewer decides the rest, and a call no reviewer decided goes to the deployment's approval answerers. Default Web keeps its three permission modes until this layer is explicitly installed. Auto review is experimental: it can allow unsafe actions, deny useful work, and spend additional tokens.
+
+Full access is not a security review. The Auto preset bundles the same sandbox mode and approval policy as Full access, so an allowed call runs unbounded and unconfirmed; the review decision is the only control Auto adds to that bundle.
 
 ### Install into a profile
 
@@ -144,7 +146,7 @@ The denial message is `Auto review rejected tool "<name>"; its body was not exec
 
 #### Token effect
 
-A denied call contributes only the ordinary fixed error result to the main conversation.
+A denied or failed call contributes only its ordinary error result to the main conversation.
 
 #### KV Cache effect
 

@@ -1,6 +1,67 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/session/session-rewind-files/README.md
-README.md: c9ee9227f13d7c4af74e6a623ba47edc46408cdb
-README.zh.md: dcddabcf0618fccf50492f4f1ffac71b9d55f856
+/:
+  en: 6d738bbe8a414b86
+  zh: 6bfdea176be5b367
+/deepseek-ai-dsh-session-rewind-files:
+  en: 9bcd6a67aaad800d
+  zh: 7a0e67755664724f
+/deepseek-ai-dsh-session-rewind-files/summary:
+  en: a1e25ef56c355818
+  zh: b14da5161f604a18
+/deepseek-ai-dsh-session-rewind-files/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 405b30feaf48c087
+/deepseek-ai-dsh-session-rewind-files/use-this-package:
+  en: 6abb0c512a12a7b8
+  zh: bfa32061d999e34c
+/deepseek-ai-dsh-session-rewind-files/use-this-package/what-it-records:
+  en: 694d79014eb79b1f
+  zh: e6110816def1c1a9
+/deepseek-ai-dsh-session-rewind-files/use-this-package/configuration:
+  en: df6a015634bc6552
+  zh: 198c24b97b988edf
+/deepseek-ai-dsh-session-rewind-files/use-this-package/failures:
+  en: f383c1f5e31e8142
+  zh: 473436e23beb24f7
+/deepseek-ai-dsh-session-rewind-files/understand-the-implementation:
+  en: 42b15ac6321706aa
+  zh: c8011788e17a2cd6
+/deepseek-ai-dsh-session-rewind-files/understand-the-implementation/why-the-baseline-precedes-the-write:
+  en: b89215fb974e6378
+  zh: fe82d0bd6a20f31a
+/deepseek-ai-dsh-session-rewind-files/understand-the-implementation/source-map:
+  en: 608e8e4f6b6ba9e7
+  zh: eb296e6a7c5a2457
+/deepseek-ai-dsh-session-rewind-files/understand-the-implementation/path-discipline-and-content-addressing:
+  en: af97620876c37218
+  zh: dd4d31e359343197
+/deepseek-ai-dsh-session-rewind-files/understand-the-implementation/excluded-stores:
+  en: c34fc89bcb7569f9
+  zh: 5f3d197371f01323
+/deepseek-ai-dsh-session-rewind-files/further-exploration:
+  en: 6764467ffdbe5081
+  zh: b2294e5c6ba4c8b9
+/deepseek-ai-dsh-session-rewind-files/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-session-rewind-files/model-experience/workspace-state-after-a-rewind:
+  en: 50a3e949c2d2713d
+  zh: f69868a611f6a88e
+/deepseek-ai-dsh-session-rewind-files/model-experience/workspace-state-after-a-rewind/what-the-model-sees:
+  en: 12ad7a210b57ee5d
+  zh: c54b359cb34c5956
+/deepseek-ai-dsh-session-rewind-files/model-experience/workspace-state-after-a-rewind/token-effect:
+  en: 06295dad428f4a4f
+  zh: e71a6f2aa6ff5e82
+/deepseek-ai-dsh-session-rewind-files/model-experience/workspace-state-after-a-rewind/kv-cache-effect:
+  en: 3488d9a08a03de73
+  zh: 65e56edb0e0d1a02
+/deepseek-ai-dsh-session-rewind-files/known-limitations-and-deferred-work:
+  en: b293125344ace6fc
+  zh: e57b5cf3d368587e
+/deepseek-ai-dsh-session-rewind-files/known-limitations-and-deferred-work/dev-note:
+  en: c3131a4e16a1b357
+  zh: 53df7438272870c1

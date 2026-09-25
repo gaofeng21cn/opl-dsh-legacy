@@ -72,7 +72,7 @@
                 config:
                   modelPolicies:
                     - provider: opl-gateway
-                      model: deepseek-v4.1-flash
+                      model: deepseek-flash
                       inputBudget: 258400
                       thresholdTokens: 244800
               - id: command-compact

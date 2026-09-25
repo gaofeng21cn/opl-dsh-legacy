@@ -236,6 +236,15 @@ export class WslDesktopHost {
     return result.active
   }
 
+  /** Inspect tasks and reminders through the authenticated Linux Host transport. */
+  async inspectQuit(): Promise<{ activeTasks: boolean; scheduledTasks: boolean }> {
+    const result = await this.control('/quit-inspection')
+    if (!isRecord(result) || typeof result.activeTasks !== 'boolean' || typeof result.scheduledTasks !== 'boolean') {
+      throw new Error('desktop WSL: invalid quit inspection response')
+    }
+    return { activeTasks: result.activeTasks, scheduledTasks: result.scheduledTasks }
+  }
+
   private async control(path: string): Promise<unknown> {
     const binding = this.binding ?? await this.start()
     const response = await fetch(new URL(path, binding.endpoint), {

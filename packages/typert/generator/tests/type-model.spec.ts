@@ -457,6 +457,15 @@ describe('WorkspaceAnalyzer', { timeout: 60_000 }, () => {
     )
   })
 
+  it('resolves executable type subpaths emitted inside lib/types', () => {
+    const root = copyFixture('typert-types-runtime-')
+    const path = join(root, 'packages/host/package.json')
+    const manifest = JSON.parse(readFileSync(path, 'utf8'))
+    manifest.exports['./models'].default = './lib/types/models.js'
+    writeFileSync(path, JSON.stringify(manifest))
+    expect(() => new WorkspaceAnalyzer({ root }).analyze()).not.toThrow()
+  })
+
   it('rejects cross-face re-exports outside package.json exports', () => {
     const root = copyFixture('typert-private-reexport-')
     writeFileSync(

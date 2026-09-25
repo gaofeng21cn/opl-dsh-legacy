@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-23-auto-review-rules-routing.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-23-auto-review-rules-routing.md
-2026-09-23-auto-review-rules-routing.md: a12a56fbc7b7931fcd7de9e17229c9bc6f8a4951
-2026-09-23-auto-review-rules-routing.zh.md: 0c5137e0b6cea7e041e333a870ae088b4dd8f6e9
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation:
+  en: d9cafb2a008e3af9
+  zh: eb1eb31e7d756211
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/problem:
+  en: 0bc4f073e29236af
+  zh: 57b47a6272ba78f9
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision:
+  en: 563bfde65a6b96f3
+  zh: 9c77fd68aa151726
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/deterministic-rules:
+  en: 80bf09ffbd82f68b
+  zh: f1e87892f00dcb56
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/reviewer-route:
+  en: 4dc2db90962b7a30
+  zh: 0d0ac0ffbe2dcafa
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/fail-closed-escalation:
+  en: 7046fddbd3e3d376
+  zh: cb41c8957de0bbbe
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/review-memory:
+  en: bca1b02c87df747b
+  zh: db676ed5039abdd9
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/traceability:
+  en: 1c442ce1808325d2
+  zh: fb757aeaaa11e13c
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/configuration:
+  en: 6a5f6792656a1b12
+  zh: 3d1ccbc8d018114c
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/decision/windows-native-git-bash:
+  en: 368fbf06f307d735
+  zh: c38430749aa2ecb1
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/alternatives-considered:
+  en: 343bfb95d480c6d4
+  zh: 2156b56df648e835
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/consequences:
+  en: 226f14dc9b25b5e1
+  zh: f1e8562ef780e2cf
+/agent-note-auto-review-rules-first-routing-and-fail-closed-escalation/testing:
+  en: 05f3fa71eadc3688
+  zh: b610216dbe9945a4

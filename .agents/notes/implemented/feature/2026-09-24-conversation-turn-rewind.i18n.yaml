@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-24-conversation-turn-rewind.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-24-conversation-turn-rewind.md
-2026-09-24-conversation-turn-rewind.md: 370117dcce940401e33a4e049640a13872f07073
-2026-09-24-conversation-turn-rewind.zh.md: 23e51d39f9793a0c0e22999fc030b15491ae7d97
+/agent-note-conversation-turn-rewind:
+  en: f76f468919ed2441
+  zh: b856aacbeb5f50e9
+/agent-note-conversation-turn-rewind/problem:
+  en: 7d7e7b3e5372f057
+  zh: 4b338d41a1954887
+/agent-note-conversation-turn-rewind/decision:
+  en: d8ffc6e5dc0f3375
+  zh: b6515c036ecdc907
+/agent-note-conversation-turn-rewind/alternatives-considered:
+  en: 8a1f1d1cbdcfea9d
+  zh: 3346c62d46bef4c8
+/agent-note-conversation-turn-rewind/consequences:
+  en: 5f230e7b4b88468f
+  zh: a95c86931ced081e

@@ -80,7 +80,7 @@ describe('OPL Gateway composition', () => {
     expect(await account?.status()).toMatchObject({
       phase: 'signed-out',
       keyReady: false,
-      models: [{ id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash' }],
+      models: [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }],
     })
   })
 })
@@ -97,7 +97,7 @@ describe('account flow without any local OPL installation', () => {
   function gateway(options: { existingKeys?: GatewayManagedKey[]; withKey?: boolean } = {}) {
     const calls: string[] = []
     const keys: GatewayManagedKey[] = options.existingKeys ?? []
-    const control = {
+    const control = Object.assign(new GatewayControlClient(), {
       login: async (email: string, password: string) => {
         calls.push(`login:${email}`)
         // A real instance, because the service branches on the type: a stub
@@ -122,7 +122,7 @@ describe('account flow without any local OPL installation', () => {
       createKey: async (_token: string, name: string, groupId: string | null) => {
         calls.push(`createKey:${name}:${String(groupId)}`)
         const created: GatewayManagedKey = {
-          id: '5', name, key: 'sk-issued', status: 'active', groupId, raw: { id: 5, name, status: 'active' },
+          id: groupId === '22' ? '5' : '6', name, key: 'sk-issued-' + groupId, status: 'active', groupId, raw: { id: 5, name, status: 'active' },
         }
         if (options.withKey !== false) keys.push(created)
         return created
@@ -130,7 +130,7 @@ describe('account flow without any local OPL installation', () => {
       setKeyStatus: async (_token: string, key: GatewayManagedKey, status: string) => {
         calls.push(`setKeyStatus:${key.id}:${status}`)
       },
-    } as unknown as GatewayControlClient
+    })
     return { control, calls, keys }
   }
 
@@ -144,7 +144,7 @@ describe('account flow without any local OPL installation', () => {
       account: new OplGatewayAccountService(ctx, {
         credentialRef: () => (ctx.get('llm'), 'OPL_GATEWAY_DEEPSEEK_API_KEY' as never),
         endpoint: () => 'https://gateway.example/v1',
-        models: () => [{ id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash' }],
+        models: () => [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }],
         stateDirectory: () => home,
         control,
       }),
@@ -162,8 +162,10 @@ describe('account flow without any local OPL installation', () => {
     expect(result.createdKey).toBe(true)
     // The key the gateway issued becomes the one the adapter resolves, and the
     // session is kept so a restart does not need another sign-in.
-    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe('sk-issued')
+    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe('sk-issued-22')
     expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · DeepSeek:22')
+    expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · Codex:3')
+    expect((await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never))?.value).toBe('sk-issued-3')
     expect(await account.status()).toMatchObject({
       phase: 'connected',
       source: 'session',
@@ -177,7 +179,7 @@ describe('account flow without any local OPL installation', () => {
     const existing: GatewayManagedKey = {
       id: '9', name, key: 'sk-existing', status: 'active', groupId: '22', raw: { id: 9, name, status: 'active' },
     }
-    const { control, calls } = gateway({ existingKeys: [existing] })
+    const { control, calls } = gateway({ existingKeys: [existing, { ...existing, id: '10', name: gatewayKeyName('Codex'), groupId: '3' }] })
     const { account, credentials } = await service(control, stateRoot)
 
     expect((await account.signIn('person@example.test', 'right')).createdKey).toBe(false)
@@ -205,7 +207,41 @@ describe('account flow without any local OPL installation', () => {
     // The key was issued to this client, so ending the session disables it
     // rather than leaving a live credential nobody holds.
     expect(calls).toContain('setKeyStatus:5:disabled')
+    expect(calls).toContain('setKeyStatus:6:disabled')
+    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toBeUndefined()
     expect(await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never)).toBeUndefined()
+  })
+
+  it('restores a missing compatibility credential when refreshing an existing login', async () => {
+    const { control, calls } = gateway()
+    const { account, credentials } = await service(control, stateRoot)
+    await account.signIn('person@example.test', 'right')
+    await credentials.unset('OPL_GATEWAY_CODEX_API_KEY' as never)
+    expect(await account.refresh()).toMatchObject({ keyReady: true, codexKeyReady: true })
+    expect(calls.filter(call => call.startsWith('createKey:'))).toHaveLength(2)
+    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({ value: 'sk-issued-3' })
+  })
+
+  it('keeps the default route usable when the Codex group is unavailable', async () => {
+    const { control } = gateway()
+    control.groups = async () => [{ id: '22', label: 'DeepSeek' }]
+    const { account } = await service(control, stateRoot)
+    const result = await account.signIn('person@example.test', 'right')
+    expect(result.status).toMatchObject({ phase: 'connected', keyReady: true, codexKeyReady: false })
+    expect(result.status.channelError).toContain('unavailable')
+  })
+
+  it('retains the compatibility credential after a temporary refresh failure', async () => {
+    const { control } = gateway()
+    const { account, credentials } = await service(control, stateRoot)
+    await account.signIn('person@example.test', 'right')
+    const listKeys = control.keys.bind(control)
+    control.keys = async (token, name) => {
+      if (name === gatewayKeyName('Codex')) throw new GatewayControlError('unavailable', 'temporary outage', 503)
+      return listKeys(token, name)
+    }
+    expect(await account.refresh()).toMatchObject({ keyReady: true, codexKeyReady: true })
+    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({ value: 'sk-issued-3' })
   })
 
   it('renews a stored session on refresh without another sign-in', async () => {

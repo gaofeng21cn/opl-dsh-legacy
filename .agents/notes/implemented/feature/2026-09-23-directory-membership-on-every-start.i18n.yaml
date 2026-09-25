@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-23-directory-membership-on-every-start.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.md
-2026-09-23-directory-membership-on-every-start.md: 21112eb1356d01e5c74bfc7dc8817e72e1e220eb
-2026-09-23-directory-membership-on-every-start.zh.md: 5d8563de5ac72291c80d9dce92fafc7ad0efe011
+/agent-note-directory-membership-on-every-start:
+  en: f04f6fcecb5ea43f
+  zh: f96bf8de312b7592
+/agent-note-directory-membership-on-every-start/problem:
+  en: 6b3fcf59bfd7cf0f
+  zh: 8fbc6a41766f7529
+/agent-note-directory-membership-on-every-start/decision:
+  en: 8ee131712487f640
+  zh: bd254c14308ffd87
+/agent-note-directory-membership-on-every-start/supersession:
+  en: 6d02ff6e2b434c13
+  zh: a1d35931ed0129cd
+/agent-note-directory-membership-on-every-start/alternatives-considered:
+  en: ea79b6c7475c5368
+  zh: cb0a0525d1873a4a
+/agent-note-directory-membership-on-every-start/verification:
+  en: 7b8498bfeb4fa027
+  zh: a4c8c3cefcfc5bdc
+/agent-note-directory-membership-on-every-start/consequences:
+  en: 52dd480a5ff3d205
+  zh: 5a86ce0c02849508

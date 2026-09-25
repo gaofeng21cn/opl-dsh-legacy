@@ -23,7 +23,7 @@ OPL 自维护的 DeepSeek Harness 桌面发行版，面向使用 OPL Gateway 和
 | 能力 | 使用方式 |
 | --- | --- |
 | DeepSeek 原生接入 | 使用 DSH 官方 `DeepSeekAdapter`，通过 Messages 协议调用模型，保留 DSH 的思考、工具调用与会话处理 |
-| OPL Gateway | 独立登录、申请 DeepSeek 分组密钥、查询用量和配置搜索 |
+| OPL Gateway | 独立登录、自动管理 DeepSeek/Codex 双组密钥、故障切换、用量与搜索 |
 | Codex 与 DSH 协作 | Codex Skill 派发、继续和查询 DSH 任务，DSH 插件记录任务反馈 |
 | 会话与项目 | 普通聊天、编辑重发、会话与文件回退、会话移动到项目 |
 | 桌面体验 | 通知、托盘、关闭行为设置；Windows 支持原生执行与 WSL2 |
@@ -31,9 +31,13 @@ OPL 自维护的 DeepSeek Harness 桌面发行版，面向使用 OPL Gateway 和
 
 ## 账号、密钥与升级
 
-OPL DSH 只申请或复用 **DeepSeek 分组**的独立 API key，默认模型为 `deepseek-v4.1-flash`，默认推理地址为 `https://gateway.medopl.com/v1`。
+OPL DSH 登录后分别申请或复用 **DeepSeek** 与 **Codex** 分组的专用 API key。默认模型 ID 为 `deepseek-flash`，界面显示 **DeepSeek-V4.1-Flash**；推理地址为 `https://gateway.medopl.com/v1`。
 
-升级后，旧版的 Codex/AGI 分组 key 不会被改组或自动禁用。应用使用新的 `OPL_GATEWAY_DEEPSEEK_API_KEY` 凭据槽；持有有效登录会话时申请或复用 DeepSeek key。若账号页提示分组或登录问题，请重新登录，并确认账号可使用 DeepSeek 分组。
+默认通道使用官方 DeepSeek adapter 和 Messages 协议。在尚未输出任何响应时，连接失败、超时、限流、额度不足、认证失败或端点不可用会触发一次 OpenAI 兼容通道切换，由官方 `dsh-llm-pi-ai` 使用 Codex 分组 key 发起 Responses 请求。取消、无效请求和已开始输出的响应不自动重放。两条通道均由 DSH 管理 Agent 循环与工具执行。
+
+也可在模型列表直接选择 **OPL Gateway · OpenAI**。设置页分别显示两组 key 的就绪状态；Codex 分组不可用时保留默认通道，并提示刷新账号。
+
+升级后，旧版的 Codex/AGI 分组 key 不会被改组或自动禁用。应用分别使用 `OPL_GATEWAY_DEEPSEEK_API_KEY` 与 `OPL_GATEWAY_CODEX_API_KEY` 凭据槽；持有有效的 DSH 登录会话时自动补齐两组 key。若账号页提示分组或登录问题，请重新登录，并确认账号可使用 DeepSeek 分组。
 
 本机已有 OPL App 登录记录时可用于账号状态识别，但其中的 Codex/AGI key 不会作为 DSH 推理凭据导入。登录保存用于续期的会话令牌，不保存密码。
 
@@ -43,6 +47,8 @@ OPL DSH 只申请或复用 **DeepSeek 分组**的独立 API key，默认模型�
 | Windows | `%APPDATA%\@deepseek-ai\dsh-desktop\dsh-home` |
 
 可通过 `DSH_OPL_HOME` 指定数据目录。升级前建议备份该目录；它包含会话、设置和凭据。
+
+本版会话文件格式为 V5。这里的 V4/V5 是本地会话文件的版本号，与模型 API 协议无关。打开旧会话时按 DSH 官方相邻迁移机制读取；首次写入时在原文件旁保存 V5 后继文件，保留旧文件。
 
 ## Codex 与 DSH 协作
 

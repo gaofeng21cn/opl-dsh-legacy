@@ -5,7 +5,7 @@ describe('gateway catalog', () => {
   it('advertises the one gateway model under its deployment name', () => {
     expect(DEFAULT_MODELS).toHaveLength(1)
     expect(DEFAULT_MODELS[0]).toMatchObject({
-      id: 'deepseek-v4.1-flash',
+      id: 'deepseek-flash',
       name: 'DeepSeek-V4.1-Flash',
       systemPromptUpdate: 'in-history',
     })

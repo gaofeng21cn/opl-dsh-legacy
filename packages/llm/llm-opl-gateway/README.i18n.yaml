@@ -1,6 +1,73 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/llm/llm-opl-gateway/README.md
-README.md: aa9485c7de6013017268d9404d0eee6227d3ee8d
-README.zh.md: 8bbfe359b504551a443f5cb36dcad52c5ec0db9a
+/:
+  en: 6d0757aae8c96fb3
+  zh: 8a1fae364d6c9a4b
+/one-person-lab-dsh-llm-opl-gateway:
+  en: 054a5c38c641c96b
+  zh: 1d0d573b52203b3c
+/one-person-lab-dsh-llm-opl-gateway/summary:
+  en: 4cf58d89f400b820
+  zh: 70da8619493aca31
+/one-person-lab-dsh-llm-opl-gateway/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: da6603038d60de12
+/one-person-lab-dsh-llm-opl-gateway/use-this-package:
+  en: bf62aa5f09a903f5
+  zh: f4855d6fe28f1de2
+/one-person-lab-dsh-llm-opl-gateway/use-this-package/when-to-choose-it:
+  en: 8deb4970fefd6515
+  zh: f74716a4acbfd8d1
+/one-person-lab-dsh-llm-opl-gateway/use-this-package/minimal-configuration:
+  en: 6762ea1866f7c540
+  zh: 732f33ad861b7e6a
+/one-person-lab-dsh-llm-opl-gateway/understand-the-implementation:
+  en: 42b15ac6321706aa
+  zh: ce1d25bffb6948cd
+/one-person-lab-dsh-llm-opl-gateway/understand-the-implementation/two-inference-channels:
+  en: 1dadd69e4ea9b054
+  zh: c8db36065d265891
+/one-person-lab-dsh-llm-opl-gateway/understand-the-implementation/where-the-credential-comes-from:
+  en: a917798f84be237c
+  zh: 321898e19505aebd
+/one-person-lab-dsh-llm-opl-gateway/understand-the-implementation/the-control-plane-and-the-inference-plane:
+  en: ad2fc49d3c2238b5
+  zh: 7337d3d0fcd38d44
+/one-person-lab-dsh-llm-opl-gateway/further-exploration:
+  en: 9e26f03cf71a7a4f
+  zh: a3760e84d407bd83
+/one-person-lab-dsh-llm-opl-gateway/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-request:
+  en: a8aada8c8b68c585
+  zh: 56fc50601320619e
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-request/what-the-model-sees:
+  en: 1b64cff6230a279a
+  zh: ce8cea94674f66d7
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-request/token-effect:
+  en: dc6245ed90d15ad2
+  zh: b851dca885c61e98
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-request/kv-cache-effect:
+  en: 03e3e6f963f56023
+  zh: 7e58f5ce5a88fbba
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-response:
+  en: ad640fbe03213c39
+  zh: 907b0cb8a77fca40
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-response/what-the-model-sees:
+  en: 0990b5ba6bbac5a5
+  zh: b60db918f471af6a
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-response/token-effect:
+  en: 76bda59fda1724d7
+  zh: e360382618d15ec2
+/one-person-lab-dsh-llm-opl-gateway/model-experience/opl-gateway-response/kv-cache-effect:
+  en: f6b5fd1a81da067f
+  zh: 27a11e474020cd3f
+/one-person-lab-dsh-llm-opl-gateway/known-limitations-and-deferred-work:
+  en: cfe0d80ea720137a
+  zh: c17bf6c487cf006a
+/one-person-lab-dsh-llm-opl-gateway/known-limitations-and-deferred-work/dev-note:
+  en: bf23a6cabff72fb2
+  zh: 5fc2bbc6ef411744

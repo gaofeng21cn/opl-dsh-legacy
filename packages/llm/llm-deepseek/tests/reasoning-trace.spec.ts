@@ -33,7 +33,7 @@ function directory() {
 function adapter(url: string) {
   return new DeepSeekAdapter({
     options: () => resolveAdapterOptions({ baseURL: url }),
-    resolveApiKey: () => Promise.resolve('SECRET-KEY'),
+    resolveAuth: async () => ({ headers: { 'x-api-key': 'SECRET-KEY' } }),
     resolveUserId: () => 'test' as AnonymousUserId,
     prepareExtensions: async () => ({ fields: {}, accept: async () => {} }),
   })

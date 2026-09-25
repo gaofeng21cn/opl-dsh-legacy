@@ -24,6 +24,7 @@ import { AUTO_PRESET } from '@deepseek-ai/dsh-permission-presets'
 import z from '@deepseek-ai/schemastery'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-subagent'
+import type {} from '@deepseek-ai/dsh-user-approval'
 import {
   RUN_CODE_NAME,
   type PreToolDecision,
@@ -32,9 +33,9 @@ import {
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { ruleDecision, type RuleId } from './rules.ts'
 
-/** Structured error name persisted for every reviewer denial or failure. */
+/** Structured error name persisted for every final reviewer denial. */
 const AUTO_REVIEW_DENIED_ERROR_NAME = 'AutoReviewDeniedError'
-/** Structured error code persisted for every reviewer denial or failure. */
+/** Structured error code persisted for every final reviewer denial. */
 const AUTO_REVIEW_DENIED_CODE = 'AUTO_REVIEW_DENIED'
 
 /** Fixed policy sent as the first of the review request's five sections. */
@@ -157,7 +158,7 @@ interface ScopedPtcStart {
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'experimental-auto-review'
 /** Complete host services required before Auto may be advertised. */
-export const inject = ['llm', 'permissionPresets', 'sessions', 'tools']
+export const inject = ['approval', 'llm', 'permissionPresets', 'sessions', 'tools']
 
 /**
  * Deployment configuration for the review gate. Every field is a deployment
@@ -685,6 +686,10 @@ async function readDecision(stream: AsyncIterable<StreamChunk>): Promise<AutoRev
     assembler.push(chunk)
     if (chunk.type === 'finish') {
       finished = true
+      if (chunk.reason.kind === 'error' || chunk.reason.kind === 'aborted') {
+        const { code, message } = chunk.reason.failure
+        throw new Error(`auto-review: reviewer ended with ${chunk.reason.kind} ${code}: ${message}`)
+      }
       if (chunk.reason.kind !== 'stop') {
         throw new Error(`auto-review: reviewer ended with ${chunk.reason.kind}`)
       }

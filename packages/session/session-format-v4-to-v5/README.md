@@ -29,6 +29,10 @@ This package is the adjacent V4-to-V5 Session migration. It preserves V4 headers
 Use the build-static [Session format catalog](../session-format-catalog/README.md) for normal restoration. Direct exports are for catalog assembly and focused tests:
 
 ```ts
+import { sessionFormatV4ToV5 } from '@deepseek-ai/dsh-session-format-v4-to-v5'
+import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+const sourceHeader = { version: 4, id: 'example', createdAt: 1, isSeeded: false, delegationDepth: 0 }
+const physicalHeader = { ...sourceHeader, type: 'session' }
 const targetHeader = sessionFormatV4ToV5.migrateHeader(sourceHeader)
 const restore = sessionFormatCatalog.createRestore(physicalHeader, {
   recovery: 'strict', validation: 'current',
@@ -93,3 +97,5 @@ The preserved event and message identities keep the current projection stable; c
 ### Dev Note
 
 None.
+
+No runtime invariant companion is published because this pure migration library owns no independently maintained runtime observations.

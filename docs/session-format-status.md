@@ -32,11 +32,9 @@ The [format references](persistence-changes/historical-formats/README.md) docume
 latestFinalizedVersion: 5
 ```
 
-V4 has an accepted compatibility baseline in the [checkpoint](persistence-changes/finalized/v4.json). Backward-compatible schema changes may remain V4 through new acknowledgement records. Breaking changes require a higher writer version and their own header transition; they cannot reuse the accepted 3→4 transition. Accepted machine records and after schemas remain immutable. [Checkpoint rules](persistence-changes/README.md#compatibility-rules) define the comparison.
+V5 has an accepted compatibility baseline in the [checkpoint](persistence-changes/finalized/v5.json). The preceding [V4 checkpoint](persistence-changes/finalized/v4.json) remains immutable. Backward-compatible additions use acknowledgement records; breaking changes require another adjacent version.
 
-Finalization does not freeze every future V4 addition and does not assert publication. The release record below retains the independently verified published version. Ordinary comments, aliases, source locations, and implementation fixes preserving the accepted meaning do not change this baseline.
-
-Before the first V4 publication, every integration of a newer V3-writing master must pass the [explicit V3 vocabulary check](cookbook/adding-a-session-format-version.md#final-v3-vocabulary) against the recorded local source commit. Verify the source pin’s freshness and review new event payload conversions before updating the migration-owned set. After publication, the final V3 vocabulary remains historical and independent of current V4 additions.
+V5 adds the OPL rewind source vocabulary. Its V4→V5 reader preserves existing events, validates generation-owned delivery markers, and writes a new version-named file beside the unchanged source. The fixed V4 prerequisite reader does not use the current writer to collect historical child facts. Finalization does not assert publication; the record below is independent release evidence.
 
 <a id="release-record"></a>
 ## Release record

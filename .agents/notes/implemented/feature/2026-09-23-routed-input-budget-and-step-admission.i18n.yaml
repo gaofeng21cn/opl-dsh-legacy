@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-23-routed-input-budget-and-step-admission.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-23-routed-input-budget-and-step-admission.md
-2026-09-23-routed-input-budget-and-step-admission.md: ed93055781ba8148f7c16db7ed8037285bf1fbca
-2026-09-23-routed-input-budget-and-step-admission.zh.md: fd5376e77f2f6155c1b289ff2d1bad4227025a19
+/agent-note-the-routed-input-budget-and-step-admission:
+  en: ac0451f31f647296
+  zh: 29ad42255df4bcb4
+/agent-note-the-routed-input-budget-and-step-admission/problem:
+  en: 623f2ecd7cd58bf4
+  zh: b4153ccfd5147238
+/agent-note-the-routed-input-budget-and-step-admission/decision:
+  en: 357fb956f2551097
+  zh: ed4eb08c93d72363
+/agent-note-the-routed-input-budget-and-step-admission/measurement-and-timing:
+  en: 2e4518aab45030f3
+  zh: ebd6b4505601582a
+/agent-note-the-routed-input-budget-and-step-admission/alternatives-considered:
+  en: 8807a6c297ffe904
+  zh: fcba8882f971f448
+/agent-note-the-routed-input-budget-and-step-admission/verification:
+  en: f673373cfdf61a5a
+  zh: 9e540f1867aaea2c
+/agent-note-the-routed-input-budget-and-step-admission/consequences:
+  en: 538e30a2ab6b234e
+  zh: e97e8cda95b1376d

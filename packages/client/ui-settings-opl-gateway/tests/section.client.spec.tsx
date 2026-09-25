@@ -14,7 +14,7 @@ const t = (key: OplGatewayLocaleKey, params?: Record<string, string | number>): 
     en[key],
   )
 
-const MODELS = [{ id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash' }]
+const MODELS = [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }]
 
 const SIGNED_OUT: GatewayAccountStatus = {
   phase: 'signed-out',

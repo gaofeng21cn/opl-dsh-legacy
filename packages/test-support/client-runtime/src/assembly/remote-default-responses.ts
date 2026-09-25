@@ -43,6 +43,12 @@ export const remoteDefaultResponses: RemoteTable = {
     'credentials/describe': ok({}),
     // ui-permission-presets `PermissionCatalogDirectory` on its first read for a connection generation.
     'permissionPresets/catalog': ok({ options: [] }),
+    // ui-settings-account refreshes details after a stored-grant snapshot.
+    'account/getProfile': ok(null),
+    'account/getBalance': ok(null),
+    // ui-settings-account bonus notice read and acknowledgement at signing in.
+    'account/getUnnotifiedBonuses': ok(null),
+    'account/ackBonusNotified': ok(true),
   },
   stream: {
     // api-session-controller client `apply`: the control stream's opening baseline, then open.

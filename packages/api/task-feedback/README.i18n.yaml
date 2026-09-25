@@ -1,6 +1,64 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/api/task-feedback/README.md
-README.md: f8017b83ca09d01522eaaa75609243b4bc41d5ef
-README.zh.md: a174d3fa6a3e1a230e0ca6199bb26d91ea41a74d
+/:
+  en: b123d92c83d3b1b8
+  zh: 342d4d0c2aaaecc8
+/deepseek-ai-dsh-api-task-feedback:
+  en: 49b3fd89afc17618
+  zh: 02b58bb24fde0d34
+/deepseek-ai-dsh-api-task-feedback/summary:
+  en: 6b25614ae15386c5
+  zh: c5ad6ee9768a0ad5
+/deepseek-ai-dsh-api-task-feedback/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: ac1bb7362e9b6e01
+/deepseek-ai-dsh-api-task-feedback/use-this-package:
+  en: c0c6ddfe51372502
+  zh: 816ad67653ada9a9
+/deepseek-ai-dsh-api-task-feedback/use-this-package/when-to-choose-it:
+  en: 98fbce0797747d7e
+  zh: f3580a5e0fa534df
+/deepseek-ai-dsh-api-task-feedback/use-this-package/smallest-working-setup:
+  en: 2c1050157db4713d
+  zh: 7849ead1cb5b7f5f
+/deepseek-ai-dsh-api-task-feedback/use-this-package/receiving-and-consuming-a-notification:
+  en: 894f8f0965671a7d
+  zh: 2668881397f2937a
+/deepseek-ai-dsh-api-task-feedback/use-this-package/relaying-a-pause-the-session-is-waiting-on:
+  en: 54ab39ec4df1bf43
+  zh: fd28b6df98c5eb62
+/deepseek-ai-dsh-api-task-feedback/use-this-package/delivery-scheduling:
+  en: e289b48fb58f38c8
+  zh: 89a85322a9095098
+/deepseek-ai-dsh-api-task-feedback/use-this-package/wake-transport:
+  en: 9e3ca0dcdddea0c9
+  zh: 34e6114594194c05
+/deepseek-ai-dsh-api-task-feedback/use-this-package/what-a-task-state-means:
+  en: 4b3cf47ad36a59ea
+  zh: 68dd47ff2ecf31a9
+/deepseek-ai-dsh-api-task-feedback/understand-the-implementation:
+  en: 07e96341924fd77f
+  zh: be8077a8f613dfef
+/deepseek-ai-dsh-api-task-feedback/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-api-task-feedback/model-experience/task-outcome-notifications:
+  en: 8c81a5fea647f20d
+  zh: 39310647148faf5d
+/deepseek-ai-dsh-api-task-feedback/model-experience/task-outcome-notifications/what-the-model-sees:
+  en: 16a4664e0fa502c4
+  zh: 12481ef32d1b3fce
+/deepseek-ai-dsh-api-task-feedback/model-experience/task-outcome-notifications/token-effect:
+  en: 959c828e5f419934
+  zh: bc03cff2a0de48ce
+/deepseek-ai-dsh-api-task-feedback/model-experience/task-outcome-notifications/kv-cache-effect:
+  en: 8f26ebd04bb903ba
+  zh: 186b58068ad442c8
+/deepseek-ai-dsh-api-task-feedback/known-limitations-and-deferred-work:
+  en: e9a69eac4deff0cf
+  zh: f181ccafb6e10419
+/deepseek-ai-dsh-api-task-feedback/known-limitations-and-deferred-work/dev-note:
+  en: 3aac371ab4e25cae
+  zh: 08199791dda3a0c7

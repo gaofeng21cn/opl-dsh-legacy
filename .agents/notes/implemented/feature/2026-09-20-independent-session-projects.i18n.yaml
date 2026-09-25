@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-20-independent-session-projects.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-20-independent-session-projects.md
-2026-09-20-independent-session-projects.md: efadb68f118350ba2503f75257f7d515fdd5bb5b
-2026-09-20-independent-session-projects.zh.md: bbc3b4135b9572d938cc83f14d605edc50f3cf3e
+/agent-note-independent-session-directories-and-project-membership:
+  en: ddd6d875536e0e15
+  zh: 96859798f4c872a6
+/agent-note-independent-session-directories-and-project-membership/problem:
+  en: ed49c411d008492b
+  zh: 3824a6caf624aead
+/agent-note-independent-session-directories-and-project-membership/decision:
+  en: b14652abac62486f
+  zh: 8a2d79ad9a753f4b
+/agent-note-independent-session-directories-and-project-membership/alternatives-considered:
+  en: 3527df24a147f7fa
+  zh: d58f6dd3cd125cff
+/agent-note-independent-session-directories-and-project-membership/consequences:
+  en: 92e5648a510ab2b5
+  zh: a2749ed7f7f92f3d
+/agent-note-independent-session-directories-and-project-membership/testing:
+  en: afcd9f5d4b67d149
+  zh: d714c4c2a567d80a

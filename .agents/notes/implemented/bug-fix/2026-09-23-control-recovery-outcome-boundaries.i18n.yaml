@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-23-control-recovery-outcome-boundaries.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-23-control-recovery-outcome-boundaries.md
-2026-09-23-control-recovery-outcome-boundaries.md: 25533920916b2d3c063b74e52eef73249e2a3d7a
-2026-09-23-control-recovery-outcome-boundaries.zh.md: c3576caaadac3659f2d2297febbd7da9d512e533
+/agent-note-recovery-outcomes-are-told-apart-by-recorded-facts:
+  en: 517f108907e623b5
+  zh: 9e8651087e41d5bd
+/agent-note-recovery-outcomes-are-told-apart-by-recorded-facts/problem:
+  en: 7f1e0aa79be0ad46
+  zh: f99d89b01e4792a1
+/agent-note-recovery-outcomes-are-told-apart-by-recorded-facts/decision:
+  en: ba692265f8a0a75c
+  zh: 0f5933d0db5b279b
+/agent-note-recovery-outcomes-are-told-apart-by-recorded-facts/alternatives-considered:
+  en: 7c1aee80ff5ef4f4
+  zh: 1faa8881db059729
+/agent-note-recovery-outcomes-are-told-apart-by-recorded-facts/consequences:
+  en: 85b452938feef4e9
+  zh: ef471252f05ceb61
+/agent-note-recovery-outcomes-are-told-apart-by-recorded-facts/testing:
+  en: ad8d734478d8e7bc
+  zh: 4aef882d120a26f5

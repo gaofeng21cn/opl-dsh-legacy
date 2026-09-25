@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-24-ime-composition-guard-and-rewind-file-modes.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-24-ime-composition-guard-and-rewind-file-modes.md
-2026-09-24-ime-composition-guard-and-rewind-file-modes.md: 2b294a1815f17014d5016614258b2e567f8e9d21
-2026-09-24-ime-composition-guard-and-rewind-file-modes.zh.md: 8234d63d5c59c5b2dd3df1939ac55fee996f2fd5
+/agent-note-ime-composition-guarding-and-restored-file-modes:
+  en: 8f384af24369113f
+  zh: ad66848c52d71864
+/agent-note-ime-composition-guarding-and-restored-file-modes/problem:
+  en: d9e9653c31671561
+  zh: 04781bbea9071a16
+/agent-note-ime-composition-guarding-and-restored-file-modes/decision:
+  en: e6d38568616df0e4
+  zh: 34a297c3724cebd5
+/agent-note-ime-composition-guarding-and-restored-file-modes/alternatives-considered:
+  en: 216321ac90d4a5e8
+  zh: aca3a91656e1c95b
+/agent-note-ime-composition-guarding-and-restored-file-modes/consequences:
+  en: 87c7c8576106fae4
+  zh: b19581bca62a9bc4

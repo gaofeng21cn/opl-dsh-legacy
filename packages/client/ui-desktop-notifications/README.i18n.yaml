@@ -1,6 +1,61 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-desktop-notifications/README.md
-README.md: 9aa4f2ea86f83e6ae3790bdf8799b3b91e7ac555
-README.zh.md: 6fa43312a6805593403593ef40fd1dbf8dbfbb57
+/:
+  en: 1fb7d219307aa962
+  zh: 3af8f82c0444d4b5
+/deepseek-ai-dsh-client-ui-desktop-notifications:
+  en: 45d82d788b62f320
+  zh: 490982eb776b5be3
+/deepseek-ai-dsh-client-ui-desktop-notifications/summary:
+  en: 1c464f532641a9fe
+  zh: 3be59ae30123365a
+/deepseek-ai-dsh-client-ui-desktop-notifications/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 8f827a7fcceb9698
+/deepseek-ai-dsh-client-ui-desktop-notifications/use-this-package:
+  en: d4fcd9bbd0cf5ff1
+  zh: 660c9dde8f1a0221
+/deepseek-ai-dsh-client-ui-desktop-notifications/use-this-package/what-is-reported:
+  en: 8a3fd1e738945dea
+  zh: 55933de67525e454
+/deepseek-ai-dsh-client-ui-desktop-notifications/use-this-package/content:
+  en: 092ccddfef09336a
+  zh: ead897b35ed6cc5c
+/deepseek-ai-dsh-client-ui-desktop-notifications/understand-the-implementation:
+  en: 42b15ac6321706aa
+  zh: e15901d8462ec7c7
+/deepseek-ai-dsh-client-ui-desktop-notifications/understand-the-implementation/bridge-detection:
+  en: 1fed8cd514aa85cc
+  zh: 9706e58f0dd33cdb
+/deepseek-ai-dsh-client-ui-desktop-notifications/understand-the-implementation/reporting:
+  en: 57f858036f961903
+  zh: c554aaeada8f41f4
+/deepseek-ai-dsh-client-ui-desktop-notifications/understand-the-implementation/activation:
+  en: c4fdbc72add4bc02
+  zh: 7de2a5632ff8c744
+/deepseek-ai-dsh-client-ui-desktop-notifications/further-exploration:
+  en: 39d1027d6e25a4cc
+  zh: f2aa32e8bc3d2453
+/deepseek-ai-dsh-client-ui-desktop-notifications/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-client-ui-desktop-notifications/model-experience/settings-and-notifications:
+  en: 7c23910603f7dfa7
+  zh: fd7df1605a75e7c3
+/deepseek-ai-dsh-client-ui-desktop-notifications/model-experience/settings-and-notifications/what-the-model-sees:
+  en: 105030d35747b12f
+  zh: 925d1a51a38e8dd2
+/deepseek-ai-dsh-client-ui-desktop-notifications/model-experience/settings-and-notifications/token-effect:
+  en: aa996c496c3f16d7
+  zh: 72702326cadfedcd
+/deepseek-ai-dsh-client-ui-desktop-notifications/model-experience/settings-and-notifications/kv-cache-effect:
+  en: 023c5ab107d53b36
+  zh: 5cacad585dce781f
+/deepseek-ai-dsh-client-ui-desktop-notifications/known-limitations-and-deferred-work:
+  en: 4c34e6a3d222203a
+  zh: 1c6d3bbed714cb0d
+/deepseek-ai-dsh-client-ui-desktop-notifications/known-limitations-and-deferred-work/dev-note:
+  en: 79aea047aabbb850
+  zh: c22ac49692e2c366

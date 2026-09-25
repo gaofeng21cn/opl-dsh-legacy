@@ -18,7 +18,7 @@ kind: "package-reference"
 - [延伸阅读](#further-exploration)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
-- [开发者说明](#dev-note)
+- [开发备注](#dev-note)
 
 -----
 
@@ -132,7 +132,7 @@ kind: "package-reference"
 - **路径键是精确码元，绝不做归一化** —— journal 使用宿主报告的名称，因此在查找时对 Unicode 归一化不敏感、但存储拼写可能不同的宿主上（macOS），以另一种归一化形式拼写的文件系统写入无法匹配其基线条目，只会拒绝该轮。对键做归一化并不是安全的修法：在把规范等价名称视为不同文件的宿主上（Windows NTFS、Linux 文件系统），归一化后的单一键会让一个文件记录下的字节通过校验并覆盖它的兄弟文件。
 
 <a id="dev-note"></a>
-### 开发者说明
+### 开发备注
 
 <details>
 <summary>供维护者的工作上下文 — 点击展开</summary>

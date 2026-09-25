@@ -1,4 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state.
-2026-09-24-codex-dsh-coordination-skill.md: c9e84d932b21d91a7eab4e2c31609911d6e05c09
-2026-09-24-codex-dsh-coordination-skill.zh.md: 148d745582fe84a96e6b7ab5ba5ca909acc2d007
+# Bilingual-pair consistency record for 2026-09-24-codex-dsh-coordination-skill.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-24-codex-dsh-coordination-skill.md
+/agent-note-codex-coordination-uses-the-dsh-feedback-bridge:
+  en: 5692a4335345e6dc
+  zh: 6c987e7cd583cb26
+/agent-note-codex-coordination-uses-the-dsh-feedback-bridge/problem:
+  en: aad9f10d47f7cfef
+  zh: c7c083e346125a35
+/agent-note-codex-coordination-uses-the-dsh-feedback-bridge/decision:
+  en: a1a6f3961c3b0c7d
+  zh: 669fb8ce39ecf15d
+/agent-note-codex-coordination-uses-the-dsh-feedback-bridge/alternatives-considered:
+  en: 2e04de036d00f310
+  zh: 130c9251588a7761
+/agent-note-codex-coordination-uses-the-dsh-feedback-bridge/consequences:
+  en: ac887048506441fe
+  zh: f0610df98c527799
+/agent-note-codex-coordination-uses-the-dsh-feedback-bridge/testing:
+  en: 6a2633121caba37d
+  zh: ae5ebae8e817bce6

@@ -118,6 +118,7 @@ async function loopHarness(script: (StreamChunk[] | ((options: GenerateOptions) 
   installSessionWaitProjection(ctx)
   const loop = await mountAgentLoopTestHarness(ctx)
   const adapter = new MockAdapter(script)
+  adapter.listModels = async () => [{ provider: 'mock', id: 'mock', name: 'Mock' }]
   ctx.llm.registerAdapter(['mock'], adapter)
   const agent = await loop.create(SessionId('loop-resume'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace' })
 

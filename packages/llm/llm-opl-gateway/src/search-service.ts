@@ -59,11 +59,16 @@ export class OplSearchService extends TypertRemoteService {
     renameSync(temp, this.options.path)
   }
 
-  /** Read settings and accounting without making a model request. */
+  /** Read settings and accounting without making a model request.
+   * @returns a detached settings and usage snapshot.
+   */
   @Remote
   status(): OplSearchStatus { return structuredClone(this.state) }
 
-  /** Persist the selection for subsequent calls, leaving in-flight calls unchanged. */
+  /** Persist the selection for subsequent calls, leaving in-flight calls unchanged.
+   * @param preferences - Search mode and model for future calls.
+   * @returns the committed settings and usage snapshot.
+   */
   @Remote
   configure(preferences: OplSearchPreferences): OplSearchStatus {
     const parsed = preferencesSchema.parse(preferences)
@@ -73,7 +78,10 @@ export class OplSearchService extends TypertRemoteService {
     return this.status()
   }
 
-  /** Fetch the account's advertised models; discovery is not search verification. */
+  /** Fetch the account's advertised models; discovery is not search verification.
+   * @param signal - Cancellation for discovery.
+   * @returns advertised model identifiers.
+   */
   @Remote
   async models(signal: AbortSignal): Promise<string[]> {
     const options = this.options.cloud()
@@ -85,7 +93,12 @@ export class OplSearchService extends TypertRemoteService {
     return [...new Set(parsed.data.map(row => row.id))].sort()
   }
 
-  /** Test the proposed configuration without saving it; this performs a real search. */
+  /** Test the proposed configuration without saving it; this performs a real search.
+   * @param preferences - Proposed backend selection.
+   * @param query - Search query.
+   * @param signal - Cancellation for the test.
+   * @returns verified sources and elapsed time.
+   */
   @Remote
   async test(preferences: OplSearchPreferences, query: string, signal: AbortSignal): Promise<OplSearchTestResult> {
     const start = Date.now()
@@ -99,7 +112,11 @@ export class OplSearchService extends TypertRemoteService {
     }
   }
 
-  /** Execute the selected backend; never silently substitute a different mode or model. */
+  /** Execute the selected backend; never silently substitute a different mode or model.
+   * @param request - Search query and result budget.
+   * @param signal - Optional caller cancellation.
+   * @returns search sources from the selected backend.
+   */
   search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
     return this.execute(request, signal, { ...this.state.preferences }, this.options.sessionId())
   }

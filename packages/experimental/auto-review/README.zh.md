@@ -9,9 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-为 Web 或桌面 profile 当前会话权限选择器添加 Auto review。每次原生或 PTC inner 工具调用前，先由确定性规则判定固定策略两端显而易见的动作，其余交给配置的快速 reviewer，reviewer 未决的调用再交给部署的审批答复方。在显式安装此层之前，默认 Web 保持三种权限模式。Auto review 是实验功能：它可能误放行不安全动作、误拒绝有用操作，并消耗额外 token。
-
-完全访问不是安全审查。Auto preset 与 Full access 捆绑相同的沙箱模式与审批策略，因此获准调用会无限制、无确认地执行；审查决策是 Auto 为该组合新增的唯一控制。
+为 Auto 权限预设提供工具调用自动审查。确定性规则、配置的审查模型和可用的用户审批处理器决定受保护调用能否执行。无法使用的审查结果不会静默授予执行权限。
 
 ## 目录
 
@@ -28,6 +26,10 @@ kind: "package-bundle"
 
 <a id="use-this-package"></a>
 ## 使用本包
+
+为 Web 或桌面 profile 当前会话权限选择器添加 Auto review。每次原生或 PTC inner 工具调用前，先由确定性规则判定固定策略两端显而易见的动作，其余交给配置的快速 reviewer，reviewer 未决的调用再交给部署的审批答复方。在显式安装此层之前，默认 Web 保持三种权限模式。Auto review 是实验功能：它可能误放行不安全动作、误拒绝有用操作，并消耗额外 token。
+
+完全访问不是安全审查。Auto preset 与 Full access 捆绑相同的沙箱模式与审批策略，因此获准调用会无限制、无确认地执行；审查决策是 Auto 为该组合新增的唯一控制。
 
 ### 安装到 profile
 
@@ -144,7 +146,7 @@ Reviewer 使用配置的快速路由，否则使用最新 `request/header.config
 
 #### Token 影响
 
-被拒绝调用只向主对话贡献普通固定错误结果。
+被拒绝或失败的调用只向主对话贡献其普通错误结果。
 
 #### KV Cache 影响
 

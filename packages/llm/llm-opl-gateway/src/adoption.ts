@@ -34,11 +34,12 @@ export function keyFingerprint(value: string): string {
 /**
  * Read the fingerprint of the key this plugin adopted earlier.
  * @param home - Harness home directory.
+ * @param channel - independently owned key group.
  * @returns the recorded fingerprint, or undefined.
  */
-export function readAdoptedFingerprint(home: string): string | undefined {
+export function readAdoptedFingerprint(home: string, channel: 'deepseek' | 'codex' = 'deepseek'): string | undefined {
   try {
-    const value: unknown = JSON.parse(readFileSync(join(home, ADOPTION_RECORD_FILENAME), 'utf8'))
+    const value: unknown = JSON.parse(readFileSync(join(home, channel === 'deepseek' ? ADOPTION_RECORD_FILENAME : 'opl-gateway-codex-key-adoption.json'), 'utf8'))
     if (typeof value !== 'object' || value === null) return undefined
     const fingerprint = (value as { fingerprint?: unknown }).fingerprint
     return typeof fingerprint === 'string' && /^[a-f0-9]{64}$/u.test(fingerprint) ? fingerprint : undefined
@@ -50,10 +51,11 @@ export function readAdoptedFingerprint(home: string): string | undefined {
 /**
  * Record the fingerprint of the key this plugin adopted.
  * @param home - Harness home directory.
+ * @param channel - independently owned key group.
  * @param fingerprint - fingerprint to record.
  */
-export function writeAdoptedFingerprint(home: string, fingerprint: string): void {
-  const path = join(home, ADOPTION_RECORD_FILENAME)
+export function writeAdoptedFingerprint(home: string, fingerprint: string, channel: 'deepseek' | 'codex' = 'deepseek'): void {
+  const path = join(home, channel === 'deepseek' ? ADOPTION_RECORD_FILENAME : 'opl-gateway-codex-key-adoption.json')
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, fingerprint }, undefined, 2)}\n`, { mode: 0o600 })
 }

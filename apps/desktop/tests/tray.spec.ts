@@ -1,126 +1,72 @@
-import { describe, expect, it, vi } from 'vitest'
-import { en, zh, type DesktopMessages } from '../src/locale.ts'
+import type { MenuItemConstructorOptions } from 'electron'
+import { afterEach, expect, it, vi } from 'vitest'
+import { resolveDesktopLocale } from '../src/locale.ts'
+import { DesktopTray } from '../src/tray.ts'
 
-const electron = vi.hoisted(() => {
-  const trayInstances: FakeTray[] = []
-  class FakeTray {
+const native = await vi.hoisted(async () => {
+  const { EventEmitter } = await import('node:events')
+  const trays: FakeTray[] = []
+  class FakeTray extends EventEmitter {
     readonly setToolTip = vi.fn()
     readonly setContextMenu = vi.fn()
     readonly destroy = vi.fn()
-    readonly handlers = new Map<string, () => void>()
-    constructor(readonly image: unknown) {
-      if (unavailable) throw new Error('no StatusNotifier host')
-      trayInstances.push(this)
-    }
-    on(event: string, listener: () => void) { this.handlers.set(event, listener) }
+    constructor(readonly image: unknown) { super(); trays.push(this) }
   }
-  let imageEmpty = false
-  let unavailable = false
+  const menus: MenuItemConstructorOptions[][] = []
   return {
-    trayInstances,
-    FakeTray,
-    nativeImage: { createFromPath: vi.fn(() => ({ isEmpty: () => imageEmpty })) },
-    Menu: { buildFromTemplate: vi.fn((template: unknown) => ({ template })) },
-    setImageEmpty: (value: boolean) => { imageEmpty = value },
-    setUnavailable: (value: boolean) => { unavailable = value },
+    trays, FakeTray, menus,
+    createFromPath: vi.fn((path: string) => ({ path })),
+    buildFromTemplate: vi.fn((template: MenuItemConstructorOptions[]) => { menus.push(template); return { template } }),
   }
 })
-
 vi.mock('electron', () => ({
-  Tray: electron.FakeTray,
-  nativeImage: electron.nativeImage,
-  Menu: electron.Menu,
+  Tray: native.FakeTray,
+  nativeImage: { createFromPath: native.createFromPath },
+  Menu: { buildFromTemplate: native.buildFromTemplate },
 }))
 
-const { createDesktopTray, desktopTrayMenuTemplate } = await import('../src/tray.ts')
+afterEach(() => { native.trays.length = 0; native.menus.length = 0; vi.clearAllMocks() })
 
-describe('desktop tray', () => {
-  it('offers exactly the restore and exit entries', () => {
-    const onOpen = vi.fn()
-    const onExit = vi.fn()
-    const template = desktopTrayMenuTemplate(en, onOpen, onExit)
-    expect(template.map(entry => entry.label ?? entry.type)).toEqual(['Open DeepSeek Harness', 'separator', 'Exit'])
+function setup(locale = 'en') {
+  let current = resolveDesktopLocale(locale)
+  const open = vi.fn()
+  const quit = vi.fn()
+  const tray = new DesktopTray({ iconPath: 'C:/app/resources/tray.ico', locale: () => current, open, quit })
+  return { tray, open, quit, native: native.trays[0]!, setLocale: (next: string) => { current = resolveDesktopLocale(next) } }
+}
 
-    const open = template[0] as { click?: () => void }
-    const exit = template[2] as { click?: () => void }
-    open.click?.()
-    exit.click?.()
-    expect(onOpen).toHaveBeenCalledOnce()
-    expect(onExit).toHaveBeenCalledOnce()
-  })
+function labels(menu: MenuItemConstructorOptions[]): (string | undefined)[] {
+  return menu.map(item => item.type === 'separator' ? 'separator' : item.label)
+}
 
-  it('localizes the tray menu', () => {
-    const template = desktopTrayMenuTemplate(zh, vi.fn(), vi.fn())
-    expect(template[0]?.label).toBe(zh.trayOpen)
-    expect(template[2]?.label).toBe(zh.quit)
-  })
+it('shows the application icon with its name as the tooltip and an Open / Quit menu', () => {
+  const f = setup()
+  expect(native.createFromPath).toHaveBeenCalledWith('C:/app/resources/tray.ico')
+  expect(f.native.image).toEqual({ path: 'C:/app/resources/tray.ico' })
+  expect(f.native.setToolTip).toHaveBeenCalledWith('DeepSeek Harness')
+  expect(labels(native.menus[0]!)).toEqual(['Open DeepSeek Harness', 'separator', 'Quit DeepSeek Harness'])
+  expect(f.native.setContextMenu).toHaveBeenCalledWith({ template: native.menus[0] })
+})
 
-  it('opens the window from a click on the icon', () => {
-    electron.trayInstances.length = 0
-    electron.setImageEmpty(false)
-    const onOpen = vi.fn()
-    const tray = createDesktopTray({
-      iconPath: '/app/renderer/tray-icon.png',
-      messages: () => en,
-      onOpen,
-      onExit: vi.fn(),
-    })
-    expect(tray).toBeDefined()
-    const instance = electron.trayInstances[0]
-    expect(electron.nativeImage.createFromPath).toHaveBeenCalledWith('/app/renderer/tray-icon.png')
-    expect(instance?.setToolTip).toHaveBeenCalledWith(en.trayTooltip)
-    instance?.handlers.get('click')?.()
-    expect(onOpen).toHaveBeenCalledOnce()
-  })
+it('opens the window on a single click and routes menu entries to the open and quit actions', () => {
+  const f = setup()
+  f.native.emit('click')
+  expect(f.open).toHaveBeenCalledOnce()
+  const menu = native.menus[0]!
+  ;(menu[0] as { click: () => void }).click()
+  ;(menu[2] as { click: () => void }).click()
+  expect(f.open).toHaveBeenCalledTimes(2)
+  expect(f.quit).toHaveBeenCalledOnce()
+})
 
-  it('rebuilds the menu for a new language and disposes once', () => {
-    electron.trayInstances.length = 0
-    electron.setImageEmpty(false)
-    let messages: DesktopMessages = en
-    const tray = createDesktopTray({
-      iconPath: '/app/renderer/tray-icon.png',
-      messages: () => messages,
-      onOpen: vi.fn(),
-      onExit: vi.fn(),
-    })
-    const instance = electron.trayInstances[0]
-    expect(instance?.setContextMenu).toHaveBeenCalledTimes(1)
-    messages = zh
-    tray?.refresh()
-    expect(instance?.setContextMenu).toHaveBeenCalledTimes(2)
-    expect(electron.Menu.buildFromTemplate).toHaveBeenLastCalledWith([
-      expect.objectContaining({ label: zh.trayOpen }),
-      expect.objectContaining({ type: 'separator' }),
-      expect.objectContaining({ label: zh.quit }),
-    ])
-    tray?.dispose()
-    expect(instance?.destroy).toHaveBeenCalledOnce()
-  })
-
-  it('answers no tray for a build without a usable icon', () => {
-    electron.setImageEmpty(true)
-    expect(createDesktopTray({
-      iconPath: '/app/renderer/missing.png',
-      messages: () => en,
-      onOpen: vi.fn(),
-      onExit: vi.fn(),
-    })).toBeUndefined()
-  })
-
-  it('answers no tray when the platform refuses to create one', () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    electron.trayInstances.length = 0
-    electron.setImageEmpty(false)
-    electron.setUnavailable(true)
-    expect(createDesktopTray({
-      iconPath: '/app/renderer/tray-icon.png',
-      messages: () => en,
-      onOpen: vi.fn(),
-      onExit: vi.fn(),
-    })).toBeUndefined()
-    // The caller keeps the close prompt's exit answer when no icon was
-    // installed, so the failure is reported rather than thrown out of startup.
-    expect(logged).toHaveBeenCalledWith('desktop tray could not be created', expect.any(Error))
-    electron.setUnavailable(false)
-  })
+it('relabels the menu in the current locale and ignores relabel after disposal', () => {
+  const f = setup()
+  f.setLocale('zh')
+  f.tray.relabel()
+  expect(labels(native.menus[1]!)).toEqual(['打开 DeepSeek Harness', 'separator', '退出 DeepSeek Harness'])
+  f.tray.dispose()
+  f.tray.dispose()
+  expect(f.native.destroy).toHaveBeenCalledOnce()
+  f.tray.relabel()
+  expect(native.menus).toHaveLength(2)
 })

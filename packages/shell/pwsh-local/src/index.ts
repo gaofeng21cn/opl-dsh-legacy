@@ -141,7 +141,8 @@ export class PwshLocalExecutor extends ShellExecutor {
     maxSpillBytes: z.number().default(DEFAULT_MAX_SPILL_BYTES).volatile(),
     graceMs: z.number().default(DEFAULT_GRACE_MS).volatile(),
     pwshPath: z.string().volatile(),
-    ...AGENT_SHELL_SETTINGS_FIELDS,
+    agentShell: AGENT_SHELL_SETTINGS_FIELDS.agentShell,
+    gitBashPath: AGENT_SHELL_SETTINGS_FIELDS.gitBashPath,
   })
 
   /** The declared executable the current {@link pwshPath} was resolved from. */

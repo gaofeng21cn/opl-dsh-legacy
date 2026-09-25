@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-llm-opl-gateway` serves DeepSeek models through an OPL Gateway account instead of a direct provider key. Sign in on the OPL Gateway Settings page and the route mints or reuses that account's inference key, stores only a refresh token, and resolves the key on every request. The endpoint follows the account binding OPL already recorded, so a machine keeps working across restarts. Deployments that hold their own provider key mount the direct adapter instead.
+`dsh-llm-opl-gateway` serves DeepSeek models through an OPL Gateway account instead of a direct provider key. Sign in on the OPL Gateway Settings page and the route mints or reuses separate DeepSeek and Codex group keys, stores them with the refresh token in the local credential store, and resolves each key on request. The endpoint follows the account binding OPL already recorded, so a machine keeps working across restarts. Deployments that hold their own provider key mount the direct adapter instead.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ Choose it when the people using the harness hold OPL accounts and the deployment
 |---|---|---|
 | `apiKeyEnv` | `OPL_GATEWAY_DEEPSEEK_API_KEY` | Credential reference resolved per request; the account page writes a key issued in the Gateway `DeepSeek` group. |
 | `baseURL` | The account binding's endpoint, else `https://gateway.medopl.com/v1` | Inference root; the plugin prefers what the binding recorded over the built-in root. |
-| `models` | One entry: `deepseek-v4.1-flash`, shown as `DeepSeek-V4.1-Flash` | Advisory catalog the picker lists. |
+| `models` | One entry: `deepseek-flash`, shown as `DeepSeek-V4.1-Flash` | Advisory catalog the picker lists. |
 | `thinking` | Provider default | `disabled` limits every conversation request to `off`. |
 | `reasoningEffort` | Provider default | Default effort for this route. |
 | `maxTokens` | DeepSeek adapter default | Default output cap; a model's own cap and explicit request values win. |
@@ -60,9 +60,11 @@ The generated [configuration catalog](../../../docs/config-catalog.md) is the ex
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-### One route, two protocols
+### Two inference channels
 
-The adapter subclasses the official DeepSeek Messages adapter and keeps its native Messages request assembly, streaming, replay, and token accounting. The OPL search service separately selects local Bing retrieval or account-authenticated Responses search. The upstream DeepSeek search provider remains independent. See the [desktop search settings](../../../apps/desktop/README.md#desktop-control).
+The default `opl-gateway` route uses the official DeepSeek Messages adapter with a DeepSeek-group key. The independent `opl-gateway-openai` route uses the official `dsh-llm-pi-ai` Responses adapter with a Codex-group key. Sign-in and stored-session refresh provision both keys under separate machine-specific names; existing Codex/AGI keys from other applications are not modified. An unavailable Codex group leaves the default channel usable and reports compatibility provisioning as unavailable.
+
+The default route retries once through OpenAI on authentication, quota, rate-limit, transport, timeout, server, or missing-endpoint failures before any stream chunk reaches DSH. Cancellation, invalid requests, context overflow, and failures after output starts do not switch channels. Each new request starts with Messages. Both routes retain the DSH agent loop, tool execution, and durable message history. System-prompt updates use the shared head-position behavior supported by both adapters; protocol-specific replay is reused only by its owning adapter.
 
 | File | Responsibility |
 |---|---|
@@ -77,11 +79,11 @@ The adapter subclasses the official DeepSeek Messages adapter and keeps its nati
 
 ### Where the credential comes from
 
-Each request resolves the key in one order: the credentials seam's value for `apiKeyEnv`, then the token OPL recorded for its own client, then a failure naming the reference. Adoption covers the configuration surfaces rather than the request path — it fills a reference that is unset or still holds a value this plugin adopted earlier, so a key typed on the Models page is never overwritten. Both the request path and adoption read the same binding, and neither writes OPL state.
+Each request resolves the key in one order: the credentials seam's value for `apiKeyEnv`, then an OPL binding verified to belong to the DeepSeek group, then a failure naming the reference. Adoption covers the configuration surfaces rather than the request path — it fills a reference that is unset or still holds a value this plugin adopted earlier, so a key typed on the Models page is never overwritten. Both the request path and adoption read the same binding, and neither writes OPL state.
 
 ### The control plane and the inference plane
 
-The gateway serves account management at `/api/v1` and model traffic at `/v1`. Sign-in trades the account password for a session, keeps the refresh token as a credential record, and mints an inference key only when the account has none; sign-out disables the key this plugin created and leaves a key the operator typed alone. Account facts are cached in `opl-gateway-account.json` with a freshness window matching the gateway's own, so a restart shows the account immediately and the page reports stale facts as stale.
+The gateway serves account management at `/api/v1` and model traffic at `/v1`. Sign-in trades the account password for a session, keeps the refresh token as a credential record, and creates or reuses this machine's named key in each of the DeepSeek and Codex groups; sign-out disables the keys this plugin manages and leaves a key the operator typed alone. Account facts are cached in `opl-gateway-account.json` with a freshness window matching the gateway's own, so a restart shows the account immediately and the page reports stale facts as stale.
 
 </details>
 
@@ -108,7 +110,7 @@ Read these pages when the package-level contract is not enough.
 
 #### What the model sees
 
-The selected gateway model receives the harness-assembled request unchanged: system prompt, message history, tool schemas, stop sequences, and call config such as `maxTokens` and `reasoningEffort`. This route contributes no prompt prose of its own, and provider-specific request-extension fields stay outside model input. One catalog field changes request placement: an entry declaring `systemPromptUpdate: in-history` appends a system-prompt change after the cached history instead of rewriting it.
+The selected gateway model receives the harness-assembled request unchanged: system prompt, message history, tool schemas, and call config such as `maxTokens` and `reasoningEffort`. This route contributes no prompt prose of its own, and provider-specific request-extension fields stay outside model input. The dual-channel route omits `systemPromptUpdate: in-history`, so both channels use the system prompt at the history head.
 
 #### Token effect
 
@@ -116,7 +118,7 @@ Provider tokenization governs exact text and image input, and the totals the gat
 
 #### KV Cache effect
 
-An unchanged assembled prefix stays eligible for the gateway provider's cache reuse, which reported usage shows. The package-owned changes that can invalidate reuse from the first affected token are the endpoint, the selected model, and the advertised catalog entry; a `systemPromptUpdate: in-history` entry keeps the history prefix reusable across a system-prompt change. Provider cache availability and eviction remain outside this package's contract.
+An unchanged assembled prefix stays eligible for the gateway provider's cache reuse, which reported usage shows. The package-owned changes that can invalidate reuse from the first affected token are the endpoint, the selected model, and the advertised catalog entry; a system-prompt change updates the history head. Provider cache availability and eviction remain outside this package's contract.
 
 ### OPL Gateway response
 

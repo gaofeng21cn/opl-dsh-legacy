@@ -92,9 +92,13 @@ interface ShellExecSpec {
    * Ordinary environment entries carried through from
    * {@link ShellExecRequest.env}; {@link dshEnv} still merges after them.
    * OPTIONAL on the spec for the same reason as `stdin`: absent means no
-   * ordinary extra environment.
+   * ordinary extra environment. A string entry overrides the ambient value; an
+   * explicit `undefined` tombstones it, removing an inherited entry the command
+   * must not see (the subprocess seam's documented merge contract). RESOLVED
+   * specs are the only place tombstones appear — the caller-facing request
+   * carries values only.
    */
-  env?: Record<string, string> | undefined
+  env?: Record<string, string | undefined> | undefined
   /** Managed `DSH_*` snapshot (typed to managed keys); merges after {@link env}. */
   dshEnv?: DshEnvironment | undefined
   /** Resolved sandbox policy; ignored by executors that do not confine. */

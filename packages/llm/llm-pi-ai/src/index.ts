@@ -75,7 +75,8 @@ import { registerPiAiFlows } from './login.ts'
 
 export { PiAiAdapter } from './adapter.ts'
 export type { PiAiAdapterOptions } from './adapter.ts'
-export { Config } from './config.ts'
+export { Config, resolveProfiles } from './config.ts'
+export { authContextFrom, credentialStoreFrom } from './auth.ts'
 export type {
   Options,
   PiAiCompatProfile,

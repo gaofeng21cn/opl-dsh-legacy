@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-22-windows-ordinary-target-hidden-console.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-22-windows-ordinary-target-hidden-console.md
-2026-09-22-windows-ordinary-target-hidden-console.md: f077735952cc69aab3433a5d34132dcb36bcaea7
-2026-09-22-windows-ordinary-target-hidden-console.zh.md: 50e2e45d448132c84ccaf606f75bb2f5425fd341
+/agent-note-windows-ordinary-subprocess-targets-own-a-hidden-console:
+  en: 72091e119c611864
+  zh: ae147f45f2a8cae2
+/agent-note-windows-ordinary-subprocess-targets-own-a-hidden-console/problem:
+  en: ec76cdbf3867f858
+  zh: d3623b4f9959771c
+/agent-note-windows-ordinary-subprocess-targets-own-a-hidden-console/decision:
+  en: 0d541e571846b87e
+  zh: 4613e2e09460e5b6
+/agent-note-windows-ordinary-subprocess-targets-own-a-hidden-console/alternatives-considered:
+  en: a901d90626b9b749
+  zh: 542600273391dd87
+/agent-note-windows-ordinary-subprocess-targets-own-a-hidden-console/consequences:
+  en: 916f4b97f359b5cb
+  zh: 917d66c86386a8ee
+/agent-note-windows-ordinary-subprocess-targets-own-a-hidden-console/testing:
+  en: db7d18357ab605a4
+  zh: 3097beac34b38af8

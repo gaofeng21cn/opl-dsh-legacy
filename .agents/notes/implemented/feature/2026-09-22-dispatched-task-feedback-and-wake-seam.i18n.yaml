@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-22-dispatched-task-feedback-and-wake-seam.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-22-dispatched-task-feedback-and-wake-seam.md
-2026-09-22-dispatched-task-feedback-and-wake-seam.md: d7d4ce752131b627b69839a82fdf0372f9c10b94
-2026-09-22-dispatched-task-feedback-and-wake-seam.zh.md: 30cb47f4138ccc4df933db355d7285a74877d96d
+/agent-note-dispatched-task-feedback-with-a-wake-seam:
+  en: eee01dcd87d850a2
+  zh: c81ba214c03f2086
+/agent-note-dispatched-task-feedback-with-a-wake-seam/problem:
+  en: 80546b094793ce4b
+  zh: 334f48076477999d
+/agent-note-dispatched-task-feedback-with-a-wake-seam/decision:
+  en: cfc15a8415aa15a5
+  zh: 85590c98c5478783
+/agent-note-dispatched-task-feedback-with-a-wake-seam/consequences:
+  en: 89ee69b608cb5d21
+  zh: afb6bbe9fb69ddd0
+/agent-note-dispatched-task-feedback-with-a-wake-seam/alternatives-considered:
+  en: 84e1ea1296a55bce
+  zh: 99f5c7e784c90fca
+/agent-note-dispatched-task-feedback-with-a-wake-seam/testing:
+  en: d87cce3c99be34cf
+  zh: 1459730592e329d8
+/agent-note-dispatched-task-feedback-with-a-wake-seam/related:
+  en: 2ebfb8e7cf421fd3
+  zh: 98e5f4e9ae62abe5

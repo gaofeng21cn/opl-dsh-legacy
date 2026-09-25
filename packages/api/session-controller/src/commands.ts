@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { modelAvailable } from './catalog.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
@@ -436,14 +437,15 @@ export class SessionCommandController {
   }
 
   /**
-   * Validate and install one Session-local model selection.
+   * Validate and install one Session-local model selection; save the default in the background.
    * @param request - Session identity and requested model selection.
-   * @returns the normalized selection installed for the Session.
+   * @returns the normalized selection installed for the Session, without waiting for default persistence.
    */
   async selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
     const agent = await this.resolveAgent(request.sessionId)
     return this.agents.serializeImageAdmission(agent, async () => {
       try {
+        await this.requireModel(request)
         const resolved = await this.ctx.llm.resolveCallConfig({
           provider: request.provider,
           model: request.model,
@@ -459,13 +461,11 @@ export class SessionCommandController {
             : { reasoningEffort: resolved.reasoningEffort }),
         }
         this.agents.selectForNextRequest(agent, selected)
-        try {
-          await this.ctx.agentDefaultModel.saveSelection(selected)
-        } catch (error) {
+        void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
           this.ctx.logger.warn(
             `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
           )
-        }
+        })
         return { selected: { ...selected } }
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
@@ -617,7 +617,7 @@ export class SessionCommandController {
     }
     const agent = await this.resolveAgent(request.sessionId)
     if (hasPromptRequest(agent, request.requestId)) return { accepted: true }
-    this.requireServedRoute(agent)
+    await this.requireServedRoute(agent)
     const hasImage = request.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionPromptValue> => {
       await this.admitAndDeliverPrompt(agent, request.requestId, request.content, clientTimeZone, (message, binding) => {
@@ -628,6 +628,13 @@ export class SessionCommandController {
       return { accepted: true }
     }
     return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit()
+  }
+
+  private async requireModel(selection: Pick<AgentModelSelection, 'provider' | 'model'>): Promise<void> {
+    if (!await modelAvailable(this.ctx, selection)) {
+      throw new RemoteError('session/model-unavailable', 'Select an available model before sending a message.',
+        { provider: selection.provider, model: selection.model })
+    }
   }
 
   /**
@@ -695,7 +702,7 @@ export class SessionCommandController {
         { sessionId: request.sessionId, reason: 'busy' },
       )
     }
-    this.requireServedRoute(agent)
+    await this.requireServedRoute(agent)
     const hasImage = request.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionEditPromptValue> => {
       const seq = await this.admitAndDeliverPrompt(
@@ -1047,14 +1054,8 @@ export class SessionCommandController {
    * @param agent - Agent the prompt addresses.
    * @throws RemoteError when no adapter serves the selected provider.
    */
-  private requireServedRoute(agent: Agent): void {
-    const selection = this.agents.selectionFor(agent).current
-    if (routeServed(this.ctx, selection.provider)) return
-    throw new RemoteError(
-      'session/model-unavailable',
-      `no adapter serves provider "${selection.provider}"; select a model for this session`,
-      { provider: selection.provider, model: selection.model },
-    )
+  private async requireServedRoute(agent: Agent): Promise<void> {
+    await this.requireModel(this.agents.selectionFor(agent).current)
   }
 
   /**
@@ -1423,8 +1424,4 @@ function referencedImage(
     if (found !== undefined) return found
   }
   return undefined
-}
-
-function routeServed(ctx: Context, provider: string): boolean {
-  return ctx.llm.listProviders().some(entry => entry.id === provider)
 }

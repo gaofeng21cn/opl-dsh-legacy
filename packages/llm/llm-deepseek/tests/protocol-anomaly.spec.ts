@@ -23,7 +23,7 @@ async function run(events: Record<string, unknown>[], sink?: DeepSeekAdapterOpti
   servers.push(endpoint)
   const adapter = new DeepSeekAdapter({
     options: () => resolveAdapterOptions({ baseURL: endpoint.url }),
-    resolveApiKey: async () => 'SECRET-KEY',
+    resolveAuth: async () => ({ headers: { 'x-api-key': 'SECRET-KEY' } }),
     resolveUserId: () => 'test' as AnonymousUserId,
     ...(sink === undefined ? {} : { onProtocolAnomaly: sink }),
     prepareExtensions,

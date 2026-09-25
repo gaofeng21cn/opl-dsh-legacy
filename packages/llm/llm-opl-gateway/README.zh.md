@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-llm-opl-gateway` 通过 OPL Gateway 账号提供 DeepSeek 模型，而不是使用直接的供应商密钥。在 OPL Gateway 设置页登录后，该路由会签发或复用该账号的推理密钥，只保存刷新令牌，并在每次请求时解析密钥。端点为 OPL 已记录的账号绑定，因此机器重启后仍可继续工作。自持供应商密钥的部署应挂载直接适配器。
+`dsh-llm-opl-gateway` 通过 OPL Gateway 账号提供 DeepSeek 模型，而不是使用直接的供应商密钥。在 OPL Gateway 设置页登录后，插件分别签发或复用 DeepSeek 与 Codex 分组的独立密钥，将两组密钥与刷新令牌保存在本地凭据存储，并按请求解析密钥。端点为 OPL 已记录的账号绑定，因此机器重启后仍可继续工作。自持供应商密钥的部署应挂载直接适配器。
 
 ## 目录
 
@@ -42,7 +42,7 @@ kind: "package-reference"
 |---|---|---|
 | `apiKeyEnv` | `OPL_GATEWAY_DEEPSEEK_API_KEY` | 每次请求解析的凭据引用；账号页在登录后写入 Gateway `DeepSeek` 分组签发的密钥。 |
 | `baseURL` | 账号绑定记录的端点，否则为 `https://gateway.medopl.com/v1` | 推理根地址；插件优先使用绑定记录的值，而非内置根地址。 |
-| `models` | 一个条目：`deepseek-v4.1-flash`，显示为 `DeepSeek-V4.1-Flash` | 选择器列出的建议目录。 |
+| `models` | 一个条目：`deepseek-flash`，显示为 `DeepSeek-V4.1-Flash` | 选择器列出的建议目录。 |
 | `thinking` | 供应商默认值 | `disabled` 会把该路由的每个对话请求限制为 `off`。 |
 | `reasoningEffort` | 供应商默认值 | 该路由的默认推理强度。 |
 | `maxTokens` | DeepSeek 适配器默认值 | 默认输出上限；模型自身上限与请求中的显式取值优先。 |
@@ -60,9 +60,11 @@ kind: "package-reference"
 <details>
 <summary>实现内幕——点击展开</summary>
 
-### 一条路由，两个平面
+### 两条推理通道
 
-适配器继承官方 DeepSeek Messages 适配器，保留原生 Messages 请求组装、流式输出、回放与 token 计量。OPL 搜索服务独立选择本地 Bing 检索或账号鉴权的 Responses 搜索。上游 DeepSeek 搜索提供者仍然独立。参见[桌面搜索设置](../../../apps/desktop/README.zh.md#desktop-control)。
+默认 `opl-gateway` 路由使用官方 DeepSeek Messages 适配器和 DeepSeek 分组 key。独立的 `opl-gateway-openai` 路由使用官方 `dsh-llm-pi-ai` Responses 适配器与 Codex 分组 key。登录和已存会话刷新会按机器专属名称配置两组独立密钥；其他应用的旧 Codex/AGI key 不会被修改。Codex 分组不可用时默认通道仍可使用，账号页显示兼容通道配置未就绪。
+
+默认路由在尚未向 DSH 输出任何流分片时，对认证、额度、限流、连接、超时、服务端或端点缺失错误执行一次 OpenAI 重试。取消、无效请求、上下文超限及开始输出后的失败不触发切换。每次新请求先尝试 Messages。两条路由均保留 DSH 的 Agent 循环、工具执行和持久消息历史。系统提示词更新使用两套适配器共有的头部位置语义；协议专属回放只由所属适配器复用。
 
 | 文件 | 职责 |
 |---|---|
@@ -77,11 +79,11 @@ kind: "package-reference"
 
 ### 凭据从何而来
 
-每次请求按同一顺序解析密钥：credentials seam 中 `apiKeyEnv` 的值，其次是 OPL 为其自身客户端记录的令牌，最后以指出该引用的失败告终。采纳面向配置界面而非请求路径——它只填充未设置、或仍保存着本插件此前采纳值的引用，因此 Models 页面输入的密钥不会被覆盖。请求路径与采纳读取同一绑定，且都不写入 OPL 状态。
+每次请求按同一顺序解析密钥：credentials seam 中 `apiKeyEnv` 的值，其次是已确认属于 DeepSeek 分组的 OPL 绑定密钥，最后以指出该引用的失败告终。采纳面向配置界面而非请求路径——它只填充未设置、或仍保存着本插件此前采纳值的引用，因此 Models 页面输入的密钥不会被覆盖。请求路径与采纳读取同一绑定，且都不写入 OPL 状态。
 
 ### 控制平面与推理平面
 
-网关在 `/api/v1` 提供账号管理、在 `/v1` 承载模型流量。登录用账号密码换取会话，把刷新令牌保存为凭据记录，并且仅当账号尚无推理密钥时才签发一把；退出会禁用本插件创建的密钥，而保留操作者自己输入的密钥。账号事实缓存在 `opl-gateway-account.json` 中，其新鲜度窗口与网关自身一致，因此重启后会立即显示账号，过期的观测会被如实标记为过期。
+网关在 `/api/v1` 提供账号管理、在 `/v1` 承载模型流量。登录用账号密码换取会话，把刷新令牌保存为凭据记录，并在 DeepSeek 与 Codex 两个分组中分别创建或复用本机命名的密钥；退出会禁用本插件管理的两组密钥，而保留操作者自己输入的密钥。账号事实缓存在 `opl-gateway-account.json` 中，其新鲜度窗口与网关自身一致，因此重启后会立即显示账号，过期的观测会被如实标记为过期。
 
 </details>
 
@@ -108,7 +110,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-所选网关模型收到 Harness 组装好的请求且不作改动：system prompt、消息历史、工具 schema、停止序列，以及诸如 `maxTokens` 与 `reasoningEffort` 的调用配置。本路由不贡献自己的提示词文本，供应商特有的请求扩展字段留在模型输入之外。一个目录字段会改变请求摆放：声明 `systemPromptUpdate: in-history` 的条目会把 system prompt 变更追加在缓存历史之后，而不是重写它。
+所选网关模型收到 Harness 组装好的请求且不作改动：system prompt、消息历史、工具 schema，以及诸如 `maxTokens` 与 `reasoningEffort` 的调用配置。本路由不贡献自己的提示词文本，供应商特有的请求扩展字段留在模型输入之外。双通道路由不声明 `systemPromptUpdate: in-history`，因此两条通道都使用位于历史头部的系统提示词。
 
 #### Token 影响
 
@@ -116,7 +118,7 @@ kind: "package-reference"
 
 #### KV Cache 影响
 
-未改动的已组装前缀仍可被网关供应商复用缓存，回报用量中会体现。可能导致复用从第一个受影响 token 起失效的包内变更包括：端点、所选模型与公布的目录条目；声明 `systemPromptUpdate: in-history` 的条目让历史前缀在 system prompt 变更后仍可复用。供应商侧的缓存可用性与淘汰不在本包契约之内。
+未改动的已组装前缀仍可被网关供应商复用缓存，回报用量中会体现。可能导致复用从第一个受影响 token 起失效的包内变更包括：端点、所选模型与公布的目录条目；系统提示词发生变化时，历史头部会相应更新。供应商侧的缓存可用性与淘汰不在本包契约之内。
 
 ### OPL Gateway 响应
 

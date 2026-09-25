@@ -78,11 +78,19 @@ The plugin registers one activation listener with the shell. A click is routed t
 <a id="model-experience"></a>
 ## Model Experience
 
-None. The package observes Host state changes and never contributes prompt text, a tool, or a Session event.
+### Settings and notifications
+
+#### What the model sees
+
+The page adds no prompt or tool to `GenerateOptions`. Account configuration selects the next model route; notifications present existing task state.
+
+#### Token effect
+
+The page and notifications make no additional model calls.
 
 #### KV Cache effect
 
-No invalidation. No model-visible input changes.
+No direct cache changes. A route switch follows the selected adapter’s cache behavior.
 
 ## Known Limitations and Deferred Work
 

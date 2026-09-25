@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-22-native-agent-git-bash.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-22-native-agent-git-bash.md
-2026-09-22-native-agent-git-bash.md: 0c141412c21677224550dcfc792d3ccff54f2d7b
-2026-09-22-native-agent-git-bash.zh.md: 8ef5ef2482a65ae86797f12da75a66258c77a974
+/agent-note-native-agent-shell-selection:
+  en: 370e4a261f1fed3c
+  zh: ddbd49c0a7741e80
+/agent-note-native-agent-shell-selection/problem:
+  en: e05747a00aec7193
+  zh: 5b39cad903b96f89
+/agent-note-native-agent-shell-selection/decision:
+  en: 11a97ef8c9aabaef
+  zh: e6a54bf9310dfacc
+/agent-note-native-agent-shell-selection/alternatives-considered:
+  en: 096534f4148f8b2f
+  zh: d11ee99b3bcf8920
+/agent-note-native-agent-shell-selection/consequences:
+  en: 8e180c21fd91f811
+  zh: fab442951dbde3c8
+/agent-note-native-agent-shell-selection/verification:
+  en: e41288c1619030f9
+  zh: b7dcd0315acc6a7a

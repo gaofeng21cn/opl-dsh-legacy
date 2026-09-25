@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-21-opl-search-and-desktop-control.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-21-opl-search-and-desktop-control.md
-2026-09-21-opl-search-and-desktop-control.md: ba06b70f76718d25e7b96e4b8681cd425b902b64
-2026-09-21-opl-search-and-desktop-control.zh.md: 9007c6539581c20854ebef6191c5ecfa5edd398c
+/agent-note-opl-search-selection-and-desktop-session-control:
+  en: d53852c69779e787
+  zh: a116d0ebdc87a431
+/agent-note-opl-search-selection-and-desktop-session-control/problem:
+  en: 7edbcf0b685044e8
+  zh: 320fd3ddd6e84fb5
+/agent-note-opl-search-selection-and-desktop-session-control/decision:
+  en: 2647b5e083e9d4c6
+  zh: c924bc0b71beb8d3
+/agent-note-opl-search-selection-and-desktop-session-control/alternatives-considered:
+  en: 2c5f7c8d547136eb
+  zh: ded86f30803c95bc
+/agent-note-opl-search-selection-and-desktop-session-control/consequences:
+  en: 504e2d1a6cf06a73
+  zh: 875e5a512454d4a1

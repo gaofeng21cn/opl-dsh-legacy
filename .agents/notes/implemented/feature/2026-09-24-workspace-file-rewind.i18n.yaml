@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-24-workspace-file-rewind.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-24-workspace-file-rewind.md
-2026-09-24-workspace-file-rewind.md: 49cf165ee50cd998b42b7c9a54c2e328d1d635c2
-2026-09-24-workspace-file-rewind.zh.md: 50f3a3231838e9ea965ba388f98e68f21072cfdf
+/agent-note-workspace-file-rewind:
+  en: d2a645f6e034e147
+  zh: a8cfffd1ed2644c9
+/agent-note-workspace-file-rewind/problem:
+  en: 47290924e8b333ec
+  zh: 11661b3803004c8a
+/agent-note-workspace-file-rewind/decision:
+  en: a49eb58c9394239e
+  zh: 9286fce6970bde4c
+/agent-note-workspace-file-rewind/alternatives-considered:
+  en: 828e8f4a1b51fff4
+  zh: 537bd25cb917de47
+/agent-note-workspace-file-rewind/consequences:
+  en: ec6b19eeb2d52331
+  zh: 9ee2d30a9f634fc4

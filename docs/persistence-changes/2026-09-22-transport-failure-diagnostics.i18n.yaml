@@ -1,6 +1,28 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-22-transport-failure-diagnostics.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-09-22-transport-failure-diagnostics.md
-2026-09-22-transport-failure-diagnostics.md: 9b472fb8d59e2cf9ae5d5bdf86aac3b6e0f72074
-2026-09-22-transport-failure-diagnostics.zh.md: dcac47296bae5164fcece8f9c3e4cd1ee3182aeb
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-09-22-transport-failure-diagnostics:
+  en: 6ad551495ba6de3a
+  zh: 1dac41fe45c8d812
+/2026-09-22-transport-failure-diagnostics/summary:
+  en: 6e0976743873bf16
+  zh: 2b7009cf0de269f1
+/2026-09-22-transport-failure-diagnostics/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-09-22-transport-failure-diagnostics/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-09-22-transport-failure-diagnostics/compatibility:
+  en: 6a2e035e8ebd06d9
+  zh: 456b8f01f3c1c9e7
+/2026-09-22-transport-failure-diagnostics/verification:
+  en: 07185d7a28fe7c39
+  zh: 552852bb1e1c6c0c
+/2026-09-22-transport-failure-diagnostics/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

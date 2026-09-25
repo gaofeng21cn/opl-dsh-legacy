@@ -2,7 +2,7 @@
  * Register the OPL Gateway as one provider route.
  *
  * The route speaks the gateway's native Messages protocol
- * through the DeepSeek adapter, advertises the gateway's `deepseek-v4.1-flash` as
+ * through the DeepSeek adapter, advertises the gateway's `deepseek-flash` as
  * `DeepSeek-V4.1-Flash`, and authenticates with the key OPL provisioned for
  * this account. A deployment that mounts the plugin therefore reaches the
  * model with no model, endpoint, protocol, or key entered by hand; the Models
@@ -15,13 +15,16 @@ import type { LlmProviderInfo } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-attachment'
 import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
-import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
-import type { ResolvedDeepSeekOptions } from '@deepseek-ai/dsh-llm-deepseek'
+import { DeepSeekAdapter, catalogModelInfo } from '@deepseek-ai/dsh-llm-deepseek'
+import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek-api-key'
+import type { ResolvedDeepSeekOptions } from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import type {} from '@deepseek-ai/dsh-settings'
 import { adoptOplGatewayKey } from './adoption.ts'
 import { OplGatewayAccountService } from './account-service.ts'
-import { Config, toAdapterConfig } from './config.ts'
+import { PiAiAdapter, resolveProfiles, authContextFrom, credentialStoreFrom } from '@deepseek-ai/dsh-llm-pi-ai'
+import { DualChannelAdapter, OPENAI_PROVIDER } from './dual-channel.ts'
+import { Config, CODEX_API_KEY_REF, toAdapterConfig } from './config.ts'
 import { OPL_GATEWAY_INFERENCE_BASE_URL, importOplGatewayKey, oplGatewayStateDirectories } from './opl-credentials.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
@@ -96,7 +99,7 @@ const DISPLAY_NAME = 'OPL Gateway'
  * different account and endpoint, so the selector must not present the two as
  * one provider.
  */
-class OplGatewayAdapter extends DeepSeekAdapter {
+class OplGatewayAdapter extends DeepSeekAdapter<ResolvedDeepSeekOptions> {
   override providerInfo(provider: string): LlmProviderInfo {
     return { id: provider, name: DISPLAY_NAME }
   }
@@ -183,7 +186,8 @@ export function apply(ctx: Context, config: Config): void {
   const resolveUserId = (): AnonymousUserId => userId ??= getOrCreateAnonymousUserId()
   const adapter = new OplGatewayAdapter({
     options,
-    resolveApiKey,
+    resolveAuth: async connection => ({ headers: { 'x-api-key': await resolveApiKey(connection) } }),
+    discoverModels: provider => Promise.resolve(options().models.map(model => catalogModelInfo(provider, model))),
     resolveUserId,
     resolveAttachments: () => ctx.get('attachments'),
     resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
@@ -213,7 +217,48 @@ export function apply(ctx: Context, config: Config): void {
   // reads as a broken twin of the official DeepSeek card. An undeclared live
   // route still reaches the model picker and still counts as a usable provider
   // for first-run readiness, so the surfaces that matter keep working.
-  ctx.llm.registerAdapter([PROVIDER], adapter)
+  let activeChannel: 'deepseek' | 'codex' | undefined
+  let compatibilityOptions: ResolvedDeepSeekOptions | undefined
+  let profiles: ReturnType<typeof resolveProfiles>
+  const compatibility = new PiAiAdapter({
+    profiles: () => {
+      const connection = options()
+      if (connection !== compatibilityOptions) {
+        profiles = resolveProfiles({
+          [OPENAI_PROVIDER]: {
+            displayName: 'OPL Gateway · OpenAI',
+            api: 'openai-responses',
+            baseURL: connection.baseURL,
+            apiKeyEnv: CODEX_API_KEY_REF,
+            streamIdleTimeoutMs: connection.streamIdleTimeoutMs,
+            models: connection.models.map(model => ({
+              id: model.id, name: model.name ?? model.id,
+              contextWindow: model.contextWindow ?? connection.defaultContextWindow,
+              input: ['text', 'image'],
+              reasoningEfforts: { off: null, low: 'low', high: 'high', max: 'xhigh' },
+            })),
+          },
+        })
+        compatibilityOptions = connection
+      }
+      return profiles
+    },
+    auth: { credentials: credentialStoreFrom(ctx), authContext: authContextFrom(ctx) },
+    resolveApiKey: async () => {
+      const ref = credentialRef(CODEX_API_KEY_REF)
+      const credentials = ctx.get('credentials')
+      const key = credentials === undefined ? launchEnvironmentOf(ctx).get(ref)?.value : (await credentials.resolve(ref))?.value
+      if (!key) throw new LlmError('OPL Gateway Codex channel has no key; refresh the Gateway account', 'MISSING_CREDENTIAL')
+      return assertUsableApiKey(key, 'llm-opl-gateway', ref)
+    },
+    resolveAttachments: () => ctx.get('attachments'),
+    resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref),
+  })
+  const dualChannel = new DualChannelAdapter(adapter, compatibility,
+    (channel) => { activeChannel = channel },
+    (code) => { ctx.logger.warn(`OPL Gateway: Messages failed (${code}); retrying this request through the Codex OpenAI channel`) },
+  )
+  ctx.llm.registerAdapter([PROVIDER, OPENAI_PROVIDER], dualChannel)
 
   /**
    * Adoption runs once the credentials seam exists, which the loader may order
@@ -229,6 +274,7 @@ export function apply(ctx: Context, config: Config): void {
     // without one could not make the route usable.
     account ??= new OplGatewayAccountService(credentialsCtx, {
       credentialRef: () => options().apiKeyEnv,
+      activeChannel: () => activeChannel,
       endpoint: () => options().baseURL,
       models: () => options().models.map(model => ({ id: model.id, name: model.name ?? model.id })),
       stateDirectory: () => oplGatewayStateDirectories(),
@@ -246,6 +292,7 @@ export function apply(ctx: Context, config: Config): void {
       })
     }
     adoptAccountKey()
+    void account.refresh().catch(() => { ctx.logger.warn('OPL Gateway account refresh failed') })
   })
 
   // Non-volatile Config is remounted by the Loader when its profile patch changes.
@@ -277,7 +324,7 @@ export function apply(ctx: Context, config: Config): void {
   const searchOptions = (): OplGatewaySearchProviderOptions => {
     const route = options()
     const search = current().search
-    const apiKeyEnv = credentialRef(search?.apiKeyEnv ?? 'OPL_GATEWAY_SEARCH_API_KEY')
+    const apiKeyEnv = credentialRef(search?.apiKeyEnv ?? CODEX_API_KEY_REF)
     return {
       resolveApiKey: () => resolveSearchApiKey(apiKeyEnv),
       apiKeyEnv,

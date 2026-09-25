@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
+import { withOplSigningKeychain } from './signing-keychain.mjs'
 import { packageTarget, parseDesktopPackageInvocation } from '../scripts/package-target.ts'
 import { desktopBuildCommitEnvironment, readDesktopBuildCommit } from '../scripts/desktop-build-commit.mjs'
 import { resolveMacOSSigningEnvironment, resolveMacOSNotarizationEnvironment, resolveNpmRegistry } from '../scripts/desktop-release-environment.mjs'
@@ -42,7 +43,9 @@ if (invocation.check) {
   environment.DSH_DESKTOP_PACKAGING_RUN_DIR = run.directory
   let success = false
   try {
-    await packageTarget(invocation, environment, run)
+    if (invocation.target.platform === 'darwin') {
+      await withOplSigningKeychain(environment, signing => packageTarget(invocation, signing, run))
+    } else await packageTarget(invocation, environment, run)
     success = true
   } catch (error) {
     console.error(packagingErrorDetails(error, secrets))

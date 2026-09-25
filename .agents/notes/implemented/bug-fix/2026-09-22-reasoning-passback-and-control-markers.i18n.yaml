@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-22-reasoning-passback-and-control-markers.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-22-reasoning-passback-and-control-markers.md
-2026-09-22-reasoning-passback-and-control-markers.md: 0a3aa96e73a213966d3ace78df7af2212b8fe0f1
-2026-09-22-reasoning-passback-and-control-markers.zh.md: b30b279219bb365a01505d5d9c18e9b7acaa5fd0
+/agent-note-thinking-mode-cot-passes-back-under-either-wire-name-and-control-markers-are-reported:
+  en: 7efb164be7027990
+  zh: 0b4a6c68dbda4756
+/agent-note-thinking-mode-cot-passes-back-under-either-wire-name-and-control-markers-are-reported/problem:
+  en: 55c4240d147c99c2
+  zh: 962268cd8397ceac
+/agent-note-thinking-mode-cot-passes-back-under-either-wire-name-and-control-markers-are-reported/decision:
+  en: 454b964d2583fd75
+  zh: c40fbe3cb7cbc022
+/agent-note-thinking-mode-cot-passes-back-under-either-wire-name-and-control-markers-are-reported/alternatives-considered:
+  en: b85358ac70364286
+  zh: 8cc6d0525a19eea3
+/agent-note-thinking-mode-cot-passes-back-under-either-wire-name-and-control-markers-are-reported/consequences:
+  en: 502d721f01a35b6b
+  zh: b45946ea3d38df08
+/agent-note-thinking-mode-cot-passes-back-under-either-wire-name-and-control-markers-are-reported/testing:
+  en: 72ab2bf1a65eb8c8
+  zh: bb42b6b8e57d8916

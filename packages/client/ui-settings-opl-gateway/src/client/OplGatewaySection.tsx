@@ -220,6 +220,10 @@ export function OplGatewaySection(props: OplGatewaySectionProps) {
               ? (
                 <div>
                   <p className={css.muted}>{state.keyReady ? t('keyReady') : t('keyMissing')}</p>
+                  <p className={css.muted}>{state.codexKeyReady ? t('codexReady') : t('codexMissing')}</p>
+                  <p className={css.muted}>{t('failoverHint')}</p>
+                  {state.activeChannel === undefined ? null : <p className={css.muted}>{t('activeChannel', { channel: state.activeChannel === 'deepseek' ? 'DeepSeek / Messages' : 'Codex / OpenAI' })}</p>}
+                  {state.channelError === undefined ? null : <p className={css.muted}>{t('codexMissing')}</p>}
                   {state.source !== 'opl'
                     ? null
                     : <p className={css.muted}>{t('connectedViaOpl')}</p>}

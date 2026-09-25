@@ -102,6 +102,8 @@ describe('web e2e: archived sessions are restored from the sidebar filter', () =
       () => [...scaffold.ctx.workspaceRegistry.archivedSessionIds],
       { timeout: 10_000 },
     ).toEqual([])
+    // Back to the default filter: the restored row must be an ordinary row
+    // again, visible without any archived rows in the view.
     await page.getByRole('button', { name: 'View options' }).click()
     await page.getByRole('menuitem', { name: 'Show archived', exact: true }).click()
     await expect.poll(() => sessionRow.count(), { timeout: 15_000 }).toBe(1)

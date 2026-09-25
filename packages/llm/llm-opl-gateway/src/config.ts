@@ -7,7 +7,8 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
 } from '@deepseek-ai/dsh-llm-deepseek'
-import type { DeepSeekCatalogModel, Options } from '@deepseek-ai/dsh-llm-deepseek'
+import type { DeepSeekCatalogModel } from '@deepseek-ai/dsh-llm-deepseek'
+import type { Options } from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import { OPL_GATEWAY_INFERENCE_BASE_URL } from './opl-credentials.ts'
 import {
   OPL_GATEWAY_SEARCH_DEFAULT_MAX_OUTPUT_TOKENS,
@@ -19,15 +20,18 @@ import {
 /** Credential reference the Models page writes when a gateway key is typed in. */
 export const DEFAULT_API_KEY_REF = 'OPL_GATEWAY_DEEPSEEK_API_KEY'
 
+/** Independent Codex-group credential used only by the OpenAI compatibility channel. */
+export const CODEX_API_KEY_REF = 'OPL_GATEWAY_CODEX_API_KEY'
+
 /**
  * The one model this route advertises. The gateway serves the id
- * `deepseek-v4.1-flash`, which this deployment presents as `DeepSeek-V4.1-Flash`;
+ * `deepseek-flash`, which this deployment presents as `DeepSeek-V4.1-Flash`;
  * requests stay unrestricted, so a session that names any other id the
  * gateway enables still reaches it.
  */
 export const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
   {
-    id: 'deepseek-v4.1-flash',
+    id: 'deepseek-flash',
     name: 'DeepSeek-V4.1-Flash',
     description: 'DeepSeek Flash served by the OPL Gateway.',
     contextWindow: DEFAULT_CONTEXT_WINDOW,

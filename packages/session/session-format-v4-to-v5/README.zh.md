@@ -29,6 +29,10 @@ kind: "package-reference"
 普通恢复请使用构建时固定的 [Session 格式目录](../session-format-catalog/README.zh.md)。直接导出用于目录组装和针对性测试。历史代际仍保留在磁盘上；持久化层只会在完成校验后把 V5 后继发布到源文件旁边。
 
 ```ts
+import { sessionFormatV4ToV5 } from '@deepseek-ai/dsh-session-format-v4-to-v5'
+import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+const sourceHeader = { version: 4, id: 'example', createdAt: 1, isSeeded: false, delegationDepth: 0 }
+const physicalHeader = { ...sourceHeader, type: 'session' }
 const targetHeader = sessionFormatV4ToV5.migrateHeader(sourceHeader)
 const restore = sessionFormatCatalog.createRestore(physicalHeader, {
   recovery: 'strict', validation: 'current',
@@ -91,3 +95,5 @@ V4 读取器会拒绝 V5 header。V5 读取器保留此前所有相邻迁移，�
 ### 开发备注
 
 无。
+
+本包不发布运行时不变量 companion，因为这个纯迁移库不持有可独立变化的运行时状态。

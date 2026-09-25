@@ -1,6 +1,73 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/auto-review/README.md
-README.md: 171bdb4123bb1ce8a3546c20af071db6b9ad01cf
-README.zh.md: ac7b9b848ba06de2b36df18b85aac14b225970f8
+/:
+  en: 77628edede2505c5
+  zh: fceb99d6c98b16b2
+/deepseek-ai-dsh-experimental-auto-review:
+  en: 566562e610f1b52b
+  zh: 88796a19ab0b98b8
+/deepseek-ai-dsh-experimental-auto-review/summary:
+  en: 4244318ada0786c4
+  zh: 31343c4ceb03e906
+/deepseek-ai-dsh-experimental-auto-review/table-of-contents:
+  en: 33530dec86e58683
+  zh: 5beb94aab8d03736
+/deepseek-ai-dsh-experimental-auto-review/use-this-package:
+  en: be4a2e8cdcb6706c
+  zh: 0a3f81e25ae11bde
+/deepseek-ai-dsh-experimental-auto-review/use-this-package/install-into-a-profile:
+  en: 63f8f1baa0fb2655
+  zh: 6bc64160f6d02114
+/deepseek-ai-dsh-experimental-auto-review/use-this-package/two-explicit-enablements:
+  en: 67e36ac2ea415f94
+  zh: 3d874c177c25f270
+/deepseek-ai-dsh-experimental-auto-review/configure-the-gate:
+  en: 0a179256684c1ee8
+  zh: 644f523c70106754
+/deepseek-ai-dsh-experimental-auto-review/what-you-get:
+  en: 1a7795b1cce6f51d
+  zh: b12aa590d6a1b31c
+/deepseek-ai-dsh-experimental-auto-review/what-you-get/traceability:
+  en: 43e63c9f9054cfaf
+  zh: fcabb04b08d8bd4d
+/deepseek-ai-dsh-experimental-auto-review/understand-the-implementation:
+  en: 07e7931c2f55a593
+  zh: 81ff2a848687efd7
+/deepseek-ai-dsh-experimental-auto-review/further-exploration:
+  en: eba2ede82d863d02
+  zh: b41f798f337ce63f
+/deepseek-ai-dsh-experimental-auto-review/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-auto-review/model-experience/per-call-reviewer:
+  en: 7ec217b1012cd8fa
+  zh: 6188796b4990f2ef
+/deepseek-ai-dsh-experimental-auto-review/model-experience/per-call-reviewer/what-the-model-sees:
+  en: ad220873f9e6db4f
+  zh: 7267f3cb7462aa99
+/deepseek-ai-dsh-experimental-auto-review/model-experience/per-call-reviewer/token-effect:
+  en: a101b800def1a704
+  zh: 8e82d3ff3a36715a
+/deepseek-ai-dsh-experimental-auto-review/model-experience/per-call-reviewer/kv-cache-effect:
+  en: 67b73d97f22f3c75
+  zh: 4dd263e571043cf4
+/deepseek-ai-dsh-experimental-auto-review/model-experience/tool-denial:
+  en: f9b4d7b686f14fc5
+  zh: a2fac9a8eaf5e2a3
+/deepseek-ai-dsh-experimental-auto-review/model-experience/tool-denial/what-the-model-sees:
+  en: 50a5aedb232585b6
+  zh: 92390fa54137e11f
+/deepseek-ai-dsh-experimental-auto-review/model-experience/tool-denial/token-effect:
+  en: 679cb3d82e97022f
+  zh: 15c98505e75ff881
+/deepseek-ai-dsh-experimental-auto-review/model-experience/tool-denial/kv-cache-effect:
+  en: 8da1089dee147f94
+  zh: 87361347bfd10c6c
+/deepseek-ai-dsh-experimental-auto-review/known-limitations-and-deferred-work:
+  en: 3c5eee1677c78a91
+  zh: c973917849ccccd5
+/deepseek-ai-dsh-experimental-auto-review/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

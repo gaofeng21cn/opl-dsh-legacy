@@ -32,6 +32,8 @@ export interface DesktopHostCore {
 /** Readiness and update coordination supplied by the official Web profile. */
 export interface WslWebHostControl {
   readonly ready: { readonly url: string; readonly injections: readonly unknown[] }
+  /** Inspect tasks before the desktop shell quits. */
+  inspectQuit?(): Promise<{ activeTasks: boolean; scheduledTasks: boolean }>
   updateTasks(action: 'inspect' | 'lock' | 'unlock'): Promise<boolean>
 }
 
@@ -162,6 +164,11 @@ export async function serveWslTransport(
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     if (request.method === 'POST' && control !== undefined && url.pathname === '/ready') {
       reply(response, 200, control.ready)
+      return
+    }
+    if (request.method === 'POST' && control?.inspectQuit !== undefined && url.pathname === '/quit-inspection') {
+      try { reply(response, 200, await control.inspectQuit()) }
+      catch { reply(response, 503, { error: 'quit inspection unavailable' }) }
       return
     }
     if (request.method === 'POST' && control !== undefined && url.pathname === '/update-tasks') {

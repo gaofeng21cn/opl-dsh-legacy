@@ -1,6 +1,52 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-settings-opl-gateway/README.md
-README.md: ad1171086f48724ee6b1eca1e1350712c387c440
-README.zh.md: 820a50dbfac57ecb700038c492b3afc2b88a02da
+/:
+  en: 224edfb953bf08f5
+  zh: 7cc5760d4c81832c
+/one-person-lab-dsh-client-ui-settings-opl-gateway:
+  en: 3e3fc8b829d13066
+  zh: 86369c48f1c2eb9f
+/one-person-lab-dsh-client-ui-settings-opl-gateway/summary:
+  en: 57c8a406f659a1e1
+  zh: c01f98f57387a6f7
+/one-person-lab-dsh-client-ui-settings-opl-gateway/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: da6603038d60de12
+/one-person-lab-dsh-client-ui-settings-opl-gateway/use-this-package:
+  en: 4ad1e4f01d4eb068
+  zh: f67a1730af33fbf6
+/one-person-lab-dsh-client-ui-settings-opl-gateway/use-this-package/when-to-choose-it:
+  en: cabbef89e33c73a7
+  zh: 6be89de38cadaeff
+/one-person-lab-dsh-client-ui-settings-opl-gateway/use-this-package/minimal-configuration:
+  en: edad5525bbfd5a4b
+  zh: ceb855e04d0a9a45
+/one-person-lab-dsh-client-ui-settings-opl-gateway/understand-the-implementation:
+  en: 7aa969c99920b9f9
+  zh: fbcd2f40e9ddd193
+/one-person-lab-dsh-client-ui-settings-opl-gateway/further-exploration:
+  en: 1b4e3f688c2fae69
+  zh: 6d0b4304a932f2d5
+/one-person-lab-dsh-client-ui-settings-opl-gateway/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/one-person-lab-dsh-client-ui-settings-opl-gateway/model-experience/settings-and-notifications:
+  en: 7c23910603f7dfa7
+  zh: fd7df1605a75e7c3
+/one-person-lab-dsh-client-ui-settings-opl-gateway/model-experience/settings-and-notifications/what-the-model-sees:
+  en: 105030d35747b12f
+  zh: 925d1a51a38e8dd2
+/one-person-lab-dsh-client-ui-settings-opl-gateway/model-experience/settings-and-notifications/token-effect:
+  en: aa996c496c3f16d7
+  zh: 72702326cadfedcd
+/one-person-lab-dsh-client-ui-settings-opl-gateway/model-experience/settings-and-notifications/kv-cache-effect:
+  en: 023c5ab107d53b36
+  zh: 5cacad585dce781f
+/one-person-lab-dsh-client-ui-settings-opl-gateway/known-limitations-and-deferred-work:
+  en: 3b6687c5a9cde10f
+  zh: bc430fbcc9f2f007
+/one-person-lab-dsh-client-ui-settings-opl-gateway/known-limitations-and-deferred-work/dev-note:
+  en: 7635e10ec59d3aad
+  zh: 04a0f2b7c12c6ce6

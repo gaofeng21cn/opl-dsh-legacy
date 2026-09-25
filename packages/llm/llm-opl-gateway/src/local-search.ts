@@ -12,7 +12,11 @@ function xmlText(value: string): string {
   }).trim()
 }
 
-/** Parse result records, refusing verification pages and empty responses. */
+/** Parse result records, refusing verification pages and empty responses.
+ * @param xml - Search engine RSS response.
+ * @param maxResults - Maximum returned sources.
+ * @returns bounded source records and truncation status.
+ */
 export function parseLocalSearch(xml: string, maxResults = 10): WebSearchResult {
   if (!/<rss[\s>]/i.test(xml)) throw new WebError('Local search returned no RSS results; the search engine may require verification.', 'WEB_PROVIDER_ERROR')
   const sources: { url: string; title: string; snippet: string }[] = []
@@ -28,7 +32,11 @@ export function parseLocalSearch(xml: string, maxResults = 10): WebSearchResult 
   return { sources: sources.slice(0, maxResults), truncated: sources.length > maxResults }
 }
 
-/** Reuse the HTTP fetch provider's proxy, cancellation, size, and address policy. */
+/** Reuse the HTTP fetch provider's proxy, cancellation, size, and address policy.
+ * @param request - Search query and result budget.
+ * @param fetchPage - Policy-checked HTTP fetch operation.
+ * @returns parsed search sources.
+ */
 export async function localSearch(
   request: WebSearchRequest,
   fetchPage: (url: string) => Promise<WebFetchResult>,

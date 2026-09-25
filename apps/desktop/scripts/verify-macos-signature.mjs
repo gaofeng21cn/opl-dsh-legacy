@@ -115,7 +115,7 @@ function runCodeSign(args) {
  * @returns {Promise<void>} Resolves after codesign exits successfully.
  */
 export async function signMacOSRuntimeCode(path, identifier, expected, entitlements) {
-  const keychain = process.env.CSC_KEYCHAIN ?? process.env.DSH_DESKTOP_MACOS_SIGNING_KEYCHAIN
+  const keychain = process.env.CSC_KEYCHAIN
   if (!keychain) throw new Error('desktop macOS signing: run through the package command to prepare the signing keychain')
   await runAppleCommandAsync('/usr/bin/codesign', [
     '--force',
