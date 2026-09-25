@@ -309,6 +309,8 @@
 
     # OPL Gateway account page: the sign-in surface whose account key the
     # llm-opl-gateway adapter resolves.
+    - id: ui-settings-codex
+      name: '@one-person-lab/dsh-client-ui-settings-codex'
     - id: ui-settings-opl-gateway
       name: '@one-person-lab/dsh-client-ui-settings-opl-gateway'
 

@@ -274,3 +274,15 @@ it('forwards browser guest input only for the focused live webview lease', async
   expect(listener).toHaveBeenCalledOnce()
   off()
 })
+
+
+it('exposes narrow Codex installation operations on the product bridge', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  await api.codex.status()
+  await api.codex.install({ autoStart: false })
+  expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
+    [DESKTOP_IPC.codexSkillStatus], [DESKTOP_IPC.codexSkillInstall, { autoStart: false }],
+  ])
+})

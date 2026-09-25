@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
 
 const sha = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -13,7 +13,7 @@ const record = value => value !== null && typeof value === 'object' && !Array.is
 const has = (value, key) => Object.hasOwn(value, key)
 const terminal = new Set(['completed', 'failed', 'cancelled'])
 const stages = ['prepared', 'creating', 'created', 'configured', 'registering', 'registered', 'sending', 'sent']
-const flags = new Map(['config', 'task', 'operation', 'prompt-file', 'acceptance-file', 'cwd', 'session', 'provider', 'model', 'effort', 'preset'].map(flag => [flag, flag.replace(/-([a-z])/g, (_, char) => char.toUpperCase())]))
+const flags = new Map(['config', 'thread', 'task', 'operation', 'prompt-file', 'acceptance-file', 'cwd', 'session', 'provider', 'model', 'effort', 'preset'].map(flag => [flag, flag.replace(/-([a-z])/g, (_, char) => char.toUpperCase())]))
 
 function nonempty(value, label) {
   if (typeof value !== 'string' || !value.trim() || value.includes('\0')) throw new Error(`${label} must be a non-empty string without NUL`)
@@ -31,9 +31,10 @@ function absolute(value, label) {
 }
 function validateConfig(config) {
   if (!record(config)) throw new Error('config must be an object')
-  const keys = new Set(['controlCli', 'ledgerDir', 'targetThreadId', 'node', 'dshHome', 'pathMode', 'timeoutMs', 'startCommand', 'startArgs', 'startCwd', 'startupTimeoutMs'])
+  const keys = new Set(['controlCli', 'ledgerDir', 'targetThreadId', 'node', 'dshHome', 'pathMode', 'timeoutMs', 'startCommand', 'startArgs', 'startCwd', 'startupTimeoutMs', 'electronNode', 'ledgerPerThread'])
   for (const key of Object.keys(config)) if (!keys.has(key)) throw new Error(`unknown config field ${key}`)
   if (config.pathMode !== undefined && config.pathMode !== 'native') throw new Error(`unsupported pathMode ${config.pathMode}; use a native Node process and native paths`)
+  for (const key of ['electronNode', 'ledgerPerThread']) if (config[key] !== undefined && typeof config[key] !== 'boolean') throw new Error(`config.${key} must be boolean`)
   if (config.node !== undefined) nonempty(config.node, 'config.node')
   if (config.startCommand !== undefined) nonempty(config.startCommand, 'config.startCommand')
   if (config.startArgs !== undefined && (!Array.isArray(config.startArgs) || !config.startArgs.every(value => typeof value === 'string' && !value.includes('\0')))) throw new Error('config.startArgs must be an array of strings without NUL')
@@ -71,6 +72,7 @@ function ensureDesktop(config, state) {
   if (config.startCommand === undefined) throw new Error(`DSH desktop is not running and no startCommand is configured; start OPL DSH or add startCommand to the coordinator config (expected binding: ${binding})`)
   if (!state.started) {
     const environment = { ...process.env, ...(config.dshHome === undefined ? {} : { DSH_OPL_HOME: config.dshHome }) }
+    delete environment.ELECTRON_RUN_AS_NODE
     const child = spawn(config.startCommand, config.startArgs ?? [], { cwd: config.startCwd, env: environment, detached: true, stdio: 'ignore', windowsHide: true })
     child.unref()
     state.started = true
@@ -97,6 +99,7 @@ export function createControlInvoker(config) {
       writeFileSync(file, JSON.stringify(request), { flag: 'wx', mode: 0o600 })
       const env = { ...process.env }
       if (config.dshHome) env.DSH_OPL_HOME = config.dshHome
+      if (config.electronNode) env.ELECTRON_RUN_AS_NODE = '1'
       const result = spawnSync(node, [config.controlCli, 'rpc', '--file', file, '--timeout', String((config.timeoutMs ?? 150_000) / 1000)], {
         encoding: 'utf8', env, timeout: (config.timeoutMs ?? 150_000) + 15_000,
       })
@@ -112,7 +115,7 @@ function valueOf(response) {
 }
 function parseArgs(argv) {
   const [command] = argv
-  if (!['dispatch', 'continue'].includes(command)) throw new Error('usage: dispatch|continue --config FILE --task ID --operation ID --prompt-file FILE --acceptance-file FILE')
+  if (!['dispatch', 'continue'].includes(command)) throw new Error('usage: dispatch|continue [--config FILE] [--thread ID] --task ID --operation ID --prompt-file FILE --acceptance-file FILE')
   const out = { command }
   for (let index = 1; index < argv.length; index++) {
     const flag = argv[index]
@@ -123,7 +126,7 @@ function parseArgs(argv) {
     if (value === undefined || value.startsWith('--')) throw new Error(`${flag} requires a value`)
     out[key] = value
   }
-  for (const key of ['config', 'task', 'operation', 'promptFile', 'acceptanceFile']) nonempty(out[key], key)
+  for (const key of ['task', 'operation', 'promptFile', 'acceptanceFile']) nonempty(out[key], key)
   return out
 }
 function withLock(lock, fn) {
@@ -197,7 +200,8 @@ function requireFeedbackIdle(rpc, op) {
  * @returns a durable admission receipt; accepted does not mean work completed.
  */
 export function runDispatch(options, invoke) {
-  const config = validateConfig(options.config)
+  const config = validateConfig({ ...options.config, targetThreadId: options.thread ?? options.config?.targetThreadId ?? process.env.CODEX_THREAD_ID })
+  if (config.ledgerPerThread) config.ledgerDir = join(config.ledgerDir, sha(config.targetThreadId))
   const { command, task, operation, session, provider, model, effort, preset } = options
   if (!['dispatch', 'continue'].includes(command)) throw new Error('command must be dispatch or continue')
   identifier(task, 'task'); identifier(operation, 'operation')
@@ -287,7 +291,7 @@ export function runDispatch(options, invoke) {
  */
 export function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv)
-  return runDispatch({ ...args, config: json(args.config) })
+  return runDispatch({ ...args, config: json(args.config ?? fileURLToPath(new URL('../coordinator.json', import.meta.url))) })
 }
 if (process.argv[1] && existsSync(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try { console.log(JSON.stringify(main(), null, 2)) } catch (error) { console.error(error.message); process.exitCode = 1 }

@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for 2026-09-25-opl-official-desktop-extensions.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-09-25-opl-official-desktop-extensions.md
+/agent-note-opl-extensions-for-the-official-dsh-desktop:
+  en: 2eec778906bc2fe7
+  zh: 03c433df12d376d6
+/agent-note-opl-extensions-for-the-official-dsh-desktop/problem:
+  en: 430fd091132fecfb
+  zh: e21d3b544d66da1a
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal:
+  en: 986dd8097aac4d3d
+  zh: 2c89af85628555c5
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/product-and-maintenance-ownership:
+  en: 3b7cf558dfd586d2
+  zh: 69dad8b98f4e2bd8
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/disposition-of-every-added-capability:
+  en: b2d61e3bfbe4808a
+  zh: 11f78471cbcf2f8a
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/one-setup-entry-and-user-access:
+  en: dfbd2b55a55c5aeb
+  zh: 0ec4d57f70e6bc72
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/installation-state-and-recovery:
+  en: c3b2b7500eee8e7c
+  zh: 5fc19873a66e50e3
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/versions-and-maintenance:
+  en: fdf8955d2924d108
+  zh: 95e84111f3d77600
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/existing-users-and-source-migration:
+  en: 74a33c722a31823a
+  zh: 4a410e6d8aa9a69b
+/agent-note-opl-extensions-for-the-official-dsh-desktop/proposal/delivery-order:
+  en: 65c3dfe3527082b5
+  zh: e841910f74ebfbad
+/agent-note-opl-extensions-for-the-official-dsh-desktop/alternatives-considered:
+  en: 66b489ebd33b2598
+  zh: b2e532ba9db6591f
+/agent-note-opl-extensions-for-the-official-dsh-desktop/acceptance-criteria:
+  en: 0a7be0f51caea532
+  zh: 696066f301a2247d
+/agent-note-opl-extensions-for-the-official-dsh-desktop/risks:
+  en: d881832b7fad8528
+  zh: 16da61f7eac184a7

@@ -1,0 +1,6 @@
+.section { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+.card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; }
+.path { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+.toggle { display: flex; align-items: center; gap: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.hint { color: var(--dsw-alias-label-secondary); line-height: 1.6; }

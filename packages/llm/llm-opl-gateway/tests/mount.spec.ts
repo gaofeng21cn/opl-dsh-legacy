@@ -97,7 +97,7 @@ describe('account flow without any local OPL installation', () => {
   function gateway(options: { existingKeys?: GatewayManagedKey[]; withKey?: boolean } = {}) {
     const calls: string[] = []
     const keys: GatewayManagedKey[] = options.existingKeys ?? []
-    const control = Object.assign(new GatewayControlClient(), {
+    const control: GatewayControlClient = Object.assign(new GatewayControlClient(), {
       login: async (email: string, password: string) => {
         calls.push(`login:${email}`)
         // A real instance, because the service branches on the type: a stub

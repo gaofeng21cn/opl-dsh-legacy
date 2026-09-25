@@ -98,7 +98,10 @@ export default {
   // which is not this product's; the shell publishes whichever identity the
   // packaged manifest names.
   extraMetadata: { ...baseConfig.extraMetadata, dshDesktopAppId: APP_ID, dshAppId: APP_ID },
-  extraResources: [...baseConfig.extraResources, { from: 'opl/opl-dsh-control.mjs', to: 'control/opl-dsh-control.mjs' }],
+  extraResources: [...baseConfig.extraResources,
+    { from: 'opl/opl-dsh-control.mjs', to: 'control/opl-dsh-control.mjs' },
+    { from: '../../.agents/skills/opl-dsh-workflow', to: 'codex/opl-dsh-workflow', filter: ['SKILL.md', 'references/**', 'scripts/dispatch.mjs'] },
+  ],
   extraFiles: [{ from: 'opl/opl-dsh-control.cmd', to: 'opl-dsh-control.cmd' }],
   mac: {
     ...baseConfig.mac,

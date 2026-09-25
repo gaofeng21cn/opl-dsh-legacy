@@ -182,7 +182,8 @@
     "@one-person-lab/dsh-client-ui-settings-opl-gateway": "workspace:^",
     "@one-person-lab/dsh-llm-opl-gateway": "workspace:^",
     "@deepseek-ai/dsh-api-task-feedback": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-desktop-notifications": "workspace:*"
+    "@deepseek-ai/dsh-client-ui-desktop-notifications": "workspace:*",
+    "@one-person-lab/dsh-client-ui-settings-codex": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

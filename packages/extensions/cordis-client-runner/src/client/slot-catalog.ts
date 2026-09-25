@@ -2694,6 +2694,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'client-ui-agent-preset AgentPresetSection id \'agent-presets\'',
       'client-ui-settings-account AccountSection id \'account\'',
+      '@one-person-lab/dsh-client-ui-settings-codex CodexSection id \'codex\'',
       'client-ui-settings-general GeneralSection id \'general\'',
       'client-ui-settings-models ModelsSection id \'models\'',
       '@one-person-lab/dsh-client-ui-settings-opl-gateway OplGatewaySection id \'opl-gateway\'',

@@ -350,3 +350,49 @@ test('the control invoker starts DSH once when its binding is absent', t => {
   assert.deepEqual(invoke({ namespace: 'session', method: 'list', args: {} }), { value: { ok: true } })
   assert.ok(existsSync(binding))
 })
+
+
+test('runtime thread overrides isolate identical task ids without changing legacy ledgers', t => {
+  const f = fixture(t), h = host()
+  f.config.ledgerPerThread = true
+  const a = runDispatch(opts(f, { thread: 'codex-task-a' }), h.invoke)
+  const b = runDispatch(opts(f, { thread: 'codex-task-b' }), h.invoke)
+  assert.notEqual(a.sessionId, b.sessionId)
+  assert.equal(readdirSync(f.config.ledgerDir).length, 2)
+  const registrations = h.calls.filter(call => call.method === 'register')
+  assert.equal(registrations.length, 2)
+})
+
+test('installed helper reads its own config outside the repository and requires a real thread', t => {
+  const f = fixture(t)
+  const scripts = join(f.dir, 'skill', 'scripts')
+  mkdirSync(scripts, { recursive: true })
+  const script = join(scripts, 'dispatch.mjs')
+  copyFileSync(fileURLToPath(new URL('./dispatch.mjs', import.meta.url)), script)
+  const config = { ...f.config, targetThreadId: undefined }
+  writeFileSync(join(f.dir, 'skill', 'coordinator.json'), JSON.stringify(config))
+  const args = [script, 'dispatch', '--task', 't', '--operation', 'first', '--prompt-file', f.promptFile, '--acceptance-file', f.acceptanceFile]
+  const environment = { ...process.env }
+  delete environment.CODEX_THREAD_ID
+  const missing = spawnSync(process.execPath, args, { cwd: tmpdir(), env: environment, encoding: 'utf8' })
+  assert.equal(missing.status, 1)
+  assert.match(missing.stderr, /targetThreadId/)
+  const supplied = spawnSync(process.execPath, [...args, '--thread', 'actual-task-id'], { cwd: tmpdir(), env: environment, encoding: 'utf8' })
+  assert.equal(supplied.status, 1)
+  assert.doesNotMatch(supplied.stderr, /targetThreadId|coordinator.json/)
+})
+
+test('Electron Node mode is passed only to the control client, never to the GUI launcher', t => {
+  const f = fixture(t)
+  const home = join(f.dir, 'home'), envLog = join(f.dir, 'launcher-env.json')
+  const bindingDir = join(home, 'profiles', 'desktop')
+  const launcher = join(f.dir, 'launcher.mjs')
+  writeFileSync(launcher, `import fs from 'node:fs'; fs.mkdirSync(${JSON.stringify(bindingDir)}, {recursive:true}); fs.writeFileSync(${JSON.stringify(envLog)}, JSON.stringify({nodeMode:process.env.ELECTRON_RUN_AS_NODE ?? null})); fs.writeFileSync(${JSON.stringify(join(bindingDir, 'control.json'))}, '{}')`)
+  writeFileSync(f.config.controlCli, `console.log(JSON.stringify({nodeMode:process.env.ELECTRON_RUN_AS_NODE}))`)
+  const prior = process.env.ELECTRON_RUN_AS_NODE
+  process.env.ELECTRON_RUN_AS_NODE = '1'
+  t.after(() => { if (prior === undefined) delete process.env.ELECTRON_RUN_AS_NODE; else process.env.ELECTRON_RUN_AS_NODE = prior })
+  const invoke = createControlInvoker({ ...f.config, node: process.execPath, electronNode: true, dshHome: home, startCommand: process.execPath, startArgs: [launcher], startupTimeoutMs: 5000 })
+  assert.deepEqual(invoke({namespace:'session',method:'list',args:{}}), {nodeMode:'1'})
+  assert.deepEqual(JSON.parse(readFileSync(envLog, 'utf8')), {nodeMode:null})
+})

@@ -22,6 +22,7 @@
   "references": [
     { "path": "./packages/client/shortcuts/tsconfig.client.json" },
     { "path": "./packages/client/ui-sidebar-browser/tsconfig.client.json" },
-    { "path": "./packages/util/atomic-write" }
+    { "path": "./packages/util/atomic-write" },
+    { "path": "./packages/client/ui-settings-codex/tsconfig.client.json" }
   ]
 }

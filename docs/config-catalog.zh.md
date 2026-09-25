@@ -4624,6 +4624,7 @@ export interface SearchConfig {
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/webhook/webhook/src/index.ts`](../packages/webhook/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
+| `@one-person-lab/dsh-client-ui-settings-codex` | — | [`packages/client/ui-settings-codex/src/index.ts`](../packages/client/ui-settings-codex/src/index.ts) |
 | `@one-person-lab/dsh-client-ui-settings-opl-gateway` | — | [`packages/client/ui-settings-opl-gateway/src/index.ts`](../packages/client/ui-settings-opl-gateway/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->
 

@@ -29,6 +29,9 @@
     // under its own tsconfig boundary.
     "paths": {
       "@one-person-lab/dsh-llm-opl-gateway/types": ["./packages/llm/llm-opl-gateway/src/types.ts"],
+      "@one-person-lab/dsh-client-ui-settings-codex": ["./packages/client/ui-settings-codex/src/index.ts"],
+      "@one-person-lab/dsh-client-ui-settings-codex/client": ["./packages/client/ui-settings-codex/src/client/index.ts"],
+      "@one-person-lab/dsh-client-ui-settings-codex/types": ["./packages/client/ui-settings-codex/src/types.ts"],
       "@one-person-lab/dsh-llm-opl-gateway": ["./packages/llm/llm-opl-gateway/src"],
 
       "@deepseek-ai/dsh-api-task-feedback": ["./packages/api/task-feedback/src/index.ts"],

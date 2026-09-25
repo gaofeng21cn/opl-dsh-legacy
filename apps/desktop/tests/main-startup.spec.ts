@@ -809,6 +809,19 @@ describe('desktop main startup', () => {
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
+  it('rejects Codex skill operations outside the primary product frame', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const window = harness.windows[0]!
+    for (const channel of [DESKTOP_IPC.codexSkillStatus, DESKTOP_IPC.codexSkillInstall]) {
+      const handler = harness.handlers.get(channel)!
+      expect(handler).toBeTypeOf('function')
+      expect(() => handler({ sender: window.webContents, senderFrame: { url: 'dsh-app://app/' } }, { autoStart: true })).toThrow('unowned renderer')
+      expect(() => handler({ sender: {}, senderFrame: window.webContents.mainFrame }, { autoStart: true })).toThrow('unowned renderer')
+      expect(() => handler({ sender: window.webContents, senderFrame: { url: 'https://example.com/' } }, { autoStart: true })).toThrow('unowned renderer')
+    }
+  })
+
   it('maps Windows caption menus to localized native commands and rejects foreign popup requests', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     await import('../src/main.ts')

@@ -10,7 +10,7 @@ Long OPL DSH tasks need a durable boundary between dispatch, model execution, hu
 
 ## Decision
 
-The repository ships a portable Codex Skill at `.agents/skills/opl-dsh-workflow`. Its helper uses the existing desktop control CLI, registers task feedback before sending a prompt, persists an input fingerprint and request id, validates an explicit permission preset, and leaves ambiguous creation responses for inspection. The Skill defines stable consumer claims, bounded recovery for structured reasoning failures, human handling for input and approval pauses, and independent review before consumption. It does not launch DSH, own credentials, or promise background wake delivery; those remain deployment capabilities.
+The repository ships a portable Codex Skill at `.agents/skills/opl-dsh-workflow`. Its helper uses the existing desktop control CLI, registers task feedback before sending a prompt, persists an input fingerprint and request id, validates an explicit permission preset, and leaves ambiguous creation responses for inspection. The Skill defines stable consumer claims, bounded recovery for structured reasoning failures, human handling for input and approval pauses, and independent review before consumption. When a local start command is configured, it starts DSH and waits for the control binding. It neither owns credentials nor promises background wake delivery; the latter requires a separately configured bridge.
 
 ## Alternatives considered
 

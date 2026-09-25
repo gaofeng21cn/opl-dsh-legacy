@@ -18,6 +18,10 @@ OPL 自维护的 DeepSeek Harness 桌面发行版，面向使用 OPL Gateway 和
 
 账号页可查看余额、Token 用量、费用和推理地址。应用直接连接 OPL Gateway，无需安装 OPL App、OPL Framework 或额外的命令行工具。
 
+## 维护方向
+
+当前源码基线保留完整 OPL fork。后续方案采用官方 DSH 桌面版、OPL 插件组合包、Codex Skill 和统一安装配置入口，以减少核心合并和桌面打包维护。插件迁移与一键安装器尚未交付；能力清单、安装流程和数据兼容方案见[官方桌面增强方案](.agents/notes/proposed/architecture/2026-09-25-opl-official-desktop-extensions.zh.md)。
+
 ## 主要能力
 
 | 能力 | 使用方式 |
@@ -54,7 +58,7 @@ OPL DSH 登录后分别申请或复用 **DeepSeek** 与 **Codex** 分组的专�
 
 协作由两部分组成：DSH 内的 `task-feedback` 插件和本仓库的 [opl-dsh-workflow Skill](.agents/skills/opl-dsh-workflow/SKILL.md)。Codex 通过本地控制接口调度任务；模型请求、工具执行和权限判断仍由 DSH 承担。
 
-将 `.agents/skills/opl-dsh-workflow` 安装到 Codex 的 skills 目录，按照 [配置说明](.agents/skills/opl-dsh-workflow/references/setup.md) 创建本机私有配置。设置 `startCommand` 后，Skill 在未发现桌面控制连接时自动启动 DSH，并等待连接就绪。macOS 可配置 `/usr/bin/open` 和参数 `["-a", "OPL DSH"]`。
+打开 **设置 → Codex 协作**，点击“安装 Skill”，即可将随应用打包的协作 Skill 和本机配置安装到 Codex。该页可以检查状态、更新 Skill，并控制“Codex 分派任务时自动启动 DSH”。安装后新建 Codex 任务；若 Skill 仍未出现，请重启 Codex。默认使用当前 Codex 任务 ID，无需逐任务修改配置。已手动修改的 Skill 文件不会被覆盖；高级手动配置见 [配置说明](.agents/skills/opl-dsh-workflow/references/setup.md)。
 
 派发和继续操作使用显式 operation 标识，重试会复用已有记录。自动唤醒 Codex 还需要配置可用的回调桥；安装 Skill 本身不代表后台通知已经接通。
 

@@ -1,3 +1,4 @@
+import { createCodexSkillInstaller } from './codex-skill.ts'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
@@ -844,6 +845,26 @@ async function main(): Promise<void> {
     }
     writeStoredEnvironment(stateRoot, selectedEnvironment)
     return environmentState()
+  })
+  const codexSkill = createCodexSkillInstaller({
+    codexHome: process.env.CODEX_HOME || join(app.getPath('home'), '.codex'),
+    skillSource: app.isPackaged ? join(process.resourcesPath, 'codex', 'opl-dsh-workflow')
+      : join(app.getAppPath(), '..', '..', '.agents', 'skills', 'opl-dsh-workflow'),
+    controlCli: app.isPackaged ? join(process.resourcesPath, 'control', 'opl-dsh-control.mjs')
+      : join(app.getAppPath(), 'opl', 'opl-dsh-control.mjs'),
+    executable: process.execPath, dshHome,
+    startCommand: process.platform === 'darwin' && app.isPackaged ? '/usr/bin/open' : process.execPath,
+    startArgs: process.platform === 'darwin' && app.isPackaged
+      ? ['-a', join(process.execPath, '..', '..', '..')]
+      : app.isPackaged ? [] : [app.getAppPath()],
+  })
+  ipcMain.handle(DESKTOP_IPC.codexSkillStatus, (event) => {
+    assertProductSender(event)
+    return codexSkill.status()
+  })
+  ipcMain.handle(DESKTOP_IPC.codexSkillInstall, (event, options: { autoStart: boolean }) => {
+    assertProductSender(event)
+    return codexSkill.install(options)
   })
   ipcMain.handle(DESKTOP_IPC.preferencesGet, (event) => {
     assertProductSender(event)

@@ -1,5 +1,6 @@
 /** Typed preload operations exposed only by the Electron shell. */
 
+import type { CodexSkillBridge } from '@one-person-lab/dsh-client-ui-settings-codex/types'
 import type { DesktopCloseBehavior } from './desktop-preferences.ts'
 import type { DesktopNotificationReport } from './notifications.ts'
 import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-client-shortcuts/protocol'
@@ -8,6 +9,8 @@ import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-br
 
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
+  codexSkillStatus: 'dsh-desktop:codex-skill-status',
+  codexSkillInstall: 'dsh-desktop:codex-skill-install',
   environmentStatus: 'dsh-desktop:environment-status',
   environmentSelect: 'dsh-desktop:environment-select',
   preferencesGet: 'dsh-desktop:preferences-get',
@@ -145,6 +148,7 @@ export interface DesktopUpdatePresentation {
 
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi extends DshDesktopAppApi {
+  readonly codex: CodexSkillBridge
   readonly protocolVersion: 1
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi

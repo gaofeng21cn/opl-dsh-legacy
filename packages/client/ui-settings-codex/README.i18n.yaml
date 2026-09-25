@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-settings-codex/README.md
+/:
+  en: 32f845fd1119fd45
+  zh: 5c4e9877f3b6ab11
+/one-person-lab-dsh-client-ui-settings-codex:
+  en: 79e215986945854f
+  zh: b368216ed68e9266
+/one-person-lab-dsh-client-ui-settings-codex/summary:
+  en: bc12f524153b6a44
+  zh: e66d0ef87c12c148
+/one-person-lab-dsh-client-ui-settings-codex/table-of-contents:
+  en: 122f0d41696980b1
+  zh: f366d2759fbb78b1
+/one-person-lab-dsh-client-ui-settings-codex/use-this-package:
+  en: 8eb7b3e7b2e6c5bb
+  zh: 87248dd56247ebfd
+/one-person-lab-dsh-client-ui-settings-codex/understand-the-implementation:
+  en: b063b3266f3241ba
+  zh: 72ff545284b7cefa
+/one-person-lab-dsh-client-ui-settings-codex/model-experience:
+  en: 6f782bf971f0dc45
+  zh: 203f61ddf3e88d93
+/one-person-lab-dsh-client-ui-settings-codex/model-experience/kv-cache-effect:
+  en: 953d9deb00152326
+  zh: 3c1b75194aff1f1b
+/one-person-lab-dsh-client-ui-settings-codex/known-limitations-and-deferred-work:
+  en: d817c36f10432f81
+  zh: 61e2e433b264abcf
+/one-person-lab-dsh-client-ui-settings-codex/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

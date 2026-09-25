@@ -1,6 +1,7 @@
 /** Origin-scoped boot, native directory selection, host paths of picked files, and update presentation with native confirmation actions. */
 
 import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
+import type { CodexSkillStatus } from '@one-person-lab/dsh-client-ui-settings-codex/types'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation, type DesktopEnvironmentState, type DesktopShellPreferences } from './ipc.ts'
 import { PLATFORM_IPC } from './platform-ipc.ts'
@@ -33,6 +34,10 @@ function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
     notifications,
+    codex: {
+      status: () => ipcRenderer.invoke(DESKTOP_IPC.codexSkillStatus) as Promise<CodexSkillStatus>,
+      install: options => ipcRenderer.invoke(DESKTOP_IPC.codexSkillInstall, options) as Promise<CodexSkillStatus>,
+    },
     environment: {
       status: () => ipcRenderer.invoke(DESKTOP_IPC.environmentStatus) as Promise<DesktopEnvironmentState>,
       select: selection => ipcRenderer.invoke(DESKTOP_IPC.environmentSelect, selection) as Promise<DesktopEnvironmentState>,

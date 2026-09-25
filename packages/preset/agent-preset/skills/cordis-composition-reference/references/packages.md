@@ -115,6 +115,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-client-ui-user-questions` | no | Web ask_user_question composer takeover and plan-review presentation UI |
 | `@deepseek-ai/dsh-client-ui-workflow-run` | no | Durable workflow-run Conversation Node and nested member disclosure for dsh web |
 | `@deepseek-ai/dsh-client-ui-workspace` | no | Workspace picker plugin: one WorkspacePicker registered into the sidebar and empty-state workspace slots |
+| `@one-person-lab/dsh-client-ui-settings-codex` | no | Desktop settings for installing and configuring the Codex DSH coordination skill |
 | `@one-person-lab/dsh-client-ui-settings-opl-gateway` | no | OPL Gateway Settings page: sign in to the gateway account and read its balance, usage, and inference key |
 
 ## compaction

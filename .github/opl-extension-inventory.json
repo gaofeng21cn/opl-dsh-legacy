@@ -1,0 +1,3488 @@
+{
+  "schemaVersion": 1,
+  "sourceBaselineRef": "opl-baseline-20260925",
+  "upstreamRef": "upstream/master",
+  "upstreamTag": "dsh-v0.1.7-rc.2",
+  "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness",
+  "scope": "All changed and added tracked/source files against the synchronized upstream; decisions describe planned migration, not completed compatibility.",
+  "areas": {
+    "gateway": {
+      "title": "Gateway 登录、双通道与搜索",
+      "disposition": "首期插件化",
+      "pathCount": 43
+    },
+    "coordination": {
+      "title": "任务反馈、控制与回执",
+      "disposition": "首期重构为插件",
+      "pathCount": 25
+    },
+    "codex-installer": {
+      "title": "Codex Skill 安装设置",
+      "disposition": "迁移到本机安装工具",
+      "pathCount": 19
+    },
+    "session": {
+      "title": "会话编辑回退、权限与持久化",
+      "disposition": "保留基线；拆分公开接口和核心依赖",
+      "pathCount": 111
+    },
+    "file-rewind": {
+      "title": "文件日志与恢复",
+      "disposition": "后续可选插件",
+      "pathCount": 12
+    },
+    "workspace": {
+      "title": "独立会话、项目移动、普通聊天",
+      "disposition": "官方能力优先；缺口后续适配",
+      "pathCount": 48
+    },
+    "review": {
+      "title": "规则、模型和人工审批",
+      "disposition": "官方审批机制上的可选增强",
+      "pathCount": 9
+    },
+    "language": {
+      "title": "输出语言设置",
+      "disposition": "独立 prompt section 插件",
+      "pathCount": 9
+    },
+    "compaction": {
+      "title": "压缩策略与输入预算",
+      "disposition": "先使用官方配置",
+      "pathCount": 9
+    },
+    "llm-diagnostics": {
+      "title": "LLM 协议诊断、错误信息与重试验证",
+      "disposition": "保留外层诊断，移除核心依赖",
+      "pathCount": 20
+    },
+    "shell": {
+      "title": "Windows Shell、Git Bash、原生路径",
+      "disposition": "官方能力或后续可选 provider",
+      "pathCount": 63
+    },
+    "desktop": {
+      "title": "桌面、WSL2、通知、IPC 与安装载荷",
+      "disposition": "沿用官方壳，能力逐项迁移",
+      "pathCount": 101
+    },
+    "composition": {
+      "title": "插件组合、模型默认值、preset 和 remotes",
+      "disposition": "合并到独立 OPL bundle",
+      "pathCount": 16
+    },
+    "ui-support": {
+      "title": "界面、输入法与测试支撑",
+      "disposition": "官方实现优先",
+      "pathCount": 12
+    },
+    "build-support": {
+      "title": "类型、代码生成、构建和验证支撑",
+      "disposition": "只迁移插件独立构建所需部分",
+      "pathCount": 49
+    },
+    "documentation-ci": {
+      "title": "文档、决策和 fork CI 政策",
+      "disposition": "保留历史并改为插件维护文档",
+      "pathCount": 133
+    }
+  },
+  "pathCount": 679,
+  "paths": [
+    {
+      "path": ".agents/notes/implemented/architecture/2026-06-21-bounded-llm-request-recovery.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-06-21-bounded-llm-request-recovery.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-06-21-bounded-llm-request-recovery.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-07-20-routed-model-context-and-compaction-policy.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-07-20-routed-model-context-and-compaction-policy.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-07-20-routed-model-context-and-compaction-policy.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-22-desktop-execution-environments.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-22-desktop-execution-environments.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-22-desktop-execution-environments.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-22-native-agent-git-bash.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-22-native-agent-git-bash.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-22-native-agent-git-bash.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-23-desktop-notifications-tray.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-23-desktop-notifications-tray.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/architecture/2026-09-23-desktop-notifications-tray.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-22-reasoning-passback-and-control-markers.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-22-reasoning-passback-and-control-markers.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-22-reasoning-passback-and-control-markers.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-22-windows-ordinary-target-hidden-console.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-22-windows-ordinary-target-hidden-console.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-22-windows-ordinary-target-hidden-console.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-23-control-recovery-outcome-boundaries.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-23-control-recovery-outcome-boundaries.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-23-control-recovery-outcome-boundaries.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-23-stop-requeue-after-accepted-feedback.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-23-stop-requeue-after-accepted-feedback.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-23-stop-requeue-after-accepted-feedback.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-24-ime-composition-guard-and-rewind-file-modes.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-24-ime-composition-guard-and-rewind-file-modes.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/bug-fix/2026-09-24-ime-composition-guard-and-rewind-file-modes.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-07-27-workspace-registration-deletion.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-08-28-auto-review.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-08-28-auto-review.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-08-28-auto-review.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-20-independent-session-projects.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-20-independent-session-projects.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-20-independent-session-projects.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-20-plain-chat-entry.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-20-plain-chat-entry.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-20-plain-chat-entry.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-21-opl-search-and-desktop-control.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-21-opl-search-and-desktop-control.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-21-opl-search-and-desktop-control.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-22-dispatched-task-feedback-and-wake-seam.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-22-dispatched-task-feedback-and-wake-seam.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-22-dispatched-task-feedback-and-wake-seam.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-auto-review-rules-routing.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-auto-review-rules-routing.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-auto-review-rules-routing.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-control-steer-entry.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-control-steer-entry.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-control-steer-entry.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-directory-membership-on-every-start.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-output-language-setting.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-output-language-setting.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-output-language-setting.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-routed-input-budget-and-step-admission.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-routed-input-budget-and-step-admission.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-23-routed-input-budget-and-step-admission.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-24-conversation-turn-rewind.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-24-conversation-turn-rewind.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-24-conversation-turn-rewind.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-24-workspace-file-rewind.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-24-workspace-file-rewind.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/feature/2026-09-24-workspace-file-rewind.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/process/2026-09-24-codex-dsh-coordination-skill.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/process/2026-09-24-codex-dsh-coordination-skill.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/implemented/process/2026-09-24-codex-dsh-coordination-skill.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/proposed/architecture/2026-09-25-opl-official-desktop-extensions.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/proposed/architecture/2026-09-25-opl-official-desktop-extensions.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/notes/proposed/architecture/2026-09-25-opl-official-desktop-extensions.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".agents/skills/opl-dsh-workflow/SKILL.md",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": ".agents/skills/opl-dsh-workflow/references/setup.md",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": ".agents/skills/opl-dsh-workflow/scripts/dispatch.mjs",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": ".agents/skills/opl-dsh-workflow/scripts/dispatch.test.mjs",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": ".github/opl-extension-inventory.json",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".github/workflows/windows-desktop.yml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": ".gitignore",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "README.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "README.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "README.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "apps/cli/composition.md",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/cli/config/opl-headless.cordis.patch.yml",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/cli/tests/git-bash-native.spec.ts",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/cli/tests/git-bash-restricted.spec.ts",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/cli/tests/windows-shell.spec.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/desktop-host/package.json",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop-host/src/control-bridge.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "apps/desktop-host/src/desktop-profile.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop-host/src/index.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop-host/src/wsl-serve.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop-host/tests/desktop-profile.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop-host/tsconfig.json",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/README.i18n.yaml",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/README.md",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/README.zh.md",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/electron-builder.config.d.mts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/electron-builder.opl.mjs",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/icon.icns",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/icon.ico",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/icon.png",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/install-macos.sh",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/install-windows.ps1",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/opl-dsh-control.cmd",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "apps/desktop/opl/opl-dsh-control.mjs",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "apps/desktop/opl/package.mjs",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/signing-keychain.mjs",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/verify-opl-package.d.mts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/opl/verify-opl-package.mjs",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/package.json",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/renderer/tray-icon.png",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/desktop-build-paths.d.mts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/desktop-build-paths.mjs",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/electron-builder-config.mjs",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/node-archive.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/package-target.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/prepare-dsh.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/prepare-runtime.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/prepare-wsl.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/smoke-packaged-runtime.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/verify-macos-signature.mjs",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/scripts/windows-directory-installer.mjs",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/app-identity.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/close-prompt.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/codex-skill.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "apps/desktop/src/core-package-set.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/desktop-preferences.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/dsh-home.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/execution-environment-store.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/execution-environment.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/host-process.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/ipc.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/locale.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/main.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/menus.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/notifications.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/preload-app.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/wsl-host.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/src/wsl.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/app-identity.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/close-prompt.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/codex-skill.spec.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "apps/desktop/tests/control-bridge.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/core-package-set.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/desktop-preferences.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/dsh-home.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/execution-environment-store.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/execution-environment.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/installed-update-builder.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/installer-packaging.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/main-startup.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/menus.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/needs-input-control.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/notifications.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/opl-control.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/opl-windows-package.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/package-target.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/preload-app.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/upload-with-credentials.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/welcome-startup.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/windows-console.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/windows-directory-installer.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/wsl-real.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/wsl-transport.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tests/wsl.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/desktop/tsconfig.host.json",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "apps/web/tests/plain-chat.e2e.ts",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/web/tests/session-archive-current.e2e.ts",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/web/tests/session-unarchive.e2e.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/web/tests/workspace-management.e2e.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "apps/web/tsconfig.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "docs/capability-seams.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/capability-seams.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/capability-seams.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/config-catalog.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/config-catalog.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/event-producer-consumer.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/event-producer-consumer.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/module-graph.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/module-graph.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-catalog.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-catalog.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-catalog.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-22-transport-failure-diagnostics.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-22-transport-failure-diagnostics.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-22-transport-failure-diagnostics.schema.json",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-22-transport-failure-diagnostics.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-24-workspace-file-rewind.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-24-workspace-file-rewind.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-24-workspace-file-rewind.schema.json",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/2026-09-24-workspace-file-rewind.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/finalized/v5.json",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/README.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/README.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/README.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/v4.i18n.yaml",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/v4.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/v4.schema.json",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-changes/historical-formats/v4.zh.md",
+      "change": "A",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/persistence-schema.json",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/session-format-status.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/session-format-status.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/session-format-status.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/compaction.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/compaction.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/compaction.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/llm-streaming.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/llm-streaming.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/llm-streaming.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/permission-presets.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/permission-presets.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/session.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/session.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/shell.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/shell.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/system-prompt.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/system-prompt.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/system-prompt.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/workspace.i18n.yaml",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/workspace.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "docs/subsystems/workspace.zh.md",
+      "change": "M",
+      "area": "documentation-ci"
+    },
+    {
+      "path": "package.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/api/remotes/package.json",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/api/remotes/src/client/index.ts",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/api/session-controller/README.i18n.yaml",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/README.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/README.zh.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/package.json",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/client/contract/session.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/client/contract/sessions.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/client/index.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/client/sessions/manager.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/client/sessions/service.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/client/sessions/session.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/commands.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/index.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/types.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/src/wait.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/client-apply.client.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/commands-create-fork.host.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/commands-create-project.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/commands-edit-prompt.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/commands-rewind-files.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/commands-rewind.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/independent-review-permissions.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/permissions.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/remote/session.client.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/session-fork.host.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/session-presets.host.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/session.client.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/test-remote.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tests/wait.host.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tsconfig.client.json",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/session-controller/tsconfig.host.json",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/api/task-feedback/README.i18n.yaml",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/README.md",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/README.zh.md",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/package.json",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/src/index.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/src/spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/src/types.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/src/wake.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/independent-review.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.controller.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.loader.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.loop.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.needs-input.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.recovery-diagnostics.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/task-feedback.resume-tracking.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tests/wake.host.spec.ts",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/task-feedback/tsconfig.json",
+      "change": "A",
+      "area": "coordination"
+    },
+    {
+      "path": "packages/api/workspace-controller/README.i18n.yaml",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/README.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/README.zh.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/src/client/model.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/src/client/service.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/src/commands.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/src/feed.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/src/index.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/src/types.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/api/workspace-controller/tests/model.client.spec.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/boot/app-boot/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/boot/app-boot/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/boot/app-boot/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/boot/app-boot/src/agent-shell-selection.ts",
+      "change": "A",
+      "area": "shell"
+    },
+    {
+      "path": "packages/boot/app-boot/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/bundle/base/cordis.patch.yml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/base/package.json",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/base/tests/base.spec.ts",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/README.i18n.yaml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/README.md",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/README.zh.md",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/cordis.patch.yml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/package.json",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/presets/chat.patch.yml",
+      "change": "A",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/presets/cordis.patch.yml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/presets/minimal.patch.yml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/presets/ptc.patch.yml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/presets/standard.patch.yml",
+      "change": "M",
+      "area": "composition"
+    },
+    {
+      "path": "packages/bundle/web-app/tests/search-composition.spec.ts",
+      "change": "A",
+      "area": "composition"
+    },
+    {
+      "path": "packages/client/tsdown.client.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/README.i18n.yaml",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/README.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/README.zh.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/src/client/locales.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/src/client/seat-store.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/src/client/section-store.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-agent-preset/src/client/settings-store.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-chat/README.i18n.yaml",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/README.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/README.zh.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/apply.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/ChatView.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/MessageItem.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/RewindMarker.module.css",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/RewindMarker.tsx",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/UserPromptEdit.module.css",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/UserPromptEdit.tsx",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/register-node-renderers.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/chat/turn-rail-items.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/contract/slots.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/contract/snapshot.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/conversation-nodes/message.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/conversation-nodes/request-prompt.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/conversation-nodes/superseded-branch.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/src/client/locale.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/apply-inject.client.spec.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/chat-snapshot-fixture.client.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/chat-view.client.spec.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/edit-resend-visibility.client.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/turn-rail-items.client.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/user-prompt-edit.client.spec.tsx",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-chat/tests/user-prompt-rewind.client.spec.tsx",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/README.i18n.yaml",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/README.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/README.zh.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/src/client/apply.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/src/client/contract/slots.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/src/client/locales.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/src/client/skeleton/ConversationMainPanel.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/tests/conversation-registry.client.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-conversation/tests/skeleton.client.spec.tsx",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/README.i18n.yaml",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/README.md",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/README.zh.md",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/package.json",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/src/client/bridge.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/src/client/index.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/src/client/reporter.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/src/index.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/tests/desktop-notifications.client.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/tests/reporter.client.spec.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/tsconfig.json",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-desktop-notifications/tsdown.config.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-layout/tests/app-frame.client.spec.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-primitives/src/icons/index.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-primitives/src/index.ts",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-primitives/src/settings-form/fields.module.css",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-primitives/src/settings-form/fields.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-primitives/src/settings-form/form-model.ts",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-primitives/tests/icons.client.spec.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/README.i18n.yaml",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/README.md",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/README.zh.md",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/package.json",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/client/CodexSection.module.css",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/client/CodexSection.tsx",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/client/env.d.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/client/index.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/client/locales.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/index.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/src/types.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/tests/apply.client.spec.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/tests/section.client.spec.tsx",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/tsconfig.client.json",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/tsconfig.host.json",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/tsconfig.json",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-codex/tsdown.config.ts",
+      "change": "A",
+      "area": "codex-installer"
+    },
+    {
+      "path": "packages/client/ui-settings-general/tests/shell.client.spec.ts",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/README.i18n.yaml",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/README.md",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/README.zh.md",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/package.json",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/client/OplGatewaySection.module.css",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/client/OplGatewaySection.tsx",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/client/SearchSection.tsx",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/client/index.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/client/locales.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/css-modules.d.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/src/index.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/tests/formatting.client.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/tests/search.client.spec.tsx",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/tests/section.client.spec.tsx",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/tsconfig.json",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-opl-gateway/tsdown.config.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/README.i18n.yaml",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/README.md",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/README.zh.md",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/package.json",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/src/client/DesktopSettingsSection.module.css",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/src/client/DesktopSettingsSection.tsx",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/src/client/OutputLanguageCard.tsx",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/src/client/index.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/src/client/locales.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/src/client/output-language-card-controller.ts",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/tests/apply.client.spec.ts",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/tests/desktop.client.spec.tsx",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/tests/output-language.client.spec.tsx",
+      "change": "A",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-plugins/tsconfig.json",
+      "change": "M",
+      "area": "desktop"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/src/client/ShellCard.tsx",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/src/client/locales.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/src/client/shell-card-controller.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/tests/card.client.spec.tsx",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-settings-shell/tests/controller.client.spec.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/client/ui-tool/tests/tool-fixtures.client.ts",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-user-questions/tests/plan-review-panel.client.spec.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-user-questions/tests/user-questions-composer.client.spec.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-workflow-run/tests/workflow-run.client.spec.tsx",
+      "change": "M",
+      "area": "ui-support"
+    },
+    {
+      "path": "packages/client/ui-workspace/README.i18n.yaml",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/README.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/README.zh.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/contract/slots.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/index.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/locales.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/navigation.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/rows/Rows.tsx",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/src/client/session-actions/MoveSession.tsx",
+      "change": "A",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/tests/apply.client.spec.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/tests/rename-assembly.client.spec.tsx",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/tests/rows.client.spec.tsx",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/client/ui-workspace/tests/workspaces-service.client.spec.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/README.i18n.yaml",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/README.md",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/README.zh.md",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/config.ts",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/index.ts",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/summarizer.ts",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/src/types.ts",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/tests/compaction-basic.spec.ts",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/compaction/compaction-basic/tests/loader-composition.spec.ts",
+      "change": "M",
+      "area": "compaction"
+    },
+    {
+      "path": "packages/core/agent-loop/README.i18n.yaml",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/agent-loop/README.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/agent-loop/README.zh.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/agent-loop/src/agent.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/agent-loop/src/index.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/agent-loop/tests/edit-resend.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/agent/src/types.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/README.i18n.yaml",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/README.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/README.zh.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/src/index.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/src/known-event-types.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/src/surface.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/src/types.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/session/tests/surface.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/core/system-prompt/README.i18n.yaml",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/README.md",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/README.zh.md",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/package.json",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/src/index.ts",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/src/output-language.ts",
+      "change": "A",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/tests/output-language.spec.ts",
+      "change": "A",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/tests/scoped.spec.ts",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/core/system-prompt/tests/system-prompt.spec.ts",
+      "change": "M",
+      "area": "language"
+    },
+    {
+      "path": "packages/experimental/auto-review/README.i18n.yaml",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/README.md",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/README.zh.md",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/package.json",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/src/index.ts",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/src/rules.ts",
+      "change": "A",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/tests/auto-review.spec.ts",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/tests/rules.spec.ts",
+      "change": "A",
+      "area": "review"
+    },
+    {
+      "path": "packages/experimental/auto-review/tsconfig.json",
+      "change": "M",
+      "area": "review"
+    },
+    {
+      "path": "packages/extensions/cordis-client-runner/src/client/api-catalog.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/extensions/cordis-client-runner/src/client/slot-catalog.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/extensions/tool-cordis/src/api-catalog.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/interaction/permission-presets/src/index.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/README.i18n.yaml",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/README.md",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/README.zh.md",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/package.json",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/src/adapter.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/src/index.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/src/protocol-anomaly.ts",
+      "change": "A",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/src/reasoning-trace.ts",
+      "change": "A",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/src/types.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/tests/protocol-anomaly.spec.ts",
+      "change": "A",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/tests/reasoning-persistence.spec.ts",
+      "change": "A",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-deepseek/tests/reasoning-trace.spec.ts",
+      "change": "A",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/README.i18n.yaml",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/README.md",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/README.zh.md",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/package.json",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/account-service.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/adoption.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/config.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/dual-channel.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/gateway-control.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/index.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/local-search.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/opl-credentials.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/search-service.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/search-types.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/search.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/session-store.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/src/types.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/adoption.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/config.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/dual-channel.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/gateway-control.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/mount.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/opl-credentials.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/search-service.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/search.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tests/session-store.spec.ts",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-opl-gateway/tsconfig.json",
+      "change": "A",
+      "area": "gateway"
+    },
+    {
+      "path": "packages/llm/llm-pi-ai/src/index.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm-retry/tests/transport-recovery.spec.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm/README.i18n.yaml",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm/README.md",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm/README.zh.md",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm/src/adapter-failure.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm/src/index.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/llm/llm/src/types.ts",
+      "change": "M",
+      "area": "llm-diagnostics"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/README.i18n.yaml",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/README.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/README.zh.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/package.json",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/src/display.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/src/index.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/tests/__snapshots__/registry.spec.ts.snap",
+      "change": "A",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset-registry/tests/registry.spec.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/preset/agent-preset/skills/cordis-composition-reference/references/packages.md",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/session/session-format-catalog/README.i18n.yaml",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/README.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/README.zh.md",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/package.json",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/src/generated.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/src/historical.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/src/index.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/tests/catalog.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/tests/developer-history.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-catalog/tsconfig.json",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v3-to-v4/tests/fork.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v3-to-v4/tests/interrupted-turn.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/README.i18n.yaml",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/README.md",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/README.zh.md",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/package.json",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/src/codec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/src/index.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/src/migration.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/src/v4-vocabulary.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/src/validation.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/tests/migration.spec.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/tsconfig.json",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-format-v4-to-v5/tsdown.config.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-persistence-jsonl/src/catalog-migration.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-persistence-jsonl/tests/migration-refusal.spec.ts",
+      "change": "M",
+      "area": "session"
+    },
+    {
+      "path": "packages/session/session-rewind-files/README.i18n.yaml",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/README.md",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/README.zh.md",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/package.json",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/src/blob-store.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/src/index.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/src/journal.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/src/projection.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/src/types.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/src/workspace-scan.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/tests/journal.spec.ts",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/session/session-rewind-files/tsconfig.json",
+      "change": "A",
+      "area": "file-rewind"
+    },
+    {
+      "path": "packages/shell/bash-local/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-local/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-local/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-local/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-local/tests/executor.spec.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-sandbox/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-sandbox/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-sandbox/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-sandbox/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/bash-sandbox/tests/broker.spec.ts",
+      "change": "A",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/pwsh-local/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/pwsh-local/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/pwsh-local/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/pwsh-local/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/pwsh-local/tests/executor.spec.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/package.json",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/src/agent-shell.ts",
+      "change": "A",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/src/git-bash-broker.ts",
+      "change": "A",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/src/types.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/tests/git-bash-broker.spec.ts",
+      "change": "A",
+      "area": "shell"
+    },
+    {
+      "path": "packages/shell/shell/tsconfig.json",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/ssh/ssh/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/subprocess-local/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/subprocess-local/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/subprocess-local/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/subprocess-local/src/windows-job.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/subprocess-local/tests/windows-job.spec.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/src/abi.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/src/process.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/tests/ordinary-process.spec.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/subprocess/win32-process/verify/abi-probe.cpp",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/package.json",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/src/config.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/src/index.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/terminal/terminal-bash/tsconfig.json",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/test-support/agent-loop-testkit/src/index.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/README.i18n.yaml",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/README.md",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/README.zh.md",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/package.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/src/assembly/remote-default-responses.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/src/sessions.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/client-runtime/src/workspaces.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/test-support/llm-replay/tests/llm-replay.spec.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/typert/generator/src/analyzer.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/typert/generator/tests/type-model.spec.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "packages/util/native-command/README.i18n.yaml",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/util/native-command/README.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/util/native-command/README.zh.md",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/util/native-command/src/path-opener.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/util/native-command/tests/path-opener.spec.ts",
+      "change": "M",
+      "area": "shell"
+    },
+    {
+      "path": "packages/workspace/workspace/README.i18n.yaml",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/workspace/workspace/README.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/workspace/workspace/README.zh.md",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/workspace/workspace/src/entity.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/workspace/workspace/src/index.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/workspace/workspace/src/spec.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "packages/workspace/workspace/tests/workspace.spec.ts",
+      "change": "M",
+      "area": "workspace"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/check-workspace-constraints.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/client-build-environment.client.spec.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/client-build-environment.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/dev-web.spec.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/gen-cordis-catalog.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/gen-doc-graphs.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/gen-tsconfig-paths.spec.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/gen-tsconfig-paths.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/migrate-sessions-to-v5.ts",
+      "change": "A",
+      "area": "session"
+    },
+    {
+      "path": "scripts/no-unknown-casts.baseline.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/opl-dsh.cmd",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/opl-dsh.ps1",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/package-scope.ts",
+      "change": "A",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/release/families.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/verify-application-entrypoints.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/verify-default-product-isolation.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "scripts/verify-package-readme-model-experience.ts",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "tsconfig.client.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "tsconfig.desktop-keyboard-tests.json",
+      "change": "M",
+      "area": "build-support"
+    },
+    {
+      "path": "tsconfig.host.json",
+      "change": "M",
+      "area": "build-support"
+    }
+  ]
+}
